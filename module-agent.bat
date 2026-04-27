@@ -13,31 +13,13 @@ if not exist "node_modules\" (
     if errorlevel 1 exit /b 1
 )
 
-if "%~1"=="" (
-    echo ModuleAgent - modular agent framework
-    echo.
-    echo   module-agent gui         Start graphical interface
-    echo   module-agent [command]   CLI mode
-    echo.
-    echo   CLI commands: init scan tree workspace serve
-    goto :eof
-)
+echo Building and launching ModuleAgent GUI...
+call npm run build:electron --silent
+if errorlevel 1 exit /b 1
 
-if /i "%~1"=="gui" (
-    echo Building and launching GUI...
-    call npm run build:electron --silent
-    if errorlevel 1 exit /b 1
-
-    if exist "%ROOT%\node_modules\electron\dist\electron.exe" (
-        call "%ROOT%\node_modules\electron\dist\electron.exe" "%ROOT%"
-        goto :eof
-    )
-
-    echo.
-    echo Electron binary not found. To install:
-    echo   node node_modules/electron/install.js
-    echo.
+if exist "%ROOT%\node_modules\electron\dist\electron.exe" (
+    call "%ROOT%\node_modules\electron\dist\electron.exe" "%ROOT%"
+) else (
+    echo Electron binary not found. Run: node node_modules/electron/install.js
     exit /b 1
 )
-
-npx tsx "%ROOT%\src\cli\main.ts" %*

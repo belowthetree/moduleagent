@@ -5,16 +5,14 @@
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
-    "dev": "tsx src/cli/main.ts",
-    "build": "tsc",
-    "typecheck": "tsc --noEmit",
     "build:renderer": "esbuild electron/renderer/renderer.ts --bundle --outfile=electron/renderer/renderer.js --platform=browser --format=iife",
-    "build:main": "esbuild electron/main.ts --bundle --outfile=electron/main.cjs --platform=node --format=cjs --external:electron --external:fs-extra --external:gray-matter --external:marked --external:simple-git --external:zod --external:path --external:url",
+    "build:main": "esbuild electron/main.ts --bundle --outfile=electron/main.cjs --platform=node --format=cjs --external:electron --external:fs-extra --external:gray-matter --external:marked --external:simple-git --external:zod --external:path --external:url --external:esbuild",
     "build:preload": "esbuild electron/preload.ts --bundle --outfile=electron/preload.cjs --platform=node --format=cjs --external:electron",
     "build:electron": "npm run build:renderer && npm run build:main && npm run build:preload",
     "electron": "npm run build:electron && electron .",
     "dist": "npm run build:renderer && electron-builder build --win portable",
-    "ma": "tsx src/cli/main.ts"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
   },
   "build": {
     "appId": "com.moduleagent.app",
@@ -35,15 +33,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@types/react": "^18.3.28",
-    "@types/react-dom": "^18.3.7",
-    "commander": "^12.1.0",
     "fs-extra": "^11.2.0",
     "gray-matter": "^4.0.3",
-    "ink": "^5.2.1",
     "marked": "^15.0.4",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "simple-git": "^3.27.0",
     "zod": "^3.23.8"
   },

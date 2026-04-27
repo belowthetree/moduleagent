@@ -1,6 +1,7 @@
 import { ACPClient, type ACPClientOptions } from '../protocol/acp/ACPClient.js';
 import { FsHandler } from '../protocol/acp/handlers/fs.js';
 import { TerminalHandler } from '../protocol/acp/handlers/terminal.js';
+import type { Logger } from '../core/Logger.js';
 
 export interface AgentConfig {
   command: string;
@@ -15,7 +16,7 @@ export interface LaunchedAgent {
 }
 
 export class AgentLauncher {
-  async launch(config: AgentConfig, name: string, cwd: string): Promise<LaunchedAgent> {
+  async launch(config: AgentConfig, name: string, cwd: string, logger?: Logger): Promise<LaunchedAgent> {
     const fsHandler = new FsHandler(cwd);
     const terminalHandler = new TerminalHandler(cwd);
 
@@ -27,6 +28,7 @@ export class AgentLauncher {
       clientName: `module-agent-${name}`,
       fsEnabled: true,
       terminalEnabled: true,
+      logger,
       defaultHandlers: {
         onPermissionRequest: async (params) => {
           console.log(`[${name}] 请求权限: 工具调用 ${params.toolCall.toolCallId}`);

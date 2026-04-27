@@ -3,6 +3,7 @@ import type { ProjectConfig } from '../config/defaults.js';
 import { AgentLauncher, type LaunchedAgent, type AgentConfig } from './AgentLauncher.js';
 import { ACPClient } from '../protocol/acp/ACPClient.js';
 import type { MCPServerConfig } from '../protocol/acp/types.js';
+import type { Logger } from '../core/Logger.js';
 
 export interface AgentEntry {
   name: string;
@@ -19,15 +20,18 @@ export class AgentManager {
   private graph: ModuleGraphType;
   private mcpConfig: MCPServerConfig[];
 
-  constructor(config: ProjectConfig, graph: ModuleGraphType, mcpConfig: MCPServerConfig[] = []) {
+  private logger?: Logger;
+
+  constructor(config: ProjectConfig, graph: ModuleGraphType, mcpConfig: MCPServerConfig[] = [], logger?: Logger) {
     this.config = config;
     this.graph = graph;
     this.mcpConfig = mcpConfig;
+    this.logger = logger;
   }
 
   async startMainAgent(mainCwd: string): Promise<AgentEntry> {
     const config = this.resolveAgentConfig('main');
-    const agent = await this.launcher.launch(config, 'main', mainCwd);
+    const agent = await this.launcher.launch(config, 'main', mainCwd, this.logger);
     const sessionId = await agent.client.createSession(mainCwd, this.mcpConfig);
 
     const entry: AgentEntry = {
@@ -47,7 +51,7 @@ export class AgentManager {
     }
 
     const config = this.resolveAgentConfig(moduleName);
-    const agent = await this.launcher.launch(config, moduleName, moduleCwd);
+    const agent = await this.launcher.launch(config, moduleName, moduleCwd, this.logger);
     const sessionId = await agent.client.createSession(moduleCwd, this.mcpConfig);
 
     const entry: AgentEntry = {

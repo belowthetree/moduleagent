@@ -1,5 +1,6 @@
 import { Transport, type TransportOptions } from './Transport.js';
 import { ACPSession, type SessionHandlers } from './ACPSession.js';
+import type { Logger } from '../../core/Logger.js';
 import type {
   InitializeResult,
   SessionNewResult,
@@ -28,6 +29,7 @@ export interface ACPClientOptions extends TransportOptions {
   fsEnabled?: boolean;
   terminalEnabled?: boolean;
   defaultHandlers?: SessionHandlers;
+  logger?: Logger;
 }
 
 export class ACPClient {
@@ -37,10 +39,12 @@ export class ACPClient {
   private agentInfoObj: AgentInfo | null = null;
   private ready = false;
   private opts: ACPClientOptions;
+  private logger: Logger | undefined;
 
   constructor(options: ACPClientOptions) {
-    this.transport = new Transport();
+    this.transport = new Transport({ logger: options.logger });
     this.opts = options;
+    this.logger = options.logger;
   }
 
   get isReady(): boolean { return this.ready; }
@@ -58,6 +62,8 @@ export class ACPClient {
   }
 
   async initialize(): Promise<InitializeResult> {
+    this.logger?.info(`ACP initialize → agent (client: ${this.opts.clientName || 'module-agent'})`);
+
     const result = await this.transport.sendRequest('initialize', {
       protocolVersion: 1,
       clientCapabilities: {
@@ -77,6 +83,7 @@ export class ACPClient {
     this.agentCaps = result.agentCapabilities;
     this.agentInfoObj = result.agentInfo;
     this.ready = true;
+    this.logger?.info(`ACP initialized | agent: ${result.agentInfo.name} v${result.agentInfo.version} | protocol: ${result.protocolVersion}`);
     return result;
   }
 
@@ -86,6 +93,7 @@ export class ACPClient {
     const result = await this.transport.sendRequest('session/new', { cwd, mcpServers }) as SessionNewResult;
     const session = new ACPSession(result.sessionId, handlers || this.opts.defaultHandlers);
     this.sessions.set(result.sessionId, session);
+    this.logger?.session(result.sessionId, 'created', `cwd=${cwd} mcp=${mcpServers?.length || 0}`);
     return result.sessionId;
   }
 
@@ -93,14 +101,18 @@ export class ACPClient {
     if (!this.sessions.has(sessionId)) throw new Error(`Session not found: ${sessionId}`);
 
     const prompt = typeof content === 'string' ? [{ type: 'text' as const, text: content }] : content;
+    const len = typeof content === 'string' ? content.length : content[0]?.text?.length || 0;
+    this.logger?.session(sessionId, 'prompt', `len=${len}`);
     return await this.transport.sendRequest('session/prompt', { sessionId, prompt }) as SessionPromptResult;
   }
 
   async cancelSession(sessionId: string): Promise<void> {
+    this.logger?.session(sessionId, 'cancel');
     this.transport.sendNotification('session/cancel', { sessionId });
   }
 
   async closeSession(sessionId: string): Promise<void> {
+    this.logger?.session(sessionId, 'close');
     try {
       await this.transport.sendRequest('session/close', { sessionId });
     } catch {}
@@ -112,6 +124,7 @@ export class ACPClient {
   }
 
   async stop(): Promise<void> {
+    this.logger?.info(`ACP stopping (${this.sessions.size} sessions)...`);
     for (const id of [...this.sessions.keys()]) {
       try {
         this.transport.sendNotification('session/cancel', { sessionId: id });
@@ -190,6 +203,11 @@ export class ACPClient {
       const session = this.sessions.get(sessionId);
       if (session) {
         session.addUpdate(update);
+        if (update.sessionUpdate === 'agent_message_chunk') {
+          this.logger?.debug(`ACP update [${sessionId.slice(0, 8)}] ${update.sessionUpdate}`);
+        } else {
+          this.logger?.rpc('recv', `${method}/${update.sessionUpdate}`, `session=${sessionId.slice(0, 8)}`);
+        }
       }
     }
   }

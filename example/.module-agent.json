@@ -1,0 +1,15 @@
+{
+  "agents": {
+    "default": {
+      "command": "claude",
+      "args": [
+        "--acp",
+        "--dangerously-skip-permissions"
+      ]
+    }
+  },
+  "exclude": [],
+  "workspace": {
+    "path": "~/.module-agent/workspaces"
+  }
+}

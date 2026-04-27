@@ -8,12 +8,10 @@ electron/main.js.map
 electron/preload.cjs
 electron/preload.cjs.map
 electron/preload.js
-electron/preload.js
 electron/preload.js.map
 electron/renderer/renderer.js
 src/**/*.js
 src/**/*.js.map
 *.tsbuildinfo
+logs/
 release/
-bin/
-example/
