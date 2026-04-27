@@ -1,0 +1,35 @@
+{
+  "name": "module-agent",
+  "version": "0.1.0",
+  "description": "模块化 Agent 编排框架",
+  "type": "module",
+  "main": "bin/module-agent.ts",
+  "bin": {
+    "module-agent": "bin/module-agent.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/cli/main.ts",
+    "build": "tsc",
+    "start": "node dist/cli/main.js",
+    "typecheck": "tsc --noEmit",
+    "ma": "tsx src/cli/main.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/react": "^19.2.14",
+    "commander": "^12.1.0",
+    "fs-extra": "^11.2.0",
+    "gray-matter": "^4.0.3",
+    "ink": "^5.2.1",
+    "marked": "^15.0.4",
+    "react": "^18.3.1",
+    "simple-git": "^3.27.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.17.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
