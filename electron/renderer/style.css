@@ -27,8 +27,6 @@ body {
   color: var(--text);
   overflow: hidden;
   height: 100vh;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 #app { height: 100vh; display: flex; flex-direction: column; }
@@ -156,6 +154,8 @@ body {
   overflow: auto;
   position: relative;
   background: var(--bg);
+  user-select: none;
+  -webkit-user-select: none;
 }
 .tree-panel.panning { cursor: grabbing; }
 .tree-panel:active { cursor: grabbing; }
@@ -281,7 +281,12 @@ body {
   overflow-y: auto;
 }
 
-.drawer-body .desc { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.5; }
+.drawer-body .desc { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.5; user-select: text; -webkit-user-select: text; }
+
+.drawer-body .stream-area .stream-content { user-select: text; -webkit-user-select: text; }
+.drawer-body .ctx-card { user-select: text; -webkit-user-select: text; }
+.drawer-body .ctx-card .ctx-preview { user-select: text; -webkit-user-select: text; }
+.modal-body { user-select: text; -webkit-user-select: text; }
 .drawer-body .info-row {
   display: flex;
   justify-content: space-between;

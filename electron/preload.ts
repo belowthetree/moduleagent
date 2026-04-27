@@ -11,8 +11,8 @@ const api = {
   getTree: () => ipcRenderer.invoke('project:getTree') as Promise<Record<string, unknown> | null>,
 
   // Agent APIs
-  startAgent: (moduleName: string, cmd: string, cwd: string) =>
-    ipcRenderer.invoke('agent:start', moduleName, cmd, cwd) as Promise<{ sessionId?: string; error?: string }>,
+  startAgent: (moduleName: string, cmd: string, args: string[], cwd: string) =>
+    ipcRenderer.invoke('agent:start', moduleName, cmd, args, cwd) as Promise<{ sessionId?: string; error?: string }>,
 
   sendMessage: (moduleName: string, text: string) =>
     ipcRenderer.invoke('agent:send', moduleName, text) as Promise<{ stopReason?: string; error?: string }>,

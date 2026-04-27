@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { createInterface } from 'readline';
+import fs from 'fs';
+import path from 'path';
 import type { JsonRpcRequest, JsonRpcResponse } from './types.js';
 import type { Logger } from '../../core/Logger.js';
 
@@ -32,10 +34,12 @@ export class Transport {
   async start(options: TransportOptions): Promise<void> {
     const { command, args = [], env, cwd } = options;
     this.logger = this.logger || options.logger;
-    this.logger?.info(`TRANSPORT spawning: ${command} ${args.join(' ')} (cwd: ${cwd || process.cwd()})`);
+
+    const { cmd, resolvedArgs } = resolveCommand(command, args);
+    this.logger?.info(`TRANSPORT spawning: ${cmd} ${resolvedArgs.join(' ')} (cwd: ${cwd || process.cwd()})`);
 
     return new Promise((resolve, reject) => {
-      this.process = spawn(command, args, {
+      this.process = spawn(cmd, resolvedArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, ...env },
         cwd,
@@ -43,7 +47,7 @@ export class Transport {
       });
 
       this.process.on('error', (err) => {
-        const msg = `Failed to spawn "${command}": ${err.message}`;
+        const msg = `Failed to spawn "${cmd}": ${err.message}`;
         this.logger?.error(`TRANSPORT ${msg}`);
         reject(new Error(msg));
       });
@@ -59,7 +63,7 @@ export class Transport {
       if (this.process.stderr) {
         const rl = createInterface({ input: this.process.stderr });
         rl.on('line', (line: string) => {
-          this.logger?.debug(`STDERR: ${line}`);
+          this.logger?.info(`STDERR: ${line.slice(0, 500)}`);
           if (this.notificationHandler) {
             this.notificationHandler('_stderr', { text: line });
           }
@@ -199,6 +203,9 @@ export class Transport {
     if (!this.process?.stdin) {
       throw new Error('Transport not started or stdin not available');
     }
+    if (data.startsWith('{"jsonrpc":"2.0","id":1,"method":"initialize"')) {
+      this.logger?.info(`TRANSPORT write initialize: ${data.slice(0, 300)}`);
+    }
     this.process.stdin.write(data + '\n');
   }
 
@@ -217,4 +224,30 @@ export class Transport {
   isRunning(): boolean {
     return this.process !== null && !this.process.killed;
   }
+}
+
+function resolveCommand(command: string, args: string[]): { cmd: string; resolvedArgs: string[] } {
+  if (process.platform !== 'win32' || command.includes('/') || command.includes('\\')) {
+    return { cmd: command, resolvedArgs: args };
+  }
+
+  // On Windows, try to resolve .cmd files by finding the node script inside them
+  const npmPrefix = process.env.APPDATA ? path.join(process.env.APPDATA, 'npm') : '';
+  const cmdPath = path.join(npmPrefix, command + '.cmd');
+  if (fs.existsSync(cmdPath)) {
+    try {
+      const content = fs.readFileSync(cmdPath, 'utf-8');
+      // Extract script path from "%_prog%"  "%dp0%\node_modules\pkg\bin\script" %*
+      const match = content.match(/"%_prog%"\s+"([^"]+)"/);
+      if (match) {
+        const scriptRel = match[1]!.replace(/%dp0%\\?/g, '');
+        const scriptPath = path.join(path.dirname(cmdPath), scriptRel);
+        if (fs.existsSync(scriptPath)) {
+          return { cmd: 'node', resolvedArgs: [scriptPath, ...args] };
+        }
+      }
+    } catch {}
+  }
+
+  return { cmd: command, resolvedArgs: args };
 }

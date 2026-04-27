@@ -2,7 +2,7 @@ interface ModuleAgentApi {
   selectDir(title: string): Promise<string | null>;
   scanProject(projectRoot: string, workspaceRoot: string): Promise<ScanResult>;
   getTree(): Promise<TreeNode | null>;
-  startAgent(moduleName: string, cmd: string, cwd: string): Promise<{ sessionId?: string; error?: string }>;
+  startAgent(moduleName: string, cmd: string, args: string[], cwd: string): Promise<{ sessionId?: string; error?: string }>;
   sendMessage(moduleName: string, text: string): Promise<{ stopReason?: string; error?: string }>;
   stopAgent(moduleName: string): Promise<{}>;
   isAgentRunning(moduleName: string): Promise<boolean>;
@@ -23,14 +23,12 @@ const CTX_PAGE = 5;
 let treeRoot: TreeNode | null = null;
 let flattenedNodes: LayoutNode[] = [];
 let selectedNode: TreeNode | null = null;
-let workspacePath = ''; let projectPath = ''; let agentCmd = 'claude';
+let workspacePath = ''; let projectPath = ''; let agentCmd = 'opencode'; let agentArgs = 'acp';
 let panX = 0; let panY = 0; let isPanning = false;
 let panStartX = 0; let panStartY = 0; let panStartTX = 0; let panStartTY = 0; let scale = 1;
 
 const contextMap = new Map<string, ChatMsg[]>();
 let ctxPage = new Map<string, number>();
-
-let streamTimer: number | null = null; let streamModule = ''; let streamFull = ''; let streamPos = 0;
 
 function $id(id: string): HTMLElement { return document.getElementById(id)!; }
 function show(el: HTMLElement) { el.style.display = ''; }
@@ -55,8 +53,13 @@ function openSettings() {
     <div class="settings-grid">
       <div class="sfield">
         <label>Agent 命令</label>
-        <div class="shint">启动 Agent 的可执行文件名或路径（不含参数）</div>
+        <div class="shint">启动 Agent 的可执行文件名或路径</div>
         <input id="s-agent-cmd" value="${escapeHtml(agentCmd)}">
+      </div>
+      <div class="sfield">
+        <label>Agent 参数</label>
+        <div class="shint">传给 Agent 的额外参数（空格分隔，如: acp）</div>
+        <input id="s-agent-args" value="${escapeHtml(agentArgs)}">
       </div>
       <div class="sfield">
         <label>工作目录</label>
@@ -95,7 +98,8 @@ function openSettings() {
 }
 
 function saveSettings() {
-  agentCmd = getInput('s-agent-cmd') || 'claude';
+  agentCmd = getInput('s-agent-cmd') || 'opencode';
+  agentArgs = getInput('s-agent-args');
   const newWs = getInput('s-workspace');
   const newPj = getInput('s-project');
 
@@ -103,6 +107,7 @@ function saveSettings() {
   if (newPj) { projectPath = newPj; setInput('project-input', newPj); localStorage.setItem('lastProject', newPj); }
 
   localStorage.setItem('agentCmd', agentCmd);
+  localStorage.setItem('agentArgs', agentArgs);
   checkStartReady();
   updateStatusBar();
   closeModal();
@@ -110,8 +115,8 @@ function saveSettings() {
 
 function updateStatusBar() {
   const parts: string[] = [];
-  if (workspacePath) parts.push('工作区: ' + workspacePath.split(/[/\\]/).pop() || workspacePath);
-  parts.push('Agent: ' + agentCmd);
+  if (workspacePath) parts.push('工作区: ' + (workspacePath.split(/[/\\]/).pop() || workspacePath));
+  parts.push('Agent: ' + agentCmd + (agentArgs ? ' ' + agentArgs : ''));
   $id('status-info').textContent = parts.join('  ·  ');
 }
 
@@ -145,34 +150,40 @@ function applyTransform() {
 function resetView() { panX = 20; panY = 20; scale = 1; applyTransform(); }
 
 // ── Stream ──
-function startStream(moduleName: string, text: string) {
-  stopStream();
-  streamModule = moduleName; streamFull = text; streamPos = 0;
-  updateStreamHtml();
-  streamTimer = window.setInterval(tickStream, 15);
+function showStreamStatus(msg: string) {
+  const el = document.getElementById('stream-content');
+  if (el) el.innerHTML = `<div class="stream-role">状态</div><div class="stream-content">${escapeHtml(msg)}</div>`;
 }
-function tickStream() {
-  streamPos = Math.min(streamPos + 1, streamFull.length);
-  updateStreamHtml();
-  if (streamPos >= streamFull.length) stopStream();
-}
-function updateStreamHtml() {
+
+function appendStream(text: string) {
   const el = document.getElementById('stream-content');
   if (!el) return;
-  if (streamFull) {
-    el.innerHTML = `<div class="stream-role">Agent 回复</div><div class="stream-content">${escapeHtml(streamFull.slice(0, streamPos))}<span class="stream-cursor"></span></div>`;
-    $id('stream-area').scrollTop = $id('stream-area').scrollHeight;
+  const hadCursor = el.querySelector('.stream-cursor');
+  if (hadCursor) hadCursor.remove();
+  el.innerHTML += escapeHtml(text);
+  el.innerHTML += '<span class="stream-cursor"></span>';
+  const area = $id('stream-area');
+  if (area) area.scrollTop = area.scrollHeight;
+}
+
+function finishStream(moduleName: string) {
+  const el = document.getElementById('stream-content');
+  if (el) {
+    const cursor = el.querySelector('.stream-cursor');
+    if (cursor) cursor.remove();
+    const text = el.textContent?.replace(/^状态\s*/, '').trim() || '';
+    if (text) {
+      getMsgs(moduleName).push({ id: 'm' + Date.now(), role: 'agent', content: text, time: now(), status: 'completed', moduleName, agentCmd });
+      setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1));
+      renderContextCards(moduleName);
+    }
   }
 }
+
 function stopStream() {
-  if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
-  if (streamFull && streamModule) {
-    const el = document.getElementById('stream-content');
-    if (el) el.innerHTML = `<div class="stream-role">Agent 回复</div><div class="stream-content">${escapeHtml(streamFull)}</div>`;
-    getMsgs(streamModule).push({ id: 'm' + Date.now(), role: 'agent', content: streamFull, time: now(), status: 'completed', moduleName: streamModule, agentCmd });
-    streamFull = ''; streamModule = '';
-    renderContextCards(selectedNode?.name || '');
-  }
+  // Reset stream display
+  const el = document.getElementById('stream-content');
+  if (el) el.innerHTML = '<div class="stream-empty">等待 Agent 响应...</div>';
 }
 
 // ── Drawer ──
@@ -296,8 +307,9 @@ function sendContextMsg(moduleName: string) {
 
   (async () => {
     try {
-      const cwd = workspacePath || (selectedNode ? selectedNode.path : process.cwd());
-      const startResult = await window.moduleAgent.startAgent(moduleName, agentCmd, cwd);
+      const cwd = workspacePath || (selectedNode ? selectedNode.path : '.');
+      const args = agentArgs ? agentArgs.split(/\s+/).filter(Boolean) : [];
+      const startResult = await window.moduleAgent.startAgent(moduleName, agentCmd, args, cwd);
       if (startResult.error) {
         showStreamStatus(`启动 Agent 失败: ${startResult.error}`);
         return;
@@ -341,43 +353,6 @@ function ensureStreamListener() {
   });
 }
 
-function showStreamStatus(msg: string) {
-  const el = document.getElementById('stream-content');
-  if (el) el.innerHTML = `<div class="stream-role">状态</div><div class="stream-content">${msg}</div>`;
-}
-
-function appendStream(text: string) {
-  const el = document.getElementById('stream-content');
-  if (!el) return;
-  // Remove cursor if exists
-  if (el.querySelector('.stream-cursor')) {
-    el.innerHTML = el.innerHTML.replace('<span class="stream-cursor"></span>', '');
-  }
-  // Append text
-  el.innerHTML += text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  // Show cursor if no cursor yet
-  if (!el.querySelector('.stream-cursor')) {
-    el.innerHTML += '<span class="stream-cursor"></span>';
-  }
-  const area = $id('stream-area');
-  if (area) area.scrollTop = area.scrollHeight;
-}
-
-function finishStream(moduleName: string) {
-  const el = document.getElementById('stream-content');
-  if (el) {
-    // Remove cursor
-    el.innerHTML = el.innerHTML.replace('<span class="stream-cursor"></span>', '');
-    // Commit to context
-    const text = el.textContent || el.innerText || '';
-    if (text && text !== '等待 Agent 响应...') {
-      getMsgs(moduleName).push({ id: 'm' + Date.now(), role: 'agent', content: text, time: now(), status: 'completed', moduleName, agentCmd });
-      setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1));
-      renderContextCards(moduleName);
-    }
-  }
-}
-
 function clearContext(moduleName: string) {
   stopStream(); contextMap.set(moduleName, []); setPage(moduleName, 0); renderContextCards(moduleName);
 }
@@ -414,8 +389,10 @@ async function selectProject() { const d = await window.moduleAgent.selectDir('�
 async function startScan() {
   if (!workspacePath || !projectPath) return;
   const e = $id('setup-error'); e.style.display = 'none';
-  agentCmd = getInput('agent-cmd-input') || 'claude';
+  agentCmd = getInput('agent-cmd-input') || 'opencode';
+  agentArgs = getInput('agent-args-input');
   localStorage.setItem('agentCmd', agentCmd);
+  localStorage.setItem('agentArgs', agentArgs);
   try {
     const r = await window.moduleAgent.scanProject(projectPath, workspacePath);
     if (r.error) { e.textContent = '扫描失败: ' + r.error; e.style.display = ''; return; }
@@ -428,7 +405,11 @@ async function startScan() {
     localStorage.setItem('lastWorkspace', workspacePath); localStorage.setItem('lastProject', projectPath);
   } catch (err) { e.textContent = '错误: ' + (err as Error).message; e.style.display = ''; }
 }
-function goBack() { stopStream(); hide($id('main-screen')); show($id('setup-screen')); treeRoot = null; flattenedNodes = []; selectedNode = null; checkStartReady(); }
+function goBack() {
+  if (streamListenerCleanup) { streamListenerCleanup(); streamListenerCleanup = null; }
+  stopStream(); hide($id('main-screen')); show($id('setup-screen'));
+  treeRoot = null; flattenedNodes = []; selectedNode = null; checkStartReady();
+}
 
 // ── Tree ──
 function layoutAndRender() { if (!treeRoot) return; flattenedNodes = []; layoutTree(treeRoot, 0, 0, true); renderSvg(); resetView(); }
@@ -490,9 +471,11 @@ function isCollapsedAncestor(node?: LayoutNode): boolean { if (!node) return fal
 
 // ── Init ──
 function init() {
-  agentCmd = localStorage.getItem('agentCmd') || 'claude';
+  agentCmd = localStorage.getItem('agentCmd') || 'opencode';
+  agentArgs = localStorage.getItem('agentArgs') || 'acp';
   $id('agent-cmd-input').setAttribute('value', agentCmd);
   ($id('agent-cmd-input') as HTMLInputElement).value = agentCmd;
+  ($id('agent-args-input') as HTMLInputElement).value = agentArgs;
 
   $id('btn-workspace').addEventListener('click', selectWorkspace);
   $id('btn-project').addEventListener('click', selectProject);

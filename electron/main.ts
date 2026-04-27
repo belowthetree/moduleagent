@@ -79,18 +79,18 @@ function registerIpcHandlers() {
   });
 
   // ── Agent IPC ──
-  ipcMain.handle('agent:start', async (_event, moduleName: string, cmd: string, cwd: string) => {
+  ipcMain.handle('agent:start', async (_event, moduleName: string, cmd: string, args: string[], cwd: string) => {
     if (agents.has(moduleName)) {
       const a = agents.get(moduleName)!;
       return { sessionId: a.sessionId };
     }
 
     try {
-      defaultLogger.info(`agent:start [${moduleName}] cmd=${cmd} cwd=${cwd}`);
-      const launched = await launcher.launch({ command: cmd }, moduleName, cwd, defaultLogger);
+      defaultLogger.info(`agent:start [${moduleName}] cmd=${cmd} args=[${args.join(',')}] cwd=${cwd}`);
+      const launched = await launcher.launch({ command: cmd, args }, moduleName, cwd, defaultLogger);
       const sessionId = await launched.client.createSession(cwd);
 
-      const entry = { client: launched.client, sessionId, config: { command: cmd } };
+      const entry = { client: launched.client, sessionId, config: { command: cmd, args } };
       agents.set(moduleName, entry);
 
       // Forward session/update stream to renderer

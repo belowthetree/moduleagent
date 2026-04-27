@@ -90,10 +90,10 @@ export class ACPClient {
   async createSession(cwd: string, mcpServers?: MCPServerConfig[], handlers?: SessionHandlers): Promise<string> {
     if (!this.ready) throw new Error('Client not initialized');
 
-    const result = await this.transport.sendRequest('session/new', { cwd, mcpServers }) as SessionNewResult;
+    const result = await this.transport.sendRequest('session/new', { cwd, mcpServers: mcpServers ?? [] }) as SessionNewResult;
     const session = new ACPSession(result.sessionId, handlers || this.opts.defaultHandlers);
     this.sessions.set(result.sessionId, session);
-    this.logger?.session(result.sessionId, 'created', `cwd=${cwd} mcp=${mcpServers?.length || 0}`);
+    this.logger?.session(result.sessionId, 'created', `cwd=${cwd}`);
     return result.sessionId;
   }
 
