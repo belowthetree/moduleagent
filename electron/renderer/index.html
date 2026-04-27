@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>ModuleAgent</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 设置界面 -->
+    <div id="setup-screen" class="setup-screen">
+      <div class="setup-card">
+        <div class="setup-logo">ModuleAgent</div>
+        <p class="setup-subtitle">选择工作目录和模块目录，开始构建模块视图</p>
+        <div class="setup-field">
+          <label>工作目录</label>
+          <p class="field-hint">Agent 的工作空间，模块代码将同步到此目录</p>
+          <div class="input-row">
+            <input id="workspace-input" readonly placeholder="点击右侧按钮选择...">
+            <button id="btn-workspace" class="btn">浏览</button>
+          </div>
+        </div>
+        <div class="setup-field">
+          <label>模块目录</label>
+          <p class="field-hint">包含 module.md 的项目根目录</p>
+          <div class="input-row">
+            <input id="project-input" readonly placeholder="点击右侧按钮选择...">
+            <button id="btn-project" class="btn">浏览</button>
+          </div>
+        </div>
+        <button id="btn-start" class="btn-primary setup-start" disabled>开始扫描</button>
+        <p id="setup-error" class="setup-error" style="display:none;"></p>
+      </div>
+    </div>
+
+    <!-- 主界面 -->
+    <div id="main-screen" class="main-screen" style="display:none;">
+      <div class="toolbar">
+        <button id="btn-back" class="btn">← 返回</button>
+        <span class="spacer"></span>
+        <span id="project-name" class="project-name"></span>
+        <span id="module-count" class="badge"></span>
+        <button id="btn-refresh" class="btn">刷新</button>
+        <span class="hint">右键拖拽平移 · 滚轮缩放</span>
+      </div>
+
+      <!-- 树视图（全宽） -->
+      <div id="tree-panel" class="tree-panel">
+        <svg id="tree-svg"></svg>
+      </div>
+
+      <!-- 抽屉遮罩 -->
+      <div id="drawer-overlay" class="drawer-overlay" style="display:none;"></div>
+
+      <!-- 右侧抽屉 -->
+      <div id="drawer" class="drawer">
+        <div class="drawer-header">
+          <span id="drawer-title"></span>
+          <button id="drawer-close" class="btn-close">✕</button>
+        </div>
+        <div id="drawer-body" class="drawer-body"></div>
+      </div>
+
+      <div class="status-bar">
+        <span class="dot"></span>
+        <span id="status-text">就绪</span>
+        <span class="spacer"></span>
+        <span id="status-path"></span>
+      </div>
+    </div>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

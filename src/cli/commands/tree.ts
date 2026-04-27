@@ -64,13 +64,6 @@ function printNode(
     }
   }
 
-  if (detail && node.definition.frontmatter.tools && node.definition.frontmatter.tools.length > 0) {
-    const childIndent = indent + (isRoot ? '' : (isLast ? '   ' : '│  '));
-    for (const tool of node.definition.frontmatter.tools) {
-      console.log(`${childIndent}  工具: ${tool.name} — ${tool.description}`);
-    }
-  }
-
   const children = node.children;
   const childIndent = indent + (isRoot ? '  ' : (isLast ? '   ' : '│  '));
 

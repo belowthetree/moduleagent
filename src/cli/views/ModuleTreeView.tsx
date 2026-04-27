@@ -45,14 +45,6 @@ export function ModuleTreeView({ node, graph, indent = '', isLast = true, isRoot
           </Text>
         </Box>
       )}
-      {detail && node.definition.frontmatter.tools?.map((tool, i) => (
-        <Box key={i}>
-          <Text dimColor>
-            {indent + (isRoot ? '  ' : (isLast ? '   ' : '│  '))}
-            [工具] {tool.name}: {tool.description}
-          </Text>
-        </Box>
-      ))}
       {children.map((child, i) => (
         <ModuleTreeView
           key={child.name}

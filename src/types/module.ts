@@ -5,16 +5,10 @@ export interface SourceConfig {
   path?: string;
 }
 
-export interface ToolDef {
-  name: string;
-  description: string;
-}
-
 export interface ModuleFrontmatter {
   name: string;
   description: string;
   source?: SourceConfig;
-  tools?: ToolDef[];
 }
 
 export interface SubModuleRef {

@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import matter from 'gray-matter';
-import type { ModuleDefinition, ModuleFrontmatter, SubModuleRef, ToolDef, SourceConfig } from '../types/module.js';
+import type { ModuleDefinition, ModuleFrontmatter, SubModuleRef, SourceConfig } from '../types/module.js';
 import { marked } from 'marked';
 import type { Token, Tokens } from 'marked';
 
@@ -30,7 +30,6 @@ export class ModuleParser {
       name,
       description,
       source: ModuleParser.parseSource(data.source),
-      tools: ModuleParser.parseTools(data.tools),
     };
   }
 
@@ -46,19 +45,6 @@ export class ModuleParser {
       branch: typeof src.branch === 'string' ? src.branch : undefined,
       path: typeof src.path === 'string' ? src.path : undefined,
     };
-  }
-
-  private static parseTools(raw: unknown): ToolDef[] | undefined {
-    if (!Array.isArray(raw)) return undefined;
-    const tools: ToolDef[] = [];
-    for (const item of raw) {
-      if (typeof item !== 'object' || !item) continue;
-      const t = item as Record<string, unknown>;
-      if (typeof t.name === 'string' && typeof t.description === 'string') {
-        tools.push({ name: t.name, description: t.description });
-      }
-    }
-    return tools.length > 0 ? tools : undefined;
   }
 
   private static parseDescription(tokens: Token[]): string {

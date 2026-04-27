@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { simpleGit } from 'simple-git';
 import { isBuiltinExcluded } from './ExclusionRules.js';
-import type { ModuleFrontmatter, ToolDef } from '../types/module.js';
+import type { ModuleFrontmatter } from '../types/module.js';
 
 export interface GenerateOptions {
   dirPath: string;
@@ -21,12 +21,11 @@ export class ModuleGenerator {
     const dirName = path.basename(path.resolve(dirPath));
     const description = await ModuleGenerator.inferDescription(dirPath);
     const source = await ModuleGenerator.inferSource(dirPath);
-    const tools = ModuleGenerator.inferTools(dirPath);
     const subModules = await ModuleGenerator.inferSubModules(dirPath, options.extraExclude || []);
     const body = await ModuleGenerator.inferBody(dirPath, dirName);
 
     return ModuleGenerator.composeModuleMd(
-      { name: dirName, description, source, tools },
+      { name: dirName, description, source },
       body,
       subModules,
     );
@@ -72,10 +71,6 @@ export class ModuleGenerator {
       }
     } catch {}
 
-    return undefined;
-  }
-
-  private static inferTools(_dirPath: string): ToolDef[] | undefined {
     return undefined;
   }
 
@@ -125,10 +120,6 @@ export class ModuleGenerator {
       if (frontmatter.source.url) source.url = frontmatter.source.url;
       if (frontmatter.source.branch) source.branch = frontmatter.source.branch;
       fmObj.source = source;
-    }
-
-    if (frontmatter.tools && frontmatter.tools.length > 0) {
-      fmObj.tools = frontmatter.tools;
     }
 
     let yaml = '---\n';

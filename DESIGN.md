@@ -208,13 +208,6 @@ source:
   type: git
   url: https://github.com/example/server.git
   branch: main
-tools:
-  - name: run_migration
-    description: 执行数据库迁移
-  - name: run_tests
-    description: 运行后端测试套件
-  - name: deploy
-    description: 部署到测试环境
 ---
 
 # 后端服务
@@ -241,9 +234,6 @@ tools:
 | `source.url` | string | 否 | Git 仓库地址 |
 | `source.branch` | string | 否 | Git 分支，默认 main |
 | `source.path` | string | 否 | 本地路径 |
-| `tools` | ToolDef[] | 否 | 模块暴露的 MCP 工具列表 |
-| `tools[].name` | string | 是 | 工具名称 |
-| `tools[].description` | string | 是 | 工具描述 |
 
 ### 6.2 Markdown 正文
 
