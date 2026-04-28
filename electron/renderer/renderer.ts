@@ -65,7 +65,7 @@ function openSettings() {
         <label>工作目录</label>
         <div class="shint">Agent 的工作空间</div>
         <div class="input-row">
-          <input id="s-workspace" readonly value="${escapeHtml(workspacePath)}">
+          <input id="s-workspace" value="${escapeHtml(workspacePath)}" placeholder="输入或点击浏览...">
           <button class="btn" id="s-btn-ws">浏览</button>
         </div>
       </div>
@@ -73,7 +73,7 @@ function openSettings() {
         <label>模块目录</label>
         <div class="shint">包含 module.md 的项目根目录</div>
         <div class="input-row">
-          <input id="s-project" readonly value="${escapeHtml(projectPath)}">
+          <input id="s-project" value="${escapeHtml(projectPath)}" placeholder="输入或点击浏览...">
           <button class="btn" id="s-btn-pj">浏览</button>
         </div>
       </div>
@@ -204,6 +204,7 @@ function finishStream(moduleName: string) {
       time: now(), status: 'completed', moduleName, agentCmd,
     });
     setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1));
+    saveContext(moduleName);
     renderContextCards(moduleName);
   }
   streamThinking = '';
@@ -240,6 +241,13 @@ function closeDrawer() {
 }
 function buildDrawerContent(node: TreeNode) {
   const name = node.name;
+
+  // Restore saved context if not already loaded
+  if (!contextMap.has(name) || getMsgs(name).length === 0) {
+    const saved = loadContext(name);
+    if (saved.length > 0) contextMap.set(name, saved);
+  }
+
   const src = node.source
     ? (node.source.type === 'git' ? `Git: ${node.source.url || '?'}${node.source.branch ? '@' + node.source.branch : ''}` : `Local`)
     : '无';
@@ -349,6 +357,7 @@ function sendContextMsg(moduleName: string) {
 
   getMsgs(moduleName).push({ id: 'm' + Date.now(), role: 'user', content: text, thinking: '', tools: '', time: now(), status: 'sent', moduleName, agentCmd });
   setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1));
+  saveContext(moduleName);
   renderContextCards(moduleName);
 
   (async () => {
@@ -410,8 +419,34 @@ function ensureStreamListener() {
   });
 }
 
+function saveContext(moduleName: string) {
+  const msgs = contextMap.get(moduleName);
+  if (msgs && msgs.length > 0) {
+    localStorage.setItem(`ctx_${moduleName}`, JSON.stringify(msgs));
+  }
+}
+
+function loadContext(moduleName: string): ChatMsg[] {
+  try {
+    const raw = localStorage.getItem(`ctx_${moduleName}`);
+    if (raw) return JSON.parse(raw) as ChatMsg[];
+  } catch {}
+  return [];
+}
+
 function clearContext(moduleName: string) {
-  stopStream(); contextMap.set(moduleName, []); setPage(moduleName, 0); renderContextCards(moduleName);
+  stopStream(); contextMap.set(moduleName, []); setPage(moduleName, 0);
+  localStorage.removeItem(`ctx_${moduleName}`);
+  renderContextCards(moduleName);
+}
+
+function clearAllContexts() {
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k?.startsWith('ctx_')) keys.push(k);
+  }
+  keys.forEach(k => localStorage.removeItem(k));
 }
 
 // ── Modal ──
@@ -492,14 +527,25 @@ function goBack() {
 
 // ── Tree ──
 function layoutAndRender() { if (!treeRoot) return; flattenedNodes = []; layoutTree(treeRoot, 0, 0, true); renderSvg(); resetView(); }
-function layoutTree(node: TreeNode, depth: number, stY: number, isRoot: boolean): LayoutNode {
-  const kids: LayoutNode[] = []; let ry = stY;
-  for (const c of node.children) { const cl = layoutTree(c, depth + 1, ry + V_GAP, false); kids.push(cl); ry += V_GAP; }
-  let sh = node.children.length === 0 ? NODE_H : kids.reduce((t, k) => t + k.subtreeHeight + V_GAP, -V_GAP);
-  const x = depth * (NODE_W + H_GAP), y = isRoot ? 0 : stY + (sh - NODE_H) / 2;
-  let cy = y + NODE_H + V_GAP; for (const k of kids) { k.y = cy; cy += k.subtreeHeight + V_GAP; }
+function layoutTree(node: TreeNode, depth: number, stY: number, _isRoot: boolean): LayoutNode {
+  const x = depth * (NODE_W + H_GAP);
+  const y = stY;
+  let childY = y + NODE_H + V_GAP;
+  const kids: LayoutNode[] = [];
+
+  for (const c of node.children) {
+    const cl = layoutTree(c, depth + 1, childY, false);
+    kids.push(cl);
+    childY += cl.subtreeHeight + V_GAP;
+  }
+
+  const sh = node.children.length === 0
+    ? NODE_H
+    : childY - y - V_GAP;
+
   const self: LayoutNode = { data: node, x, y, width: NODE_W, height: NODE_H, collapsed: false, subtreeHeight: sh };
-  flattenedNodes.push(self); kids.forEach(k => flattenedNodes.push(k)); return self;
+  flattenedNodes.push(self);
+  return self;
 }
 function renderSvg() {
   if (!treeRoot) return; const rl = flattenedNodes.find(n => n.data.name === treeRoot!.name); if (!rl) return;
