@@ -1,9 +1,5 @@
-export { Transport } from './acp/Transport.js';
-export type { TransportOptions } from './acp/Transport.js';
-export { ACPClient } from './acp/ACPClient.js';
-export type { ACPClientOptions } from './acp/ACPClient.js';
-export { ACPSession } from './acp/ACPSession.js';
-export type { SessionHandlers } from './acp/ACPSession.js';
+export { createAgentConnection } from './acp/connection.js';
+export type { AgentProcessOptions, AgentConnection } from './acp/connection.js';
 export { FsHandler } from './acp/handlers/fs.js';
 export { TerminalHandler } from './acp/handlers/terminal.js';
 
@@ -17,4 +13,5 @@ export type {
   ModuleQueryResult,
 } from './mcp/CommunicationBus.js';
 
-export type * from './acp/types.js';
+export type { ClientSideConnection, Client, SessionNotification } from '@agentclientprotocol/sdk';
+export type { PromptResponse, StopReason, McpServer, ContentBlock, TextContent } from '@agentclientprotocol/sdk';

@@ -2,13 +2,15 @@ import { spawn as cpSpawn, type ChildProcess } from 'child_process';
 import { createInterface } from 'readline';
 import path from 'path';
 import type {
-  TerminalCreateParams,
-  TerminalCreateResult,
-  TerminalOutputParams,
-  TerminalOutputResult,
-  TerminalWaitForExitParams,
-  TerminalWaitForExitResult,
-} from '../types.js';
+  CreateTerminalRequest,
+  CreateTerminalResponse,
+  TerminalOutputRequest,
+  TerminalOutputResponse,
+  WaitForTerminalExitRequest,
+  WaitForTerminalExitResponse,
+  KillTerminalRequest,
+  ReleaseTerminalRequest,
+} from '@agentclientprotocol/sdk';
 
 interface TerminalState {
   process: ChildProcess;
@@ -29,7 +31,7 @@ export class TerminalHandler {
     this.maxOutputBytes = maxOutputBytes;
   }
 
-  async create(params: TerminalCreateParams): Promise<TerminalCreateResult> {
+  async create(params: CreateTerminalRequest): Promise<CreateTerminalResponse> {
     const terminalId = `term_${++this.terminalCounter}`;
     const cwd = params.cwd ? path.resolve(params.cwd) : this.workspaceRoot;
 
@@ -94,7 +96,7 @@ export class TerminalHandler {
     return { terminalId };
   }
 
-  async getOutput(params: TerminalOutputParams): Promise<TerminalOutputResult> {
+  async getOutput(params: TerminalOutputRequest): Promise<TerminalOutputResponse> {
     const state = this.terminals.get(params.terminalId);
     if (!state) throw new Error(`Terminal not found: ${params.terminalId}`);
 
@@ -105,7 +107,7 @@ export class TerminalHandler {
     };
   }
 
-  async waitForExit(params: TerminalWaitForExitParams): Promise<TerminalWaitForExitResult> {
+  async waitForExit(params: WaitForTerminalExitRequest): Promise<WaitForTerminalExitResponse> {
     const state = this.terminals.get(params.terminalId);
     if (!state) throw new Error(`Terminal not found: ${params.terminalId}`);
 
@@ -122,20 +124,20 @@ export class TerminalHandler {
     });
   }
 
-  async kill(terminalId: string): Promise<void> {
-    const state = this.terminals.get(terminalId);
-    if (!state) throw new Error(`Terminal not found: ${terminalId}`);
+  async kill(params: KillTerminalRequest): Promise<void> {
+    const state = this.terminals.get(params.terminalId);
+    if (!state) throw new Error(`Terminal not found: ${params.terminalId}`);
 
     if (!state.process.killed) {
       state.process.kill();
     }
   }
 
-  async release(terminalId: string): Promise<void> {
-    const state = this.terminals.get(terminalId);
+  async release(params: ReleaseTerminalRequest): Promise<void> {
+    const state = this.terminals.get(params.terminalId);
     if (state && !state.process.killed) {
       state.process.kill();
     }
-    this.terminals.delete(terminalId);
+    this.terminals.delete(params.terminalId);
   }
 }

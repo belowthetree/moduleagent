@@ -7,18 +7,25 @@ import { ModuleGraph } from '../src/core/ModuleGraph.js';
 import { ConfigLoader } from '../src/config/ConfigLoader.js';
 import { Logger, LogLevel, defaultLogger } from '../src/core/Logger.js';
 import { AgentLauncher } from '../src/agents/AgentLauncher.js';
-import { ACPClient } from '../src/protocol/acp/ACPClient.js';
+import type { ClientSideConnection, SessionNotification } from '@agentclientprotocol/sdk';
+import type { ChildProcess } from 'child_process';
 import type { ModuleGraphNode } from '../src/types/module.js';
 
-const logsDir = path.join(app.getPath('userData'), 'logs');
-defaultLogger.configure(logsDir, LogLevel.INFO);
+defaultLogger.configure('logs', LogLevel.INFO);
 defaultLogger.info('ModuleAgent starting...');
 
 let mainWindow: BrowserWindow | null = null;
 let currentGraph: ReturnType<ModuleGraph['build']> | null = null;
 let currentProjectRoot = '';
 
-const agents = new Map<string, { client: ACPClient; sessionId: string; config: { command: string; args?: string[] } }>();
+interface AgentEntry {
+  connection: ClientSideConnection;
+  process: ChildProcess;
+  sessionId: string;
+  config: { command: string; args?: string[] };
+}
+const agents = new Map<string, AgentEntry>();
+const lastSent = new Map<string, { text: string; time: number }>();
 const launcher = new AgentLauncher();
 
 function getResourcePath(...segments: string[]): string {
@@ -88,27 +95,28 @@ function registerIpcHandlers() {
     try {
       defaultLogger.info(`agent:start [${moduleName}] cmd=${cmd} args=[${args.join(',')}] cwd=${cwd}`);
       const launched = await launcher.launch({ command: cmd, args }, moduleName, cwd, defaultLogger);
-      const sessionId = await launched.client.createSession(cwd);
-
-      const entry = { client: launched.client, sessionId, config: { command: cmd, args } };
-      agents.set(moduleName, entry);
 
       // Forward session/update stream to renderer
-      const session = launched.client.getSession(sessionId);
-      if (session) {
-        session.handlers = {
-          ...session.handlers,
-          onUpdate: (_sid, update) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('agent:stream', {
-                moduleName, sessionId,
-                update: update.sessionUpdate,
-                data: update,
-              });
-            }
-          },
-        };
-      }
+      launched.onSessionUpdate = (name, sessionId, notification) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('agent:stream', {
+            moduleName: name, sessionId,
+            update: notification.update.sessionUpdate,
+            data: notification.update,
+          });
+        }
+      };
+
+      const result = await launched.connection.newSession({ cwd: launched.cwd, mcpServers: [] });
+      const sessionId = result.sessionId;
+
+      const entry: AgentEntry = {
+        connection: launched.connection,
+        process: launched.process,
+        sessionId,
+        config: { command: cmd, args },
+      };
+      agents.set(moduleName, entry);
 
       return { sessionId };
     } catch (err) {
@@ -121,13 +129,24 @@ function registerIpcHandlers() {
     let entry = agents.get(moduleName);
     if (!entry) return { error: 'agent not started' };
 
+    // Dedup: ignore identical messages within 3 seconds
+    const now = Date.now();
+    const last = lastSent.get(moduleName);
+    if (last && last.text === text && now - last.time < 3000) {
+      defaultLogger.info(`agent:send dedup [${moduleName}] ignored duplicate`);
+      return { error: 'duplicate message ignored' };
+    }
+    lastSent.set(moduleName, { text, time: now });
+
     try {
       defaultLogger.session(entry.sessionId, 'prompt', `len=${text.length}`);
-      const result = await entry.client.prompt(entry.sessionId, text);
+      const result = await entry.connection.prompt({
+        sessionId: entry.sessionId,
+        prompt: [{ type: 'text', text }],
+      });
       return { stopReason: result.stopReason };
     } catch (err) {
       defaultLogger.error(`agent:send failed [${moduleName}]: ${(err as Error).message}`);
-      // If agent died, clean up
       agents.delete(moduleName);
       return { error: (err as Error).message };
     }
@@ -136,7 +155,7 @@ function registerIpcHandlers() {
   ipcMain.handle('agent:stop', async (_event, moduleName: string) => {
     const entry = agents.get(moduleName);
     if (entry) {
-      try { await entry.client.stop(); } catch {}
+      try { entry.process.kill(); } catch {}
       agents.delete(moduleName);
       defaultLogger.info(`agent:stop [${moduleName}]`);
     }
@@ -182,6 +201,6 @@ function debounceReload() {
 }
 
 app.on('window-all-closed', () => {
-  for (const [, entry] of agents) { try { entry.client.stop(); } catch {} }
+  for (const [, entry] of agents) { try { entry.process.kill(); } catch {} }
   if (process.platform !== 'darwin') app.quit();
 });

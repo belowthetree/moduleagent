@@ -1,6 +1,6 @@
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { AgentManager, AgentEntry } from './AgentManager.js';
-import type { SessionPromptResult } from '../protocol/acp/types.js';
+import type { PromptResponse } from '@agentclientprotocol/sdk';
 
 export interface RoutedMessage {
   targetName: string;
@@ -43,12 +43,15 @@ export class AgentRouter {
     return { targetName: main?.name || 'main', prompt: message };
   }
 
-  async sendToAgent(entry: AgentEntry, prompt: string): Promise<SessionPromptResult> {
-    return entry.agent.client.prompt(entry.sessionId!, prompt);
+  async sendToAgent(entry: AgentEntry, prompt: string): Promise<PromptResponse> {
+    return entry.agent.connection.prompt({
+      sessionId: entry.sessionId!,
+      prompt: [{ type: 'text', text: prompt }],
+    });
   }
 
   async cancelAgent(entry: AgentEntry): Promise<void> {
-    await entry.agent.client.cancelSession(entry.sessionId!);
+    await entry.agent.connection.cancel({ sessionId: entry.sessionId! });
   }
 
   private extractModuleKeyword(message: string): string | null {

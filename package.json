@@ -6,7 +6,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "build:renderer": "esbuild electron/renderer/renderer.ts --bundle --outfile=electron/renderer/renderer.js --platform=browser --format=iife",
-    "build:main": "esbuild electron/main.ts --bundle --outfile=electron/main.cjs --platform=node --format=cjs --external:electron --external:fs-extra --external:gray-matter --external:marked --external:simple-git --external:zod --external:path --external:url --external:esbuild",
+    "build:main": "esbuild electron/main.ts --bundle --outfile=electron/main.cjs --platform=node --format=cjs --external:electron --external:fs-extra --external:gray-matter --external:marked --external:simple-git --external:zod --external:path --external:url --external:esbuild --external:@agentclientprotocol/sdk",
     "build:preload": "esbuild electron/preload.ts --bundle --outfile=electron/preload.cjs --platform=node --format=cjs --external:electron",
     "build:electron": "npm run build:renderer && npm run build:main && npm run build:preload",
     "electron": "npm run build:electron && electron .",
@@ -32,6 +32,7 @@
     }
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.20.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "fs-extra": "^11.2.0",
     "gray-matter": "^4.0.3",

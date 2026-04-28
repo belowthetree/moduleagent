@@ -1,10 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import type {
-  FsReadTextFileParams,
-  FsReadTextFileResult,
-  FsWriteTextFileParams,
-} from '../types.js';
+import type { ReadTextFileRequest, ReadTextFileResponse, WriteTextFileRequest } from '@agentclientprotocol/sdk';
 
 export class FsHandler {
   private workspaceRoot: string;
@@ -13,7 +9,7 @@ export class FsHandler {
     this.workspaceRoot = path.resolve(workspaceRoot);
   }
 
-  async readFile(params: FsReadTextFileParams): Promise<FsReadTextFileResult> {
+  async readFile(params: ReadTextFileRequest): Promise<ReadTextFileResponse> {
     const filePath = this.resolvePath(params.path);
 
     if (!await fs.pathExists(filePath)) {
@@ -34,7 +30,7 @@ export class FsHandler {
     return { content };
   }
 
-  async writeFile(params: FsWriteTextFileParams): Promise<void> {
+  async writeFile(params: WriteTextFileRequest): Promise<void> {
     const filePath = this.resolvePath(params.path);
     await fs.ensureDir(path.dirname(filePath));
     await fs.writeFile(filePath, params.content, 'utf-8');

@@ -1,8 +1,7 @@
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { ProjectConfig } from '../config/defaults.js';
 import { AgentLauncher, type LaunchedAgent, type AgentConfig } from './AgentLauncher.js';
-import { ACPClient } from '../protocol/acp/ACPClient.js';
-import type { MCPServerConfig } from '../protocol/acp/types.js';
+import type { McpServer } from '@agentclientprotocol/sdk';
 import type { Logger } from '../core/Logger.js';
 
 export interface AgentEntry {
@@ -18,11 +17,11 @@ export class AgentManager {
   private launcher = new AgentLauncher();
   private config: ProjectConfig;
   private graph: ModuleGraphType;
-  private mcpConfig: MCPServerConfig[];
+  private mcpConfig: McpServer[];
 
   private logger?: Logger;
 
-  constructor(config: ProjectConfig, graph: ModuleGraphType, mcpConfig: MCPServerConfig[] = [], logger?: Logger) {
+  constructor(config: ProjectConfig, graph: ModuleGraphType, mcpConfig: McpServer[] = [], logger?: Logger) {
     this.config = config;
     this.graph = graph;
     this.mcpConfig = mcpConfig;
@@ -32,7 +31,8 @@ export class AgentManager {
   async startMainAgent(mainCwd: string): Promise<AgentEntry> {
     const config = this.resolveAgentConfig('main');
     const agent = await this.launcher.launch(config, 'main', mainCwd, this.logger);
-    const sessionId = await agent.client.createSession(mainCwd, this.mcpConfig);
+    const result = await agent.connection.newSession({ cwd: agent.cwd, mcpServers: this.mcpConfig });
+    const sessionId = result.sessionId;
 
     const entry: AgentEntry = {
       name: 'main',
@@ -52,7 +52,8 @@ export class AgentManager {
 
     const config = this.resolveAgentConfig(moduleName);
     const agent = await this.launcher.launch(config, moduleName, moduleCwd, this.logger);
-    const sessionId = await agent.client.createSession(moduleCwd, this.mcpConfig);
+    const result = await agent.connection.newSession({ cwd: agent.cwd, mcpServers: this.mcpConfig });
+    const sessionId = result.sessionId;
 
     const entry: AgentEntry = {
       name: moduleName,
@@ -82,7 +83,7 @@ export class AgentManager {
   async stopAgent(name: string): Promise<void> {
     const entry = this.agents.get(name);
     if (entry) {
-      await entry.agent.client.stop();
+      try { entry.agent.process.kill(); } catch {}
       this.agents.delete(name);
     }
   }

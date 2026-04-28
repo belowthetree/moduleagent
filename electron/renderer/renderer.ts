@@ -224,23 +224,23 @@ function buildDrawerContent(node: TreeNode) {
     <div class="ctx-bottom">
       <div class="ctx-header">
         <span class="section-title">对话上下文</span>
-        <button class="btn-sm" id="ctx-clear-btn">清空</button>
+        <button class="btn-sm" id="ctx-clear-btn" onclick="window.moduleAgent && window.clearContextClick('${name}')">清空</button>
       </div>
       <div id="ctx-cards" class="ctx-card-list"></div>
       <div id="ctx-paginator" class="paginator"></div>
       <div class="ctx-chat">
-        <input id="ctx-chat-input" placeholder="输入消息发送给 Agent...">
-        <button class="btn-send" id="ctx-send-btn">发送</button>
+        <input id="ctx-chat-input" placeholder="输入消息发送给 Agent..." onkeydown="if(event.key==='Enter'){event.preventDefault();window.sendMsgClick('${name}')}">
+        <button class="btn-send" id="ctx-send-btn" type="button" onclick="window.sendMsgClick('${name}')">发送</button>
       </div>
     </div>
   `;
   $id('ctx-clear-btn').addEventListener('click', () => clearContext(name));
-  $id('ctx-send-btn').addEventListener('click', () => sendContextMsg(name));
-  ($id('ctx-chat-input') as HTMLInputElement).addEventListener('keydown', e => {
-    if ((e as KeyboardEvent).key === 'Enter') sendContextMsg(name);
-  });
   renderContextCards(name);
 }
+
+// Global handlers for inline onclick
+(window as any).sendMsgClick = (moduleName: string) => sendContextMsg(moduleName);
+(window as any).clearContextClick = (moduleName: string) => clearContext(moduleName);
 
 // ── Context ──
 function renderContextCards(moduleName: string) {
@@ -295,11 +295,15 @@ function renderContextCards(moduleName: string) {
   });
 }
 
+let sendingLock = false;
+
 function sendContextMsg(moduleName: string) {
+  if (sendingLock) return;
   const input = document.getElementById('ctx-chat-input') as HTMLInputElement; if (!input) return;
   const text = input.value.trim(); if (!text) return;
   input.value = '';
   input.disabled = true;
+  sendingLock = true;
 
   getMsgs(moduleName).push({ id: 'm' + Date.now(), role: 'user', content: text, time: now(), status: 'sent', moduleName, agentCmd });
   setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1));
@@ -315,10 +319,7 @@ function sendContextMsg(moduleName: string) {
         return;
       }
 
-      // Ensure stream listener is set up
       ensureStreamListener();
-
-      // Show status
       showStreamStatus('等待 Agent 响应...');
 
       const sendResult = await window.moduleAgent.sendMessage(moduleName, text);
@@ -330,6 +331,7 @@ function sendContextMsg(moduleName: string) {
     } catch (err) {
       showStreamStatus(`通信错误: ${(err as Error).message}`);
     } finally {
+      sendingLock = false;
       input.disabled = false;
       input.focus();
     }
@@ -341,8 +343,9 @@ let streamListenerCleanup: (() => void) | null = null;
 function ensureStreamListener() {
   if (streamListenerCleanup) return;
   streamListenerCleanup = window.moduleAgent.onAgentStream(({ moduleName, update, data }) => {
-    if (update === 'agent_message_chunk') {
-      const text = (data as any).text as string | undefined;
+    if (update === 'agent_message_chunk' || update === 'agent_thought_chunk') {
+      const block = (data as any).content as { type?: string; text?: string } | undefined;
+      const text = block?.type === 'text' ? block.text : undefined;
       if (text) appendStream(text);
     } else if (update === 'tool_call') {
       const tc = data as any;
