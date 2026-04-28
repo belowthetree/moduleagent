@@ -18,8 +18,8 @@ export interface ProjectConfig {
 export const DEFAULT_CONFIG: ProjectConfig = {
   agents: {
     default: {
-      command: 'claude',
-      args: ['--acp', '--dangerously-skip-permissions'],
+      command: 'opencode',
+      args: ['acp'],
     },
   },
   exclude: [],

@@ -1,10 +1,9 @@
 {
   "agents": {
     "default": {
-      "command": "claude",
+      "command": "opencode",
       "args": [
-        "--acp",
-        "--dangerously-skip-permissions"
+        "acp"
       ]
     }
   },

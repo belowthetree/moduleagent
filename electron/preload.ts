@@ -28,6 +28,13 @@ const api = {
     ipcRenderer.on('agent:stream', handler);
     return () => ipcRenderer.removeListener('agent:stream', handler);
   },
+
+  // Config APIs
+  saveAgentConfig: (projectRoot: string, cmd: string, args: string[]) =>
+    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args }) as Promise<{ success: boolean }>,
+
+  getAgentConfig: (projectRoot: string) =>
+    ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[] }>,
 };
 
 contextBridge.exposeInMainWorld('moduleAgent', api);

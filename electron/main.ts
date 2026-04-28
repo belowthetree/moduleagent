@@ -7,6 +7,7 @@ import { context as esbuildContext } from 'esbuild';
 import { ModuleScanner } from '../src/core/ModuleScanner.js';
 import { ModuleGraph } from '../src/core/ModuleGraph.js';
 import { ConfigLoader } from '../src/config/ConfigLoader.js';
+import { DEFAULT_CONFIG } from '../src/config/defaults.js';
 import { Logger, LogLevel, defaultLogger } from '../src/core/Logger.js';
 import { AgentLauncher, type LaunchedAgent } from '../src/agents/AgentLauncher.js';
 import type { ClientSideConnection, SessionNotification, ContentBlock, McpServer } from '@agentclientprotocol/sdk';
@@ -183,6 +184,64 @@ function writeMcpGraphFile(graph: ModuleGraphType): string {
   return filePath;
 }
 
+async function ensureModuleAgentRunning(moduleName: string): Promise<boolean> {
+  if (agents.has(moduleName)) return true;
+
+  const node = currentGraph?.nodes.get(moduleName);
+  if (!node) {
+    defaultLogger.warn(`MCP: cannot start agent for unknown module: ${moduleName}`);
+    return false;
+  }
+
+  // Resolve agent config — use default from project config
+  let cmd = 'opencode';
+  let args = ['acp'];
+  try {
+    const config = await ConfigLoader.load(currentProjectRoot);
+    cmd = config.agents.default.command;
+    args = config.agents.default.args || [];
+  } catch {}
+
+  const cwd = workspacePathForModule(node);
+  try {
+    defaultLogger.info(`MCP: auto-starting agent for module ${moduleName} (cmd=${cmd} cwd=${cwd})`);
+    const launched = await launcher.launch({ command: cmd, args }, moduleName, cwd, defaultLogger);
+
+    launched.onSessionUpdate = (name, sessionId, notification) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('agent:stream', {
+          moduleName: name, sessionId,
+          update: notification.update.sessionUpdate,
+          data: notification.update,
+        });
+      }
+    };
+
+    const mcpServers = buildMcpServers();
+    const result = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
+    sessionPrompted.delete(moduleName);
+
+    agents.set(moduleName, {
+      connection: launched.connection,
+      process: launched.process,
+      sessionId: result.sessionId,
+      config: { command: cmd, args },
+      launched,
+    });
+
+    defaultLogger.info(`MCP: auto-started agent for ${moduleName} session=${result.sessionId}`);
+    return true;
+  } catch (err) {
+    defaultLogger.error(`MCP: failed to auto-start agent for ${moduleName}: ${(err as Error).message}`);
+    return false;
+  }
+}
+
+function workspacePathForModule(node: ModuleGraphNode): string {
+  // Use the node's absolute path as the cwd for the agent
+  return node.absolutePath || path.join(currentProjectRoot, node.relativePath);
+}
+
 function buildMcpServers(): McpServer[] {
   if (!mcpBackendPort) {
     defaultLogger.warn(`MCP: backend port not ready (port=${mcpBackendPort}), skipping mcpServers`);
@@ -290,13 +349,22 @@ function registerIpcHandlers() {
   });
 
   // ── Agent IPC ──
-  ipcMain.handle('agent:start', async (_event, moduleName: string, cmd: string, args: string[], cwd: string) => {
+  ipcMain.handle('agent:start', async (_event, moduleName: string, _cmd: string, _args: string[], cwd: string) => {
     if (agents.has(moduleName)) {
       const a = agents.get(moduleName)!;
       return { sessionId: a.sessionId };
     }
 
     try {
+      // Resolve agent config — prefer config file, fallback to passed params
+      let cmd = _cmd || 'opencode';
+      let args = _args?.length ? _args : ['acp'];
+      try {
+        const projectConfig = await ConfigLoader.load(currentProjectRoot);
+        cmd = projectConfig.agents.default.command;
+        args = projectConfig.agents.default.args || [];
+      } catch {}
+
       defaultLogger.info(`agent:start [${moduleName}] cmd=${cmd} args=[${args.join(',')}] cwd=${cwd}`);
       const launched = await launcher.launch({ command: cmd, args }, moduleName, cwd, defaultLogger);
 
@@ -384,6 +452,31 @@ function registerIpcHandlers() {
 
   ipcMain.handle('agent:isRunning', (_event, moduleName: string) => {
     return agents.has(moduleName);
+  });
+
+  // ── Config IPC ──
+  ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[] }) => {
+    const configPath = path.join(projectRoot, '.module-agent.json');
+    let config: { agents: { default: { command: string; args: string[] } }; exclude: string[]; workspace: { path: string } };
+    try {
+      config = await ConfigLoader.load(projectRoot);
+    } catch {
+      config = { ...DEFAULT_CONFIG };
+    }
+    if (updates.command) config.agents.default.command = updates.command;
+    if (updates.args) config.agents.default.args = updates.args;
+    await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    defaultLogger.info(`config:save wrote to ${configPath}`);
+    return { success: true };
+  });
+
+  ipcMain.handle('config:get', async (_event, projectRoot: string) => {
+    try {
+      const config = await ConfigLoader.load(projectRoot);
+      return { command: config.agents.default.command, args: config.agents.default.args || [] };
+    } catch {
+      return { command: DEFAULT_CONFIG.agents.default.command, args: DEFAULT_CONFIG.agents.default.args || [] };
+    }
   });
 }
 

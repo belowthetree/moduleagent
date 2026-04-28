@@ -109,6 +109,13 @@ function saveSettings() {
 
   localStorage.setItem('agentCmd', agentCmd);
   localStorage.setItem('agentArgs', agentArgs);
+
+  // Save agent config to project root .module-agent.json
+  if (projectPath) {
+    const args = agentArgs ? agentArgs.split(/\s+/).filter(Boolean) : [];
+    window.moduleAgent.saveAgentConfig(projectPath, agentCmd, args);
+  }
+
   checkStartReady();
   updateStatusBar();
   closeModal();
@@ -528,6 +535,11 @@ async function startScan() {
   agentArgs = getInput('agent-args-input');
   localStorage.setItem('agentCmd', agentCmd);
   localStorage.setItem('agentArgs', agentArgs);
+
+  // Write agent config to project root .module-agent.json
+  const args = agentArgs ? agentArgs.split(/\s+/).filter(Boolean) : [];
+  await window.moduleAgent.saveAgentConfig(projectPath, agentCmd, args);
+
   try {
     const r = await window.moduleAgent.scanProject(projectPath, workspacePath);
     if (r.error) { e.textContent = '扫描失败: ' + r.error; e.style.display = ''; return; }
