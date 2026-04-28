@@ -31,6 +31,12 @@ export class AgentManager {
   async startMainAgent(mainCwd: string): Promise<AgentEntry> {
     const config = this.resolveAgentConfig('main');
     const agent = await this.launcher.launch(config, 'main', mainCwd, this.logger);
+    this.logger?.info(`MCP: newSession for main agent with ${this.mcpConfig.length} mcp servers`);
+    for (const s of this.mcpConfig) {
+      if ('command' in s) {
+        this.logger?.info(`  stdio: ${s.command} ${(s.args || []).join(' ')}`);
+      }
+    }
     const result = await agent.connection.newSession({ cwd: agent.cwd, mcpServers: this.mcpConfig });
     const sessionId = result.sessionId;
 
@@ -52,6 +58,7 @@ export class AgentManager {
 
     const config = this.resolveAgentConfig(moduleName);
     const agent = await this.launcher.launch(config, moduleName, moduleCwd, this.logger);
+    this.logger?.info(`MCP: newSession for ${moduleName} agent with ${this.mcpConfig.length} mcp servers`);
     const result = await agent.connection.newSession({ cwd: agent.cwd, mcpServers: this.mcpConfig });
     const sessionId = result.sessionId;
 

@@ -10,10 +10,15 @@ export interface RoutedMessage {
 export class AgentRouter {
   private manager: AgentManager;
   private graph: ModuleGraphType;
+  private sessionPrompted = new Set<string>();
 
   constructor(manager: AgentManager, graph: ModuleGraphType) {
     this.manager = manager;
     this.graph = graph;
+  }
+
+  resetSession(sessionId: string): void {
+    this.sessionPrompted.delete(sessionId);
   }
 
   async route(message: string): Promise<RoutedMessage> {
@@ -43,10 +48,27 @@ export class AgentRouter {
     return { targetName: main?.name || 'main', prompt: message };
   }
 
-  async sendToAgent(entry: AgentEntry, prompt: string): Promise<PromptResponse> {
+  async sendToAgent(entry: AgentEntry, prompt: string, options?: { systemPrompt?: string }): Promise<PromptResponse> {
+    const blocks: { type: 'text'; text: string }[] = [];
+    const isFirst = !this.sessionPrompted.has(entry.sessionId!);
+
+    if (isFirst && entry.sessionId) {
+      this.sessionPrompted.add(entry.sessionId);
+
+      if (options?.systemPrompt) {
+        blocks.push({ type: 'text', text: options.systemPrompt + '\n\n---\n\n' });
+      }
+
+      const node = this.graph.nodes.get(entry.name);
+      if (node?.definition?.body) {
+        blocks.push({ type: 'text', text: `# Module: ${entry.name}\n\n${node.definition.body}\n\n---\n\n` });
+      }
+    }
+
+    blocks.push({ type: 'text', text: prompt });
     return entry.agent.connection.prompt({
       sessionId: entry.sessionId!,
-      prompt: [{ type: 'text', text: prompt }],
+      prompt: blocks,
     });
   }
 

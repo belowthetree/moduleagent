@@ -4,6 +4,7 @@ interface ModuleAgentApi {
   getTree(): Promise<TreeNode | null>;
   startAgent(moduleName: string, cmd: string, args: string[], cwd: string): Promise<{ sessionId?: string; error?: string }>;
   sendMessage(moduleName: string, text: string): Promise<{ stopReason?: string; error?: string }>;
+  cancelAgent(moduleName: string): Promise<{}>;
   stopAgent(moduleName: string): Promise<{}>;
   isAgentRunning(moduleName: string): Promise<boolean>;
   onAgentStream(callback: (data: { moduleName: string; update: string; data: Record<string, unknown> }) => void): () => void;
@@ -212,7 +213,21 @@ function finishStream(moduleName: string) {
   streamReply = '';
 }
 
+function showCancelButton() {
+  const btn = document.getElementById('btn-cancel-stream');
+  if (btn) btn.style.display = '';
+}
+function hideCancelButton() {
+  const btn = document.getElementById('btn-cancel-stream');
+  if (btn) btn.style.display = 'none';
+}
+async function cancelStream(moduleName: string) {
+  hideCancelButton();
+  try { await window.moduleAgent.cancelAgent(moduleName); } catch {}
+}
+
 function stopStream() {
+  hideCancelButton();
   const el = document.getElementById('stream-content');
   if (el) el.innerHTML = '<div class="stream-empty">等待 Agent 响应...</div>';
   streamThinking = '';
@@ -262,6 +277,7 @@ function buildDrawerContent(node: TreeNode) {
     <div id="stream-area" class="stream-area">
       <div id="stream-content" class="stream-empty">等待 Agent 响应...</div>
     </div>
+    <button class="btn-cancel-stream" id="btn-cancel-stream" style="display:none;" onclick="window.cancelStreamClick('${name}')">取消</button>
     <div class="ctx-bottom">
       <div class="ctx-header">
         <span class="section-title">对话上下文</span>
@@ -282,6 +298,7 @@ function buildDrawerContent(node: TreeNode) {
 // Global handlers for inline onclick
 (window as any).sendMsgClick = (moduleName: string) => sendContextMsg(moduleName);
 (window as any).clearContextClick = (moduleName: string) => clearContext(moduleName);
+(window as any).cancelStreamClick = (moduleName: string) => cancelStream(moduleName);
 
 // ── Context ──
 function renderContextCards(moduleName: string) {
@@ -372,16 +389,20 @@ function sendContextMsg(moduleName: string) {
 
       ensureStreamListener();
       showStreamStatus('等待 Agent 响应...');
+      showCancelButton();
 
       const sendResult = await window.moduleAgent.sendMessage(moduleName, text);
+      hideCancelButton();
       if (sendResult.error) {
         showStreamStatus(`发送失败: ${sendResult.error}`);
       } else if (sendResult.stopReason === 'end_turn') {
         finishStream(moduleName);
       }
     } catch (err) {
+      hideCancelButton();
       showStreamStatus(`通信错误: ${(err as Error).message}`);
     } finally {
+      hideCancelButton();
       sendingLock = false;
       input.disabled = false;
       input.focus();
@@ -618,6 +639,11 @@ function init() {
   if (lw) { workspacePath = lw; setInput('workspace-input', lw); }
   if (lp) { projectPath = lp; setInput('project-input', lp); }
   checkStartReady();
+
+  // Auto-start if all settings are already configured
+  if (workspacePath && projectPath && agentCmd) {
+    startScan();
+  }
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 else init();

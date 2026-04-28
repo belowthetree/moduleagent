@@ -183,7 +183,9 @@ export class MCPServer {
 
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
+    console.error('[MCPServer] Starting with tools: module_list, module_call, module_query, file_access');
     await this.server.connect(transport);
+    console.error('[MCPServer] Connected to stdio transport');
   }
 
   async stop(): Promise<void> {

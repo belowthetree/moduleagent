@@ -17,6 +17,8 @@ const api = {
   sendMessage: (moduleName: string, text: string) =>
     ipcRenderer.invoke('agent:send', moduleName, text) as Promise<{ stopReason?: string; error?: string }>,
 
+  cancelAgent: (moduleName: string) => ipcRenderer.invoke('agent:cancel', moduleName) as Promise<{}>,
+
   stopAgent: (moduleName: string) => ipcRenderer.invoke('agent:stop', moduleName) as Promise<{}>,
 
   isAgentRunning: (moduleName: string) => ipcRenderer.invoke('agent:isRunning', moduleName) as Promise<boolean>,
