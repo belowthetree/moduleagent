@@ -13,7 +13,7 @@ interface ModuleSource { type: string; url?: string; branch?: string; path?: str
 interface TreeNode { name: string; path: string; description: string; source: ModuleSource | null; children: TreeNode[]; }
 interface ScanResult { root?: string; moduleCount?: number; error?: string; }
 interface LayoutNode { data: TreeNode; x: number; y: number; width: number; height: number; collapsed: boolean; subtreeHeight: number; }
-interface ChatMsg { id: string; role: 'user' | 'agent'; content: string; time: string; status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error'; moduleName: string; agentCmd: string; }
+interface ChatMsg { id: string; role: 'user' | 'agent'; content: string; thinking: string; tools: string; time: string; status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error'; moduleName: string; agentCmd: string; }
 
 declare global { interface Window { moduleAgent: ModuleAgentApi; } }
 
@@ -166,24 +166,57 @@ function appendStream(text: string) {
   if (area) area.scrollTop = area.scrollHeight;
 }
 
+function appendThinking(text: string) {
+  const el = document.getElementById('stream-content');
+  if (!el) return;
+  const hadCursor = el.querySelector('.stream-cursor');
+  if (hadCursor) hadCursor.remove();
+  el.innerHTML += `<span class="stream-thinking">${escapeHtml(text)}</span>`;
+  el.innerHTML += '<span class="stream-cursor"></span>';
+  const area = $id('stream-area');
+  if (area) area.scrollTop = area.scrollHeight;
+}
+
+function appendToolCall(line: string) {
+  const el = document.getElementById('stream-content');
+  if (!el) return;
+  const hadCursor = el.querySelector('.stream-cursor');
+  if (hadCursor) hadCursor.remove();
+  el.innerHTML += `<span class="stream-tool">\n${escapeHtml(line)}\n</span>`;
+  el.innerHTML += '<span class="stream-cursor"></span>';
+  const area = $id('stream-area');
+  if (area) area.scrollTop = area.scrollHeight;
+}
+
 function finishStream(moduleName: string) {
   const el = document.getElementById('stream-content');
   if (el) {
     const cursor = el.querySelector('.stream-cursor');
     if (cursor) cursor.remove();
-    const text = el.textContent?.replace(/^状态\s*/, '').trim() || '';
-    if (text) {
-      getMsgs(moduleName).push({ id: 'm' + Date.now(), role: 'agent', content: text, time: now(), status: 'completed', moduleName, agentCmd });
-      setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1));
-      renderContextCards(moduleName);
-    }
   }
+  const content = streamReply.trim();
+  const thinking = streamThinking.trim();
+  const tools = streamTools.trim();
+  if (content || thinking || tools) {
+    getMsgs(moduleName).push({
+      id: 'm' + Date.now(), role: 'agent',
+      content, thinking, tools,
+      time: now(), status: 'completed', moduleName, agentCmd,
+    });
+    setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1));
+    renderContextCards(moduleName);
+  }
+  streamThinking = '';
+  streamTools = '';
+  streamReply = '';
 }
 
 function stopStream() {
-  // Reset stream display
   const el = document.getElementById('stream-content');
   if (el) el.innerHTML = '<div class="stream-empty">等待 Agent 响应...</div>';
+  streamThinking = '';
+  streamTools = '';
+  streamReply = '';
 }
 
 // ── Drawer ──
@@ -255,15 +288,24 @@ function renderContextCards(moduleName: string) {
 
   if (msgs.length === 0) { cardsEl.innerHTML = '<div class="ctx-empty">暂无对话，发送消息开始</div>'; pagEl.innerHTML = ''; return; }
 
-  cardsEl.innerHTML = pageMsgs.map(m => `
+  cardsEl.innerHTML = pageMsgs.map(m => {
+    let extra = '';
+    if (m.thinking) extra += `<div class="ctx-thinking"><span class="ctx-tag tag-thinking">思考</span>${escapeHtml(m.thinking.slice(0, 60))}${m.thinking.length > 60 ? '...' : ''}</div>`;
+    if (m.tools) {
+      const toolCount = (m.tools.match(/\[工具调用:/g) || []).length;
+      extra += `<div class="ctx-tools"><span class="ctx-tag tag-tools">工具</span>${toolCount} 个工具调用</div>`;
+    }
+    return `
     <div class="ctx-card" data-id="${m.id}">
       <div class="ctx-card-top">
         <span class="ctx-role ${m.role}">${m.role === 'user' ? '👤 用户' : '🤖 Agent'}</span>
         <span class="ctx-status st-${m.status}">${statusLabel(m.status)}</span>
       </div>
-      <div class="ctx-preview">${escapeHtml(m.content.slice(0, 100))}</div>
+      ${extra}
+      <div class="ctx-preview">${escapeHtml(m.content.slice(0, 100)) || '<span class="ctx-empty-preview">(无文本回复)</span>'}</div>
       <div class="ctx-time">${m.time}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   cardsEl.querySelectorAll('.ctx-card').forEach(card => {
     card.addEventListener('click', () => {
@@ -305,7 +347,7 @@ function sendContextMsg(moduleName: string) {
   input.disabled = true;
   sendingLock = true;
 
-  getMsgs(moduleName).push({ id: 'm' + Date.now(), role: 'user', content: text, time: now(), status: 'sent', moduleName, agentCmd });
+  getMsgs(moduleName).push({ id: 'm' + Date.now(), role: 'user', content: text, thinking: '', tools: '', time: now(), status: 'sent', moduleName, agentCmd });
   setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1));
   renderContextCards(moduleName);
 
@@ -339,17 +381,29 @@ function sendContextMsg(moduleName: string) {
 }
 
 let streamListenerCleanup: (() => void) | null = null;
+let streamThinking = '';
+let streamTools = '';
+let streamReply = '';
 
 function ensureStreamListener() {
   if (streamListenerCleanup) return;
+  streamThinking = '';
+  streamTools = '';
+  streamReply = '';
   streamListenerCleanup = window.moduleAgent.onAgentStream(({ moduleName, update, data }) => {
-    if (update === 'agent_message_chunk' || update === 'agent_thought_chunk') {
+    if (update === 'agent_message_chunk') {
       const block = (data as any).content as { type?: string; text?: string } | undefined;
       const text = block?.type === 'text' ? block.text : undefined;
-      if (text) appendStream(text);
+      if (text) { streamReply += text; appendStream(text); }
+    } else if (update === 'agent_thought_chunk') {
+      const block = (data as any).content as { type?: string; text?: string } | undefined;
+      const text = block?.type === 'text' ? block.text : undefined;
+      if (text) { streamThinking += text; appendThinking(text); }
     } else if (update === 'tool_call') {
       const tc = data as any;
-      appendStream(`\n[工具调用: ${tc.title || tc.toolCallId} | ${tc.status}]\n`);
+      const line = `[工具调用: ${tc.title || tc.toolCallId} | ${tc.status}]`;
+      streamTools += line + '\n';
+      appendToolCall(line);
     } else if (update === 'plan') {
       appendStream(`\n[计划更新]\n`);
     }
@@ -363,6 +417,28 @@ function clearContext(moduleName: string) {
 // ── Modal ──
 function showModal(msg: ChatMsg) {
   $id('modal-title').textContent = msg.role === 'user' ? '用户消息详情' : 'Agent 回复详情';
+
+  let sections = '';
+  if (msg.thinking) {
+    sections += `
+    <div class="modal-section">
+      <div class="modal-section-title">💭 思考过程</div>
+      <div class="content-text thinking-text">${escapeHtml(msg.thinking)}</div>
+    </div>`;
+  }
+  if (msg.tools) {
+    sections += `
+    <div class="modal-section">
+      <div class="modal-section-title">🔧 工具调用</div>
+      <div class="content-text tools-text">${escapeHtml(msg.tools)}</div>
+    </div>`;
+  }
+  sections += `
+    <div class="modal-section">
+      <div class="modal-section-title">💬 回复</div>
+      <div class="content-text">${msg.content ? escapeHtml(msg.content) : '<span style="color:var(--text-dim)">(无文本回复)</span>'}</div>
+    </div>`;
+
   $id('modal-body').innerHTML = `
     <div class="modal-status-row">
       <span class="modal-status-badge st-${msg.status}">${statusLabel(msg.status)}</span>
@@ -374,7 +450,7 @@ function showModal(msg: ChatMsg) {
       <div class="mg-item"><span class="mg-lbl">Agent</span><span class="mg-val">${msg.agentCmd}</span></div>
       <div class="mg-item"><span class="mg-lbl">角色</span><span class="mg-val">${msg.role === 'user' ? '输入' : '回复'}</span></div>
     </div>
-    <div class="content-text">${escapeHtml(msg.content)}</div>`;
+    ${sections}`;
   show($id('modal-overlay'));
 }
 function closeModal() { hide($id('modal-overlay')); }
