@@ -35,6 +35,13 @@ const api = {
 
   getAgentConfig: (projectRoot: string) =>
     ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[] }>,
+
+  // Cross-module context events
+  onCrossContext: (callback: (data: { moduleName: string; crossModule: string; direction: 'sent' | 'received'; phase: 'request' | 'response'; content: string; time: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { moduleName: string; crossModule: string; direction: 'sent' | 'received'; phase: 'request' | 'response'; content: string; time: string }) => callback(data);
+    ipcRenderer.on('agent:cross-context', handler);
+    return () => ipcRenderer.removeListener('agent:cross-context', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('moduleAgent', api);

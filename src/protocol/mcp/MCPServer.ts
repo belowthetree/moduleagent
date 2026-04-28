@@ -10,16 +10,19 @@ export interface MCPServerOptions {
   name?: string;
   version?: string;
   projectRoot?: string;
+  moduleName?: string;
 }
 
 export class MCPServer {
   private server: McpServer;
   private bus: CommunicationBus;
   private projectRoot: string;
+  private moduleName: string;
 
   constructor(bus: CommunicationBus, options: MCPServerOptions = {}) {
     this.bus = bus;
     this.projectRoot = options.projectRoot || process.cwd();
+    this.moduleName = options.moduleName || '';
 
     this.server = new McpServer(
       {
@@ -63,7 +66,7 @@ export class MCPServer {
         if (args.context) {
           try { contextObj = JSON.parse(args.context); } catch {}
         }
-        const result = await this.bus.sendToModule({ targetModule: args.targetModule, task: args.task, context: contextObj });
+        const result = await this.bus.sendToModule({ targetModule: args.targetModule, task: args.task, context: contextObj, requestingModule: this.moduleName });
         const text = result.success
           ? `模块 ${args.targetModule} 调用成功:\n${result.result || '(无返回内容)'}`
           : `模块 ${args.targetModule} 调用失败: ${result.error}`;
@@ -81,7 +84,7 @@ export class MCPServer {
         }),
       },
       async (args) => {
-        const result = await this.bus.queryModule({ targetModule: args.targetModule, query: args.query });
+        const result = await this.bus.queryModule({ targetModule: args.targetModule, query: args.query, requestingModule: this.moduleName });
         const text = result.success
           ? `查询结果:\n${result.answer || '(无返回内容)'}`
           : `查询失败: ${result.error}`;

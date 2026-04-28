@@ -422,6 +422,7 @@ body {
 }
 .ctx-card .ctx-role.user { color: var(--success); }
 .ctx-card .ctx-role.agent { color: var(--accent); }
+.ctx-card .ctx-role.cross { color: var(--warning); }
 
 .ctx-status {
   font-size: 9px;

@@ -75,6 +75,12 @@ function buildPromptBlocks(moduleName: string, userText: string): ContentBlock[]
   return blocks;
 }
 
+function sendCrossContext(moduleName: string, crossModule: string, direction: 'sent' | 'received', phase: 'request' | 'response', content: string) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('agent:cross-context', { moduleName, crossModule, direction, phase, content, time: new Date().toLocaleTimeString() });
+  }
+}
+
 function startMcpBackend(): Promise<number> {
   if (mcpBackendServer) return Promise.resolve(mcpBackendPort);
 
@@ -113,6 +119,14 @@ function startMcpBackend(): Promise<number> {
           const promptText = msg.task
             ? `[Cross-module request] ${msg.task}`
             : `[Cross-module query] ${msg.query}`;
+          const requestingModule = msg.requestingModule || '';
+          const taskContent = msg.task || msg.query || '';
+
+          // Emit cross-context: request phase
+          if (requestingModule && targetModule) {
+            sendCrossContext(requestingModule, targetModule, 'sent', 'request', taskContent);
+            sendCrossContext(targetModule, requestingModule, 'received', 'request', taskContent);
+          }
 
           const chunks: string[] = [];
           const prevHandler = entry.launched.onSessionUpdate;
@@ -139,6 +153,12 @@ function startMcpBackend(): Promise<number> {
               success: true,
               result: responseText || `Agent response (stopReason: ${result.stopReason})`,
             }));
+
+            // Emit cross-context: response phase
+            if (requestingModule && targetModule && responseText) {
+              sendCrossContext(targetModule, requestingModule, 'sent', 'response', responseText.slice(0, 200));
+              sendCrossContext(requestingModule, targetModule, 'received', 'response', responseText.slice(0, 200));
+            }
           } catch (err) {
             res.writeHead(500);
             res.end(JSON.stringify({ success: false, error: `Prompt failed: ${(err as Error).message}` }));
@@ -217,7 +237,7 @@ async function ensureModuleAgentRunning(moduleName: string): Promise<boolean> {
       }
     };
 
-    const mcpServers = buildMcpServers();
+    const mcpServers = buildMcpServers(moduleName);
     const result = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
     sessionPrompted.delete(moduleName);
 
@@ -242,7 +262,7 @@ function workspacePathForModule(node: ModuleGraphNode): string {
   return node.absolutePath || path.join(currentProjectRoot, node.relativePath);
 }
 
-function buildMcpServers(): McpServer[] {
+function buildMcpServers(moduleName: string): McpServer[] {
   if (!mcpBackendPort) {
     defaultLogger.warn(`MCP: backend port not ready (port=${mcpBackendPort}), skipping mcpServers`);
     return [];
@@ -260,10 +280,13 @@ function buildMcpServers(): McpServer[] {
     return [];
   }
 
+  const args = [serverPath, '--graph-file', mcpGraphFile, '--backend-url', backendUrl];
+  if (moduleName) args.push('--module-name', moduleName);
+
   const servers: McpServer[] = [{
     name: 'module-agent',
     command: 'node',
-    args: [serverPath, '--graph-file', mcpGraphFile, '--backend-url', backendUrl],
+    args,
     env: [],
   }];
 
@@ -379,7 +402,7 @@ function registerIpcHandlers() {
         }
       };
 
-      const mcpServers = buildMcpServers();
+      const mcpServers = buildMcpServers(moduleName);
       defaultLogger.info(`agent:start [${moduleName}] passing ${mcpServers.length} MCP server(s) to newSession`);
 
       const result = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });

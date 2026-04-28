@@ -8,13 +8,16 @@ interface ModuleAgentApi {
   stopAgent(moduleName: string): Promise<{}>;
   isAgentRunning(moduleName: string): Promise<boolean>;
   onAgentStream(callback: (data: { moduleName: string; update: string; data: Record<string, unknown> }) => void): () => void;
+  saveAgentConfig(projectRoot: string, cmd: string, args: string[]): Promise<{ success: boolean }>;
+  getAgentConfig(projectRoot: string): Promise<{ command: string; args: string[] }>;
+  onCrossContext(callback: (data: { moduleName: string; crossModule: string; direction: 'sent' | 'received'; phase: 'request' | 'response'; content: string; time: string }) => void): () => void;
 }
 
 interface ModuleSource { type: string; url?: string; branch?: string; path?: string; }
 interface TreeNode { name: string; path: string; description: string; source: ModuleSource | null; children: TreeNode[]; }
 interface ScanResult { root?: string; moduleCount?: number; error?: string; }
 interface LayoutNode { data: TreeNode; x: number; y: number; width: number; height: number; collapsed: boolean; subtreeHeight: number; }
-interface ChatMsg { id: string; role: 'user' | 'agent'; content: string; thinking: string; tools: string; time: string; status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error'; moduleName: string; agentCmd: string; }
+interface ChatMsg { id: string; role: 'user' | 'agent' | 'cross'; content: string; thinking: string; tools: string; time: string; status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error'; moduleName: string; agentCmd: string; crossDirection?: 'sent' | 'received'; crossModule?: string; }
 
 declare global { interface Window { moduleAgent: ModuleAgentApi; } }
 
@@ -327,10 +330,18 @@ function renderContextCards(moduleName: string) {
       const toolCount = (m.tools.match(/\[工具调用:/g) || []).length;
       extra += `<div class="ctx-tools"><span class="ctx-tag tag-tools">工具</span>${toolCount} 个工具调用</div>`;
     }
+    let roleHtml: string;
+    if (m.role === 'cross') {
+      const dirIcon = m.crossDirection === 'sent' ? '📤' : '📥';
+      const dirLabel = m.crossDirection === 'sent' ? `→ ${m.crossModule || ''}` : `← ${m.crossModule || ''}`;
+      roleHtml = `<span class="ctx-role cross">${dirIcon} 跨模块 ${dirLabel}</span>`;
+    } else {
+      roleHtml = `<span class="ctx-role ${m.role}">${m.role === 'user' ? '👤 用户' : '🤖 Agent'}</span>`;
+    }
     return `
     <div class="ctx-card" data-id="${m.id}">
       <div class="ctx-card-top">
-        <span class="ctx-role ${m.role}">${m.role === 'user' ? '👤 用户' : '🤖 Agent'}</span>
+        ${roleHtml}
         <span class="ctx-status st-${m.status}">${statusLabel(m.status)}</span>
       </div>
       ${extra}
@@ -479,7 +490,11 @@ function clearAllContexts() {
 
 // ── Modal ──
 function showModal(msg: ChatMsg) {
-  $id('modal-title').textContent = msg.role === 'user' ? '用户消息详情' : 'Agent 回复详情';
+  if (msg.role === 'cross') {
+    $id('modal-title').textContent = msg.crossDirection === 'sent' ? `跨模块发送 → ${msg.crossModule || ''}` : `跨模块接收 ← ${msg.crossModule || ''}`;
+  } else {
+    $id('modal-title').textContent = msg.role === 'user' ? '用户消息详情' : 'Agent 回复详情';
+  }
 
   let sections = '';
   if (msg.thinking) {
@@ -646,6 +661,30 @@ function init() {
   $id('modal-overlay').addEventListener('click', e => { if (e.target === $id('modal-overlay')) closeModal(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeDrawer(); } });
   initPan();
+
+  // Cross-module context listener
+  window.moduleAgent.onCrossContext(({ moduleName, crossModule, direction, phase, content, time }) => {
+    const msg: ChatMsg = {
+      id: 'x' + Date.now() + Math.random().toString(36).slice(2, 6),
+      role: 'cross',
+      content,
+      thinking: '',
+      tools: '',
+      time,
+      status: 'completed',
+      moduleName,
+      agentCmd: '',
+      crossDirection: direction,
+      crossModule,
+    };
+    getMsgs(moduleName).push(msg);
+    saveContext(moduleName);
+    // If this drawer is open, refresh
+    if (selectedNode?.name === moduleName) {
+      setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1));
+      renderContextCards(moduleName);
+    }
+  });
 
   const lw = localStorage.getItem('lastWorkspace'), lp = localStorage.getItem('lastProject');
   if (lw) { workspacePath = lw; setInput('workspace-input', lw); }

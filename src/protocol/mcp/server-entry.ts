@@ -11,10 +11,12 @@ async function main() {
   const args = process.argv.slice(2);
   let graphFile = '';
   let backendUrl = '';
+  let moduleName = '';
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--graph-file' && args[i + 1]) graphFile = args[++i]!;
     else if (args[i] === '--backend-url' && args[i + 1]) backendUrl = args[++i]!;
+    else if (args[i] === '--module-name' && args[i + 1]) moduleName = args[++i]!;
   }
 
   if (!graphFile) {
@@ -56,6 +58,7 @@ async function main() {
     name: 'module-agent-mcp',
     version: '0.1.0',
     projectRoot: process.cwd(),
+    moduleName,
   });
 
   await server.start();
