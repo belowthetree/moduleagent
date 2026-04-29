@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import matter from 'gray-matter';
-import type { ModuleDefinition, ModuleFrontmatter, SubModuleRef, SourceConfig } from '../types/module.js';
+import type { ModuleDefinition, ModuleFrontmatter, SubModuleRef } from '../types/module.js';
 import { marked } from 'marked';
 import type { Token, Tokens } from 'marked';
 
@@ -26,25 +26,7 @@ export class ModuleParser {
     const name = typeof data.name === 'string' ? data.name : path.basename(process.cwd());
     const description = typeof data.description === 'string' ? data.description : '';
 
-    return {
-      name,
-      description,
-      source: ModuleParser.parseSource(data.source),
-    };
-  }
-
-  private static parseSource(raw: unknown): SourceConfig | undefined {
-    if (!raw || typeof raw !== 'object') return undefined;
-    const src = raw as Record<string, unknown>;
-    const type = src.type;
-    if (type !== 'git' && type !== 'local') return undefined;
-
-    return {
-      type,
-      url: typeof src.url === 'string' ? src.url : undefined,
-      branch: typeof src.branch === 'string' ? src.branch : undefined,
-      path: typeof src.path === 'string' ? src.path : undefined,
-    };
+    return { name, description };
   }
 
   private static parseDescription(tokens: Token[]): string {

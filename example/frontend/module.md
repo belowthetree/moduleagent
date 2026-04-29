@@ -1,10 +1,6 @@
 ---
 name: frontend
 description: 前端 React 应用，基于 Next.js + TypeScript
-source:
-  type: git
-  url: https://github.com/example/my-app-frontend.git
-  branch: main
 ---
 
 # 前端应用

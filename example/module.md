@@ -1,10 +1,6 @@
 ---
 name: my-app
 description: 企业级全栈 Web 应用，包含后端 API、前端界面、数据库管理和共享工具库
-source:
-  type: git
-  url: https://github.com/example/my-app.git
-  branch: main
 ---
 
 # 企业全栈应用

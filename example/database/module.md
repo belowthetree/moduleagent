@@ -1,9 +1,6 @@
 ---
 name: database
 description: 数据库管理模块，PostgreSQL + Knex.js
-source:
-  type: git
-  url: https://github.com/example/my-app-db.git
 ---
 
 # 数据库管理

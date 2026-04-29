@@ -1,13 +1,14 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import fse from 'fs-extra';
 import http from 'node:http';
 import os from 'os';
 import { context as esbuildContext } from 'esbuild';
 import { ModuleScanner } from '../src/core/ModuleScanner.js';
 import { ModuleGraph } from '../src/core/ModuleGraph.js';
 import { ConfigLoader } from '../src/config/ConfigLoader.js';
-import { DEFAULT_CONFIG } from '../src/config/defaults.js';
+import { DEFAULT_CONFIG, type ProjectConfig } from '../src/config/defaults.js';
 import { Logger, LogLevel, defaultLogger } from '../src/core/Logger.js';
 import { AgentLauncher, type LaunchedAgent } from '../src/agents/AgentLauncher.js';
 import type { ClientSideConnection, SessionNotification, ContentBlock, McpServer } from '@agentclientprotocol/sdk';
@@ -20,6 +21,8 @@ defaultLogger.info('ModuleAgent starting...');
 let mainWindow: BrowserWindow | null = null;
 let currentGraph: ModuleGraphType | null = null;
 let currentProjectRoot = '';
+let currentWorkspaceRoot = '';
+let currentCodeSource: { type: 'git' | 'local'; url?: string; branch?: string; path?: string } | null = null;
 
 interface AgentEntry {
   connection: ClientSideConnection;
@@ -222,6 +225,7 @@ async function ensureModuleAgentRunning(moduleName: string): Promise<boolean> {
     args = config.agents.default.args || [];
   } catch {}
 
+  await prepareModuleWorkspace(node);
   const cwd = workspacePathForModule(node);
   try {
     defaultLogger.info(`MCP: auto-starting agent for module ${moduleName} (cmd=${cmd} cwd=${cwd})`);
@@ -258,8 +262,59 @@ async function ensureModuleAgentRunning(moduleName: string): Promise<boolean> {
 }
 
 function workspacePathForModule(node: ModuleGraphNode): string {
-  // Use the node's absolute path as the cwd for the agent
+  if (currentWorkspaceRoot) {
+    return node.relativePath === '.'
+      ? currentWorkspaceRoot
+      : path.join(currentWorkspaceRoot, node.relativePath);
+  }
   return node.absolutePath || path.join(currentProjectRoot, node.relativePath);
+}
+
+function codeSourcePathForModule(node: ModuleGraphNode): string {
+  if (!currentCodeSource) return '';
+
+  if (currentCodeSource.type === 'local' && currentCodeSource.path) {
+    return node.relativePath === '.'
+      ? currentCodeSource.path
+      : path.join(currentCodeSource.path, node.relativePath);
+  }
+
+  // Git source or unconfigured — not yet supported
+  return '';
+}
+
+async function prepareModuleWorkspace(node: ModuleGraphNode): Promise<string> {
+  if (!currentWorkspaceRoot) return node.absolutePath;
+
+  const destDir = node.relativePath === '.'
+    ? currentWorkspaceRoot
+    : path.join(currentWorkspaceRoot, node.relativePath);
+
+  const srcDir = codeSourcePathForModule(node);
+  if (!srcDir) {
+    defaultLogger.warn(`Module ${node.name}: no code source configured, skipping isolation`);
+    return node.absolutePath;
+  }
+
+  if (path.resolve(srcDir) === path.resolve(destDir)) return destDir;
+
+  try {
+    defaultLogger.info(`Isolating module ${node.name}: ${srcDir} -> ${destDir}`);
+    await fse.ensureDir(path.dirname(destDir));
+    await fse.copy(srcDir, destDir, {
+      overwrite: true,
+      errorOnExist: false,
+      filter: (src: string) => {
+        const basename = path.basename(src);
+        if (basename === 'node_modules' || basename === '.git') return false;
+        return true;
+      },
+    });
+    return destDir;
+  } catch (err) {
+    defaultLogger.error(`Failed to isolate module ${node.name}: ${(err as Error).message}`);
+    return node.absolutePath;
+  }
 }
 
 function buildMcpServers(moduleName: string): McpServer[] {
@@ -282,6 +337,7 @@ function buildMcpServers(moduleName: string): McpServer[] {
 
   const args = [serverPath, '--graph-file', mcpGraphFile, '--backend-url', backendUrl];
   if (moduleName) args.push('--module-name', moduleName);
+  if (currentWorkspaceRoot) args.push('--workspace-root', currentWorkspaceRoot);
 
   const servers: McpServer[] = [{
     name: 'module-agent',
@@ -340,6 +396,8 @@ function registerIpcHandlers() {
       const graph = new ModuleGraph().build(descriptors, projectRoot);
       currentGraph = graph;
       currentProjectRoot = projectRoot;
+      currentWorkspaceRoot = workspaceRoot;
+      currentCodeSource = config.codeSource || null;
       loadSystemPrompts();
 
       // Start MCP backend and write graph for cross-module communication
@@ -363,7 +421,6 @@ function registerIpcHandlers() {
       return {
         name: node.name, path: node.relativePath,
         description: node.definition.frontmatter.description,
-        source: node.definition.frontmatter.source || null,
         children: node.children.map(c => currentGraph!.nodes.get(c)).filter(Boolean).map(c => buildTree(c!)),
       };
     }
@@ -388,8 +445,16 @@ function registerIpcHandlers() {
         args = projectConfig.agents.default.args || [];
       } catch {}
 
-      defaultLogger.info(`agent:start [${moduleName}] cmd=${cmd} args=[${args.join(',')}] cwd=${cwd}`);
-      const launched = await launcher.launch({ command: cmd, args }, moduleName, cwd, defaultLogger);
+      // Compute isolated cwd when workspace is configured
+      let agentCwd = cwd;
+      const node = currentGraph?.nodes.get(moduleName);
+      if (node && currentWorkspaceRoot) {
+        await prepareModuleWorkspace(node);
+        agentCwd = workspacePathForModule(node);
+      }
+
+      defaultLogger.info(`agent:start [${moduleName}] cmd=${cmd} args=[${args.join(',')}] cwd=${agentCwd}`);
+      const launched = await launcher.launch({ command: cmd, args }, moduleName, agentCwd, defaultLogger);
 
       // Forward session/update stream to renderer
       launched.onSessionUpdate = (name, sessionId, notification) => {
@@ -478,9 +543,9 @@ function registerIpcHandlers() {
   });
 
   // ── Config IPC ──
-  ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[] }) => {
+  ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string } }) => {
     const configPath = path.join(projectRoot, '.module-agent.json');
-    let config: { agents: { default: { command: string; args: string[] } }; exclude: string[]; workspace: { path: string } };
+    let config: ProjectConfig;
     try {
       config = await ConfigLoader.load(projectRoot);
     } catch {
@@ -488,6 +553,7 @@ function registerIpcHandlers() {
     }
     if (updates.command) config.agents.default.command = updates.command;
     if (updates.args) config.agents.default.args = updates.args;
+    if (updates.codeSource) config.codeSource = updates.codeSource;
     await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
     defaultLogger.info(`config:save wrote to ${configPath}`);
     return { success: true };
@@ -496,9 +562,9 @@ function registerIpcHandlers() {
   ipcMain.handle('config:get', async (_event, projectRoot: string) => {
     try {
       const config = await ConfigLoader.load(projectRoot);
-      return { command: config.agents.default.command, args: config.agents.default.args || [] };
+      return { command: config.agents.default.command, args: config.agents.default.args || [], codeSource: config.codeSource };
     } catch {
-      return { command: DEFAULT_CONFIG.agents.default.command, args: DEFAULT_CONFIG.agents.default.args || [] };
+      return { command: DEFAULT_CONFIG.agents.default.command, args: DEFAULT_CONFIG.agents.default.args || [], codeSource: DEFAULT_CONFIG.codeSource };
     }
   });
 }

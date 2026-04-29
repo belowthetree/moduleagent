@@ -8,13 +8,12 @@ interface ModuleAgentApi {
   stopAgent(moduleName: string): Promise<{}>;
   isAgentRunning(moduleName: string): Promise<boolean>;
   onAgentStream(callback: (data: { moduleName: string; update: string; data: Record<string, unknown> }) => void): () => void;
-  saveAgentConfig(projectRoot: string, cmd: string, args: string[]): Promise<{ success: boolean }>;
-  getAgentConfig(projectRoot: string): Promise<{ command: string; args: string[] }>;
+  saveAgentConfig(projectRoot: string, cmd: string, args: string[], codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }): Promise<{ success: boolean }>;
+  getAgentConfig(projectRoot: string): Promise<{ command: string; args: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string } }>;
   onCrossContext(callback: (data: { moduleName: string; crossModule: string; direction: 'sent' | 'received'; phase: 'request' | 'response'; content: string; time: string }) => void): () => void;
 }
 
-interface ModuleSource { type: string; url?: string; branch?: string; path?: string; }
-interface TreeNode { name: string; path: string; description: string; source: ModuleSource | null; children: TreeNode[]; }
+interface TreeNode { name: string; path: string; description: string; children: TreeNode[]; }
 interface ScanResult { root?: string; moduleCount?: number; error?: string; }
 interface LayoutNode { data: TreeNode; x: number; y: number; width: number; height: number; collapsed: boolean; subtreeHeight: number; }
 interface ChatMsg { id: string; role: 'user' | 'agent' | 'cross'; content: string; thinking: string; tools: string; time: string; status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error'; moduleName: string; agentCmd: string; crossDirection?: 'sent' | 'received'; crossModule?: string; }
@@ -28,6 +27,7 @@ let treeRoot: TreeNode | null = null;
 let flattenedNodes: LayoutNode[] = [];
 let selectedNode: TreeNode | null = null;
 let workspacePath = ''; let projectPath = ''; let agentCmd = 'opencode'; let agentArgs = 'acp';
+let codeSourceType: 'git' | 'local' = 'local'; let codeSourcePath = ''; let codeSourceUrl = ''; let codeSourceBranch = '';
 let panX = 0; let panY = 0; let isPanning = false;
 let panStartX = 0; let panStartY = 0; let panStartTX = 0; let panStartTY = 0; let scale = 1;
 
@@ -81,6 +81,32 @@ function openSettings() {
           <button class="btn" id="s-btn-pj">浏览</button>
         </div>
       </div>
+      <div class="sfield">
+        <label>代码来源类型</label>
+        <div class="shint">模块代码的来源：本地目录或 Git 仓库</div>
+        <select id="s-code-src-type">
+          <option value="local" ${codeSourceType === 'local' ? 'selected' : ''}>本地目录</option>
+          <option value="git" ${codeSourceType === 'git' ? 'selected' : ''}>Git 仓库</option>
+        </select>
+      </div>
+      <div class="sfield" id="s-code-local-group">
+        <label>本地代码路径</label>
+        <div class="shint">代码所在的本地根目录，模块按相对路径从中映射</div>
+        <div class="input-row">
+          <input id="s-code-path" value="${escapeHtml(codeSourcePath)}" placeholder="输入或点击浏览...">
+          <button class="btn" id="s-btn-code-path">浏览</button>
+        </div>
+      </div>
+      <div class="sfield" id="s-code-git-group" style="${codeSourceType === 'git' ? '' : 'display:none'}">
+        <label>Git 仓库地址</label>
+        <div class="shint">远程 Git 仓库 URL</div>
+        <input id="s-code-url" value="${escapeHtml(codeSourceUrl)}" placeholder="https://github.com/user/repo.git">
+      </div>
+      <div class="sfield" id="s-code-branch-group" style="${codeSourceType === 'git' ? '' : 'display:none'}">
+        <label>Git 分支</label>
+        <div class="shint">要使用的分支名（默认: main）</div>
+        <input id="s-code-branch" value="${escapeHtml(codeSourceBranch)}" placeholder="main">
+      </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
         <button class="btn" id="s-btn-cancel">取消</button>
         <button class="btn btn-primary" id="s-btn-save">保存</button>
@@ -97,6 +123,16 @@ function openSettings() {
     const d = await window.moduleAgent.selectDir('选择模块目录'); if (!d) return;
     setInput('s-project', d);
   });
+  document.getElementById('s-btn-code-path')!.addEventListener('click', async () => {
+    const d = await window.moduleAgent.selectDir('选择代码根目录'); if (!d) return;
+    setInput('s-code-path', d);
+  });
+  document.getElementById('s-code-src-type')!.addEventListener('change', () => {
+    const v = getInput('s-code-src-type') as 'git' | 'local';
+    document.getElementById('s-code-local-group')!.style.display = v === 'local' ? '' : 'none';
+    document.getElementById('s-code-git-group')!.style.display = v === 'git' ? '' : 'none';
+    document.getElementById('s-code-branch-group')!.style.display = v === 'git' ? '' : 'none';
+  });
   document.getElementById('s-btn-cancel')!.addEventListener('click', closeModal);
   document.getElementById('s-btn-save')!.addEventListener('click', saveSettings);
 }
@@ -106,22 +142,40 @@ function saveSettings() {
   agentArgs = getInput('s-agent-args');
   const newWs = getInput('s-workspace');
   const newPj = getInput('s-project');
+  codeSourceType = (getInput('s-code-src-type') as 'git' | 'local') || 'local';
+  codeSourcePath = getInput('s-code-path');
+  codeSourceUrl = getInput('s-code-url');
+  codeSourceBranch = getInput('s-code-branch');
 
+  const projectChanged = newPj && newPj !== projectPath;
   if (newWs) { workspacePath = newWs; setInput('workspace-input', newWs); localStorage.setItem('lastWorkspace', newWs); }
   if (newPj) { projectPath = newPj; setInput('project-input', newPj); localStorage.setItem('lastProject', newPj); }
 
   localStorage.setItem('agentCmd', agentCmd);
   localStorage.setItem('agentArgs', agentArgs);
+  localStorage.setItem('codeSourceType', codeSourceType);
+  localStorage.setItem('codeSourcePath', codeSourcePath);
+  localStorage.setItem('codeSourceUrl', codeSourceUrl);
+  localStorage.setItem('codeSourceBranch', codeSourceBranch);
 
   // Save agent config to project root .module-agent.json
   if (projectPath) {
     const args = agentArgs ? agentArgs.split(/\s+/).filter(Boolean) : [];
-    window.moduleAgent.saveAgentConfig(projectPath, agentCmd, args);
+    const cs = codeSourceType === 'local'
+      ? { type: 'local' as const, path: codeSourcePath }
+      : { type: 'git' as const, url: codeSourceUrl, branch: codeSourceBranch || undefined };
+    window.moduleAgent.saveAgentConfig(projectPath, agentCmd, args, cs);
   }
 
   checkStartReady();
   updateStatusBar();
   closeModal();
+
+  // Auto-rescan if project directory changed
+  if (projectChanged) {
+    if (treeRoot) goBack();
+    setTimeout(startScan, 200);
+  }
 }
 
 function updateStatusBar() {
@@ -273,26 +327,21 @@ function buildDrawerContent(node: TreeNode) {
     if (saved.length > 0) contextMap.set(name, saved);
   }
 
-  const src = node.source
-    ? (node.source.type === 'git' ? `Git: ${node.source.url || '?'}${node.source.branch ? '@' + node.source.branch : ''}` : `Local`)
-    : '无';
-
   $id('drawer-body').innerHTML = `
     <div class="info-compact">
       <span class="ic-item"><span class="ic-label">路径</span><span class="ic-value">${node.path}</span></span>
-      <span class="ic-item"><span class="ic-label">来源</span><span class="ic-value">${src}</span></span>
       <span class="ic-item"><span class="ic-label">子模块</span><span class="ic-value">${node.children.length} 个</span></span>
     </div>
     <div class="desc">${node.description || '无描述'}</div>
+    <div class="ctx-top-controls">
+      <span class="section-title">对话上下文</span>
+      <button class="btn-sm" id="ctx-clear-btn">清空</button>
+    </div>
     <div id="stream-area" class="stream-area">
       <div id="stream-content" class="stream-empty">等待 Agent 响应...</div>
     </div>
-    <button class="btn-cancel-stream" id="btn-cancel-stream" style="display:none;" onclick="window.cancelStreamClick('${name}')">取消</button>
+    <button class="btn-cancel-stream" id="btn-cancel-stream" style="display:none;">取消</button>
     <div class="ctx-bottom">
-      <div class="ctx-header">
-        <span class="section-title">对话上下文</span>
-        <button class="btn-sm" id="ctx-clear-btn" onclick="window.moduleAgent && window.clearContextClick('${name}')">清空</button>
-      </div>
       <div id="ctx-cards" class="ctx-card-list"></div>
       <div id="ctx-paginator" class="paginator"></div>
       <div class="ctx-chat">
@@ -486,6 +535,7 @@ function clearAllContexts() {
     if (k?.startsWith('ctx_')) keys.push(k);
   }
   keys.forEach(k => localStorage.removeItem(k));
+  contextMap.clear();
 }
 
 // ── Modal ──
@@ -548,12 +598,19 @@ async function startScan() {
   const e = $id('setup-error'); e.style.display = 'none';
   agentCmd = getInput('agent-cmd-input') || 'opencode';
   agentArgs = getInput('agent-args-input');
+  codeSourceType = (getInput('setup-code-src-type') as 'git' | 'local') || 'local';
+  codeSourcePath = getInput('setup-code-path');
   localStorage.setItem('agentCmd', agentCmd);
   localStorage.setItem('agentArgs', agentArgs);
+  localStorage.setItem('codeSourceType', codeSourceType);
+  localStorage.setItem('codeSourcePath', codeSourcePath);
 
   // Write agent config to project root .module-agent.json
   const args = agentArgs ? agentArgs.split(/\s+/).filter(Boolean) : [];
-  await window.moduleAgent.saveAgentConfig(projectPath, agentCmd, args);
+  const cs = codeSourceType === 'local'
+    ? { type: 'local' as const, path: codeSourcePath }
+    : { type: 'git' as const, url: codeSourceUrl, branch: codeSourceBranch || undefined };
+  await window.moduleAgent.saveAgentConfig(projectPath, agentCmd, args, cs);
 
   try {
     const r = await window.moduleAgent.scanProject(projectPath, workspacePath);
@@ -646,15 +703,33 @@ function isCollapsedAncestor(node?: LayoutNode): boolean { if (!node) return fal
 function init() {
   agentCmd = localStorage.getItem('agentCmd') || 'opencode';
   agentArgs = localStorage.getItem('agentArgs') || 'acp';
+  codeSourceType = (localStorage.getItem('codeSourceType') as 'git' | 'local') || 'local';
+  codeSourcePath = localStorage.getItem('codeSourcePath') || '';
+  codeSourceUrl = localStorage.getItem('codeSourceUrl') || '';
+  codeSourceBranch = localStorage.getItem('codeSourceBranch') || '';
   $id('agent-cmd-input').setAttribute('value', agentCmd);
   ($id('agent-cmd-input') as HTMLInputElement).value = agentCmd;
   ($id('agent-args-input') as HTMLInputElement).value = agentArgs;
 
   $id('btn-workspace').addEventListener('click', selectWorkspace);
   $id('btn-project').addEventListener('click', selectProject);
+  $id('btn-setup-code-path').addEventListener('click', async () => {
+    const d = await window.moduleAgent.selectDir('选择代码根目录'); if (!d) return;
+    setInput('setup-code-path', d);
+  });
+  $id('setup-code-src-type').addEventListener('change', () => {
+    const v = getInput('setup-code-src-type');
+    document.getElementById('setup-code-local-group')!.style.display = v === 'local' ? '' : 'none';
+  });
   $id('btn-start').addEventListener('click', startScan);
   $id('btn-back').addEventListener('click', goBack);
   $id('btn-settings').addEventListener('click', openSettings);
+  $id('btn-rescan').addEventListener('click', () => { goBack(); setTimeout(startScan, 200); });
+  $id('btn-clear-all').addEventListener('click', () => {
+    clearAllContexts();
+    contextMap.clear();
+    if (selectedNode) { setPage(selectedNode.name, 0); renderContextCards(selectedNode.name); }
+  });
   $id('drawer-close').addEventListener('click', closeDrawer);
   $id('drawer-overlay').addEventListener('click', closeDrawer);
   $id('modal-close').addEventListener('click', closeModal);
@@ -689,6 +764,8 @@ function init() {
   const lw = localStorage.getItem('lastWorkspace'), lp = localStorage.getItem('lastProject');
   if (lw) { workspacePath = lw; setInput('workspace-input', lw); }
   if (lp) { projectPath = lp; setInput('project-input', lp); }
+  if (codeSourcePath) { setInput('setup-code-path', codeSourcePath); }
+  (document.getElementById('setup-code-src-type') as HTMLSelectElement).value = codeSourceType;
   checkStartReady();
 
   // Auto-start if all settings are already configured

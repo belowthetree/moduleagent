@@ -49,6 +49,24 @@
           </div>
         </div>
 
+        <div class="setup-field">
+          <label>代码来源类型</label>
+          <p class="field-hint">模块代码的来源</p>
+          <select id="setup-code-src-type">
+            <option value="local">本地目录</option>
+            <option value="git" disabled>Git 仓库（即将支持）</option>
+          </select>
+        </div>
+
+        <div class="setup-field" id="setup-code-local-group">
+          <label>本地代码路径</label>
+          <p class="field-hint">源码所在的根目录，模块按相对路径从中映射</p>
+          <div class="input-row">
+            <input id="setup-code-path" placeholder="输入或点击右侧按钮选择代码根目录...">
+            <button id="btn-setup-code-path" class="btn">浏览</button>
+          </div>
+        </div>
+
         <button id="btn-start" class="btn-primary setup-start" disabled>开始扫描</button>
         <p id="setup-error" class="setup-error" style="display:none;"></p>
       </div>
@@ -58,6 +76,8 @@
     <div id="main-screen" class="main-screen" style="display:none;">
       <!-- 悬浮按钮 -->
       <button id="btn-back" class="fab fab-back" title="返回">←</button>
+      <button id="btn-rescan" class="fab fab-rescan" title="重新扫描">🔄</button>
+      <button id="btn-clear-all" class="fab fab-clear-all" title="清空所有上下文">🗑</button>
       <button id="btn-settings" class="fab fab-settings" title="设置">⚙</button>
 
       <div id="tree-panel" class="tree-panel">

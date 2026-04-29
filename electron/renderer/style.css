@@ -91,6 +91,8 @@ body {
 }
 .fab:hover { border-color: var(--accent); background: var(--node-hover); }
 .fab-back { top: 10px; left: 12px; }
+.fab-rescan { top: 10px; left: 56px; }
+.fab-clear-all { top: 10px; right: 56px; font-size: 14px; }
 .fab-settings { top: 10px; right: 12px; font-size: 18px; }
 
 /* ── Buttons ── */
@@ -376,20 +378,20 @@ body {
 
 /* ── Context cards ── */
 .ctx-section { margin-top: 4px; }
-.ctx-header {
+.ctx-header, .ctx-top-controls {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
 }
-.ctx-header .section-title {
+.ctx-header .section-title, .ctx-top-controls .section-title {
   font-size: 11px;
   font-weight: 700;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
-.ctx-header .btn-sm {
+.ctx-header .btn-sm, .ctx-top-controls .btn-sm {
   padding: 3px 10px;
   font-size: 11px;
   border: 1px solid var(--border);
@@ -398,7 +400,7 @@ body {
   color: var(--error);
   cursor: pointer;
 }
-.ctx-header .btn-sm:hover { background: var(--error); color: #fff; border-color: var(--error); }
+.ctx-header .btn-sm:hover, .ctx-top-controls .btn-sm:hover { background: var(--error); color: #fff; border-color: var(--error); }
 
 .ctx-card-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 

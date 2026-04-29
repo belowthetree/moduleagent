@@ -30,11 +30,11 @@ const api = {
   },
 
   // Config APIs
-  saveAgentConfig: (projectRoot: string, cmd: string, args: string[]) =>
-    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args }) as Promise<{ success: boolean }>,
+  saveAgentConfig: (projectRoot: string, cmd: string, args: string[], codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }) =>
+    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args, codeSource }) as Promise<{ success: boolean }>,
 
   getAgentConfig: (projectRoot: string) =>
-    ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[] }>,
+    ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string } }>,
 
   // Cross-module context events
   onCrossContext: (callback: (data: { moduleName: string; crossModule: string; direction: 'sent' | 'received'; phase: 'request' | 'response'; content: string; time: string }) => void) => {

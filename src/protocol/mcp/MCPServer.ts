@@ -10,6 +10,7 @@ export interface MCPServerOptions {
   name?: string;
   version?: string;
   projectRoot?: string;
+  workspaceRoot?: string;
   moduleName?: string;
 }
 
@@ -17,11 +18,13 @@ export class MCPServer {
   private server: McpServer;
   private bus: CommunicationBus;
   private projectRoot: string;
+  private workspaceRoot: string;
   private moduleName: string;
 
   constructor(bus: CommunicationBus, options: MCPServerOptions = {}) {
     this.bus = bus;
     this.projectRoot = options.projectRoot || process.cwd();
+    this.workspaceRoot = options.workspaceRoot || this.projectRoot;
     this.moduleName = options.moduleName || '';
 
     this.server = new McpServer(
@@ -110,7 +113,7 @@ export class MCPServer {
           return { content: [{ type: 'text', text: `模块未找到: ${args.module}` }], isError: true };
         }
 
-        const fullPath = path.join(this.projectRoot, mod.path, args.filePath);
+        const fullPath = path.join(this.workspaceRoot, mod.path, args.filePath);
 
         if (args.operation === 'read') {
           if (!await fs.pathExists(fullPath)) {

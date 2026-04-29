@@ -1,10 +1,6 @@
 ---
 name: server
 description: 后端 API 服务，基于 Express + TypeScript，提供 RESTful 接口
-source:
-  type: git
-  url: https://github.com/example/my-app-server.git
-  branch: develop
 ---
 
 # 后端 API 服务

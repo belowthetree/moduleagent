@@ -1,6 +1,5 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { simpleGit } from 'simple-git';
 import { isBuiltinExcluded } from './ExclusionRules.js';
 import type { ModuleFrontmatter } from '../types/module.js';
 
@@ -20,12 +19,11 @@ export class ModuleGenerator {
 
     const dirName = path.basename(path.resolve(dirPath));
     const description = await ModuleGenerator.inferDescription(dirPath);
-    const source = await ModuleGenerator.inferSource(dirPath);
     const subModules = await ModuleGenerator.inferSubModules(dirPath, options.extraExclude || []);
     const body = await ModuleGenerator.inferBody(dirPath, dirName);
 
     return ModuleGenerator.composeModuleMd(
-      { name: dirName, description, source },
+      { name: dirName, description },
       body,
       subModules,
     );
@@ -51,27 +49,6 @@ export class ModuleGenerator {
 
     const basename = path.basename(dirPath);
     return `${basename} 模块`;
-  }
-
-  private static async inferSource(dirPath: string): Promise<{ type: 'git' | 'local'; url?: string; branch?: string } | undefined> {
-    try {
-      const git = simpleGit(dirPath);
-      const isRepo = await git.checkIsRepo();
-      if (!isRepo) return undefined;
-
-      const remotes = await git.getRemotes(true);
-      const origin = remotes.find((r) => r.name === 'origin');
-      if (origin) {
-        const status = await git.status();
-        return {
-          type: 'git',
-          url: origin.refs.fetch || origin.refs.push,
-          branch: status.current || undefined,
-        };
-      }
-    } catch {}
-
-    return undefined;
   }
 
   private static async inferSubModules(dirPath: string, extraExclude: string[]): Promise<{ name: string; path: string; description: string }[]> {
@@ -114,13 +91,6 @@ export class ModuleGenerator {
       name: frontmatter.name,
       description: frontmatter.description,
     };
-
-    if (frontmatter.source) {
-      const source: Record<string, unknown> = { type: frontmatter.source.type };
-      if (frontmatter.source.url) source.url = frontmatter.source.url;
-      if (frontmatter.source.branch) source.branch = frontmatter.source.branch;
-      fmObj.source = source;
-    }
 
     let yaml = '---\n';
     yaml += `${ModuleGenerator.yamlDump(fmObj, 0)}\n`;

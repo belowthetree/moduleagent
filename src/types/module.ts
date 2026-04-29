@@ -1,14 +1,6 @@
-export interface SourceConfig {
-  type: 'git' | 'local';
-  url?: string;
-  branch?: string;
-  path?: string;
-}
-
 export interface ModuleFrontmatter {
   name: string;
   description: string;
-  source?: SourceConfig;
 }
 
 export interface SubModuleRef {

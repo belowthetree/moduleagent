@@ -5,6 +5,13 @@ export const AgentConfigSchema = z.object({
   args: z.array(z.string()).optional(),
 });
 
+export const CodeSourceSchema = z.object({
+  type: z.enum(['git', 'local']),
+  url: z.string().optional(),
+  branch: z.string().optional(),
+  path: z.string().optional(),
+});
+
 export const ProjectConfigSchema = z.object({
   agents: z.object({
     default: AgentConfigSchema,
@@ -14,6 +21,7 @@ export const ProjectConfigSchema = z.object({
   workspace: z.object({
     path: z.string(),
   }),
+  codeSource: CodeSourceSchema,
 });
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
