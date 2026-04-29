@@ -32,6 +32,7 @@ interface AgentEntry {
   launched: LaunchedAgent;
 }
 const agents = new Map<string, AgentEntry>();
+const agentStatus = new Map<string, 'idle' | 'streaming' | 'error'>();
 const lastSent = new Map<string, { text: string; time: number }>();
 const sessionPrompted = new Set<string>();
 const launcher = new AgentLauncher();
@@ -145,11 +146,13 @@ function startMcpBackend(): Promise<number> {
           };
 
           try {
+            agentStatus.set(targetModule, 'streaming');
             const promptBlocks = buildPromptBlocks(targetModule, promptText);
             const result = await entry.connection.prompt({
               sessionId: entry.sessionId,
               prompt: promptBlocks,
             });
+            agentStatus.set(targetModule, 'idle');
             res.writeHead(200);
             const responseText = chunks.join('').trim();
             res.end(JSON.stringify({
@@ -163,6 +166,7 @@ function startMcpBackend(): Promise<number> {
               sendCrossContext(requestingModule, targetModule, 'received', 'response', responseText.slice(0, 200));
             }
           } catch (err) {
+            agentStatus.set(targetModule, 'error');
             res.writeHead(500);
             res.end(JSON.stringify({ success: false, error: `Prompt failed: ${(err as Error).message}` }));
           } finally {
@@ -252,6 +256,7 @@ async function ensureModuleAgentRunning(moduleName: string): Promise<boolean> {
       config: { command: cmd, args },
       launched,
     });
+    agentStatus.set(moduleName, 'idle');
 
     defaultLogger.info(`MCP: auto-started agent for ${moduleName} session=${result.sessionId}`);
     return true;
@@ -566,10 +571,12 @@ function registerIpcHandlers() {
         launched,
       };
       agents.set(moduleName, entry);
+      agentStatus.set(moduleName, 'idle');
 
       return { sessionId };
     } catch (err) {
       defaultLogger.error(`agent:start failed [${moduleName}]: ${(err as Error).message}`);
+      agentStatus.set(moduleName, 'error');
       return { error: (err as Error).message };
     }
   });
@@ -588,16 +595,18 @@ function registerIpcHandlers() {
     lastSent.set(moduleName, { text, time: now });
 
     try {
+      agentStatus.set(moduleName, 'streaming');
       const promptBlocks = buildPromptBlocks(moduleName, text);
       defaultLogger.session(entry.sessionId, 'prompt', `len=${text.length} blocks=${promptBlocks.length}`);
       const result = await entry.connection.prompt({
         sessionId: entry.sessionId,
         prompt: promptBlocks,
       });
+      agentStatus.set(moduleName, 'idle');
       return { stopReason: result.stopReason };
     } catch (err) {
       defaultLogger.error(`agent:send failed [${moduleName}]: ${(err as Error).message}`);
-      agents.delete(moduleName);
+      agentStatus.set(moduleName, 'error');
       return { error: (err as Error).message };
     }
   });
@@ -606,6 +615,7 @@ function registerIpcHandlers() {
     const entry = agents.get(moduleName);
     if (entry) {
       try { await entry.connection.cancel({ sessionId: entry.sessionId }); } catch {}
+      agentStatus.set(moduleName, 'idle');
       defaultLogger.info(`agent:cancel [${moduleName}]`);
     }
     return {};
@@ -616,6 +626,7 @@ function registerIpcHandlers() {
     if (entry) {
       try { entry.process.kill(); } catch {}
       agents.delete(moduleName);
+      agentStatus.delete(moduleName);
       sessionPrompted.delete(moduleName);
       defaultLogger.info(`agent:stop [${moduleName}]`);
     }
@@ -627,7 +638,10 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('agent:getRunning', () => {
-    return [...agents.keys()];
+    return [...agents.keys()].map(name => ({
+      name,
+      status: agentStatus.get(name) || 'idle',
+    }));
   });
 
   // ── Config IPC ──

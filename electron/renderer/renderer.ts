@@ -7,7 +7,7 @@ interface ModuleAgentApi {
   cancelAgent(moduleName: string): Promise<{}>;
   stopAgent(moduleName: string): Promise<{}>;
   isAgentRunning(moduleName: string): Promise<boolean>;
-  getRunningAgents(): Promise<string[]>;
+  getRunningAgents(): Promise<{ name: string; status: 'idle' | 'streaming' | 'error' }[]>;
   onAgentStream(callback: (data: { moduleName: string; update: string; data: Record<string, unknown> }) => void): () => void;
   saveAgentConfig(projectRoot: string, cmd: string, args: string[], codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }): Promise<{ success: boolean }>;
   getAgentConfig(projectRoot: string): Promise<{ command: string; args: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string } }>;
@@ -34,11 +34,15 @@ let panStartX = 0; let panStartY = 0; let panStartTX = 0; let panStartTY = 0; le
 
 const contextMap = new Map<string, ChatMsg[]>();
 let ctxPage = new Map<string, number>();
-let runningAgents = new Set<string>();
+let runningAgents = new Map<string, 'idle' | 'streaming' | 'error'>();
 let runningPollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function refreshRunningAgents() {
-  try { runningAgents = new Set(await window.moduleAgent.getRunningAgents()); } catch {}
+  try {
+    runningAgents.clear();
+    const list = await window.moduleAgent.getRunningAgents();
+    for (const item of list) runningAgents.set(item.name, item.status);
+  } catch {}
   if (treeRoot) renderSvg();
 }
 
@@ -356,21 +360,25 @@ function buildDrawerContent(node: TreeNode) {
       <span class="section-title">对话上下文</span>
       <button class="btn-sm" id="ctx-clear-btn">清空</button>
     </div>
-    <div id="stream-area" class="stream-area">
-      <div id="stream-content" class="stream-empty">等待 Agent 响应...</div>
-    </div>
-    <button class="btn-cancel-stream" id="btn-cancel-stream" style="display:none;">取消</button>
-    <div class="ctx-bottom">
-      <div id="ctx-cards" class="ctx-card-list"></div>
-      <div id="ctx-paginator" class="paginator"></div>
-      <div class="ctx-chat">
-        <input id="ctx-chat-input" placeholder="输入消息发送给 Agent..." onkeydown="if(event.key==='Enter'){event.preventDefault();window.sendMsgClick('${name}')}">
-        <button class="btn-send" id="ctx-send-btn" type="button" onclick="window.sendMsgClick('${name}')">发送</button>
+    <div class="split-zone">
+      <div id="stream-area" class="stream-area">
+        <div id="stream-content" class="stream-empty">等待 Agent 响应...</div>
       </div>
+      <button class="btn-cancel-stream" id="btn-cancel-stream" style="display:none;">取消</button>
+      <div class="splitter" id="drawer-splitter"></div>
+      <div class="ctx-bottom">
+        <div id="ctx-cards" class="ctx-card-list"></div>
+        <div id="ctx-paginator" class="paginator"></div>
+      </div>
+    </div>
+    <div class="ctx-chat">
+      <input id="ctx-chat-input" placeholder="输入消息发送给 Agent..." onkeydown="if(event.key==='Enter'){event.preventDefault();window.sendMsgClick('${name}')}">
+      <button class="btn-send" id="ctx-send-btn" type="button" onclick="window.sendMsgClick('${name}')">发送</button>
     </div>
   `;
   $id('ctx-clear-btn').addEventListener('click', () => clearContext(name));
   renderContextCards(name);
+  initSplitter();
 }
 
 // Global handlers for inline onclick
@@ -446,6 +454,46 @@ function renderContextCards(moduleName: string) {
       renderContextCards(moduleName);
     });
   });
+}
+
+let splitRatio = 0.4;
+let splitDragging = false;
+
+function initSplitter() {
+  const splitter = document.getElementById('drawer-splitter');
+  const streamArea = document.getElementById('stream-area');
+  const ctxBottom = document.querySelector('.ctx-bottom') as HTMLElement;
+  if (!splitter || !streamArea || !ctxBottom) return;
+
+  applySplitRatio(streamArea, ctxBottom);
+
+  splitter.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    splitDragging = true;
+    splitter.classList.add('dragging');
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!splitDragging) return;
+    const zone = document.querySelector('.split-zone') as HTMLElement;
+    if (!zone) return;
+    const rect = zone.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    splitRatio = Math.min(0.75, Math.max(0.15, y / rect.height));
+    applySplitRatio(streamArea, ctxBottom);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (splitDragging) {
+      splitDragging = false;
+      splitter.classList.remove('dragging');
+    }
+  });
+}
+
+function applySplitRatio(streamArea: HTMLElement, ctxBottom: HTMLElement) {
+  streamArea.style.flex = `0 0 ${(splitRatio * 100).toFixed(1)}%`;
+  ctxBottom.style.flex = `0 0 ${((1 - splitRatio) * 100).toFixed(1)}%`;
 }
 
 let sendingLock = false;
@@ -695,12 +743,12 @@ function renderSvg() {
     if (isCollapsedAncestor(n)) continue;
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g'); g.style.cursor = 'pointer';
     const isNodeActive = selectedNode?.name === n.data.name;
-    const isRunning = runningAgents.has(n.data.name);
+    const agentState = runningAgents.get(n.data.name);
     const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     r.setAttribute('x', `${n.x}`); r.setAttribute('y', `${n.y}`); r.setAttribute('width', `${NODE_W}`); r.setAttribute('height', `${NODE_H}`);
     const cls = ['node-rect'];
     if (isNodeActive) cls.push('active');
-    if (isRunning) cls.push('running');
+    if (agentState) cls.push('agent-' + agentState);
     r.setAttribute('class', cls.join(' '));
     const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     t1.setAttribute('x', `${n.x+10}`); t1.setAttribute('y', `${n.y+20}`); t1.setAttribute('class', 'node-text'); t1.textContent = n.data.name;
@@ -708,10 +756,10 @@ function renderSvg() {
     t2.setAttribute('x', `${n.x+10}`); t2.setAttribute('y', `${n.y+36}`); t2.setAttribute('class', 'node-subtext');
     t2.textContent = n.data.children.length > 0 ? `${n.data.children.length} 子模块` : (n.data.description||'').slice(0, 15);
     g.append(r, t1, t2);
-    if (isRunning) {
+    if (agentState) {
       const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       dot.setAttribute('cx', `${n.x + NODE_W - 10}`); dot.setAttribute('cy', `${n.y + 10}`); dot.setAttribute('r', '5');
-      dot.setAttribute('class', 'node-running-dot');
+      dot.setAttribute('class', 'node-status-dot dot-' + agentState);
       g.append(dot);
     }
     if (n.data.children.length > 0) {

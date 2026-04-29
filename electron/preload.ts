@@ -23,7 +23,7 @@ const api = {
 
   isAgentRunning: (moduleName: string) => ipcRenderer.invoke('agent:isRunning', moduleName) as Promise<boolean>,
 
-  getRunningAgents: () => ipcRenderer.invoke('agent:getRunning') as Promise<string[]>,
+  getRunningAgents: () => ipcRenderer.invoke('agent:getRunning') as Promise<{ name: string; status: 'idle' | 'streaming' | 'error' }[]>,
 
   onAgentStream: (callback: (data: { moduleName: string; update: string; data: Record<string, unknown> }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { moduleName: string; update: string; data: Record<string, unknown> }) => callback(data);
