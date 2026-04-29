@@ -366,6 +366,16 @@ body {
 }
 .node-rect:hover { fill: var(--node-hover); stroke: var(--accent); }
 .node-rect.active { fill: var(--node-active); stroke: var(--accent2); stroke-width: 2; }
+.node-rect.running { stroke: var(--success); stroke-width: 2; filter: drop-shadow(0 0 6px rgba(158,206,106,0.4)); }
+
+.node-running-dot {
+  fill: var(--success);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; r: 5; }
+  50% { opacity: 0.5; r: 4; }
+}
 .node-text { font-size: 12px; font-weight: 600; fill: var(--text); pointer-events: none; font-family: inherit; }
 .node-subtext { font-size: 10px; fill: var(--text-dim); pointer-events: none; font-family: inherit; }
 .edge-line { stroke: var(--border); stroke-width: 1.5; fill: none; opacity: 0.6; }

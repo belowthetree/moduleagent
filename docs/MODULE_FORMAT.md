@@ -62,6 +62,16 @@ project-root/
 ---
 name: server
 description: 后端 API 服务，基于 Express + TypeScript，提供 RESTful 接口
+submodules:
+  - name: api
+    path: api
+    description: API 路由和控制层，定义所有 REST 端点
+  - name: models
+    path: models
+    description: 数据模型和 ORM 映射定义
+  - name: services
+    path: services
+    description: 核心业务逻辑服务层
 ---
 ```
 
@@ -71,12 +81,21 @@ description: 后端 API 服务，基于 Express + TypeScript，提供 RESTful �
 |---|---|---|---|
 | `name` | 是 | string | 模块名称，用于 Agent 识别和跨模块通信 |
 | `description` | 是 | string | 模块的简要描述，显示在模块树和 `module_list` 中 |
+| `submodules` | 否 | array | 子模块列表，每个子模块包含 `name`、`path`、`description` |
 
-模块代码的来源不在 `module.md` 中声明，而是在项目设置中统一配置（见下方"代码来源配置"）。
+**子模块字段：**
+
+| 字段 | 必填 | 类型 | 说明 |
+|---|---|---|---|
+| `name` | 是 | string | 子模块名称 |
+| `path` | 是 | string | 子模块路径，相对于父模块目录，同时也是 Agent 工作目录的子路径 |
+| `description` | 否 | string | 子模块描述 |
+
+> **重要**：子模块必须在 frontmatter 中显式声明其路径。`path` 字段决定了子模块的工作目录位置，`name` 用于跨模块通信。
 
 ### Markdown 正文
 
-前置元数据之后是标准的 Markdown 内容，系统会从中提取两类结构化信息。
+前置元数据之后是标准的 Markdown 内容，系统会从中提取模块说明。
 
 #### 模块说明
 
@@ -88,26 +107,6 @@ description: 后端 API 服务，基于 Express + TypeScript，提供 RESTful �
 基于 Express.js 的 RESTful API 服务，使用 TypeScript 编写。包含 JWT 认证、请求验证、文件上传等功能。
 ```
 
-#### 子模块
-
-二级标题为 "子模块" 或 "Submodules" 时，其后的列表会被解析为子模块声明。子模块必须是当前目录下的真实子目录（需包含自己的 `module.md`）。
-
-**列表格式：**
-
-```markdown
-## 子模块
-
-- `api/` - API 路由和控制层，定义所有 REST 端点
-- `models/` - 数据模型和 ORM 映射定义
-- `services/` - 核心业务逻辑服务层
-- `middleware/` - 中间件（认证、日志、错误处理）
-```
-
-**解析规则：**
-- 每个列表项需以反引号包裹的路径开头（`\`path/\`），末尾可带 `/`
-- 路径后可使用 `-`、`–`、`—` 分隔描述文本，或直接用空格
-- 描述文本为可选，不写则留空
-
 ## 完整示例
 
 ### 根模块（主 Agent 负责）
@@ -116,6 +115,19 @@ description: 后端 API 服务，基于 Express + TypeScript，提供 RESTful �
 ---
 name: my-app
 description: 企业级全栈 Web 应用，包含后端 API、前端界面和数据库管理
+submodules:
+  - name: server
+    path: server
+    description: 后端 API 服务，提供 RESTful 接口和业务逻辑
+  - name: frontend
+    path: frontend
+    description: 前端 React 应用，用户界面和交互
+  - name: database
+    path: database
+    description: 数据库管理，包含迁移脚本和种子数据
+  - name: shared
+    path: shared
+    description: 共享工具库和类型定义
 ---
 
 # 企业全栈应用
@@ -123,13 +135,6 @@ description: 企业级全栈 Web 应用，包含后端 API、前端界面和数�
 ## 模块说明
 
 一个完整的企业级 Web 应用，采用模块化架构设计。后端使用 Express + TypeScript，前端基于 React + Next.js。
-
-## 子模块
-
-- `server/` - 后端 API 服务，提供 RESTful 接口和业务逻辑
-- `frontend/` - 前端 React 应用，用户界面和交互
-- `database/` - 数据库管理，包含迁移脚本和种子数据
-- `shared/` - 共享工具库和类型定义
 ```
 
 ### 子模块
@@ -138,6 +143,16 @@ description: 企业级全栈 Web 应用，包含后端 API、前端界面和数�
 ---
 name: server
 description: 后端 API 服务，基于 Express + TypeScript
+submodules:
+  - name: api
+    path: api
+    description: API 路由和控制层
+  - name: models
+    path: models
+    description: 数据模型和 ORM 映射
+  - name: services
+    path: services
+    description: 核心业务逻辑服务层
 ---
 
 # 后端 API 服务
@@ -145,12 +160,6 @@ description: 后端 API 服务，基于 Express + TypeScript
 ## 模块说明
 
 基于 Express.js 的 RESTful API 服务，使用 TypeScript 编写。采用分层架构设计。
-
-## 子模块
-
-- `api/` - API 路由和控制层
-- `models/` - 数据模型和 ORM 映射
-- `services/` - 核心业务逻辑服务层
 ```
 
 ### 叶子模块（无子模块）
@@ -172,10 +181,12 @@ description: API 路由和控制层，定义了所有 REST 端点
 
 1. `ModuleScanner` 从项目根目录递归扫描所有 `module.md` 文件
 2. `ModuleParser.parseFile()` 对每个文件：
-   - 使用 `gray-matter` 解析 frontmatter（`name`、`description`）
-   - 使用 `marked` 解析 Markdown，提取 `## 模块说明` 段落和 `## 子模块` 列表
+   - 使用 `gray-matter` 解析 frontmatter（`name`、`description`、`submodules`）
+   - 子模块优先从 frontmatter 读取，若无则回退到解析 Markdown 正文中的 `## 子模块` 列表（兼容旧格式）
+   - 使用 `marked` 解析 Markdown，提取 `## 模块说明` 段落
 3. `ModuleGraph.build()` 将所有模块描述符构建为树形图
 4. 运行时，Agent 首次消息中自动注入对应模块的 `module.md` 正文
+5. Agent 的 cwd 根据 frontmatter 中声明的 `path` 字段（即模块目录的相对路径）确定
 
 ## 代码来源配置
 
@@ -229,9 +240,12 @@ description: API 路由和控制层，定义了所有 REST 端点
 ```
 1. 计算源码路径:  <代码来源根>/<模块相对路径>/
 2. 计算目标路径:  <工作目录>/<模块相对路径>/
+   （根模块使用模块名作为子目录）
 3. 复制源码到目标路径（过滤 node_modules、.git）
 4. 在目标路径启动 Agent
 ```
+
+Agent 的工作目录由模块的相对路径决定，该路径与父模块 frontmatter 中声明的 `submodules[].path` 一致。
 
 ### 目录结构
 
@@ -239,21 +253,25 @@ description: API 路由和控制层，定义了所有 REST 端点
 工作目录/
 ├── mainagentprompt.md     # 主 Agent 系统提示词
 ├── subagentprompt.md      # 子 Agent 系统提示词
-├── server/
+├── my-app/                # 根模块（使用模块名）
+│   ├── src/...
+│   ├── server/
+│   └── frontend/
+├── server/                # 子模块（使用相对路径）
 │   ├── src/...            # ← 从代码来源复制
 │   └── api/
-│       └── src/...        # ← 从代码来源复制
-└── frontend/
+│       └── src/...
+└── frontend/              # 子模块（使用相对路径）
     ├── src/...            # ← 从代码来源复制
     └── components/
-        └── src/...        # ← 从代码来源复制
+        └── src/...
 ```
 
 ### 隔离规则
 
 | Agent 角色 | 工作目录 | 可见范围 |
 |---|---|---|
-| 主 Agent（根模块） | `<工作目录>/` | 可见所有子模块文件夹，用于协调调度 |
+| 主 Agent（根模块） | `<工作目录>/<模块名>/` | 可见所有子模块文件夹，用于协调调度 |
 | 子 Agent | `<工作目录>/<相对路径>/` | 仅可见自己模块的文件 |
 
 ### 跨模块文件访问

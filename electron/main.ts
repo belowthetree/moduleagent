@@ -264,7 +264,7 @@ async function ensureModuleAgentRunning(moduleName: string): Promise<boolean> {
 function workspacePathForModule(node: ModuleGraphNode): string {
   if (currentWorkspaceRoot) {
     return node.relativePath === '.'
-      ? currentWorkspaceRoot
+      ? path.join(currentWorkspaceRoot, node.name)
       : path.join(currentWorkspaceRoot, node.relativePath);
   }
   return node.absolutePath || path.join(currentProjectRoot, node.relativePath);
@@ -273,30 +273,110 @@ function workspacePathForModule(node: ModuleGraphNode): string {
 function codeSourcePathForModule(node: ModuleGraphNode): string {
   if (!currentCodeSource) return '';
 
+  const resolvePath = (base: string): string => {
+    if (node.relativePath === '.') return base;
+
+    // Try direct mapping: <base>/<relativePath>
+    const direct = path.join(base, node.relativePath);
+    if (fs.existsSync(direct)) return direct;
+
+    // Try with src/ prefix (common for Rust/Java projects)
+    const srcPath = path.join(base, 'src', node.relativePath);
+    if (fs.existsSync(srcPath)) return srcPath;
+
+    // Fallback: return direct path (caller will verify existence)
+    return direct;
+  };
+
   if (currentCodeSource.type === 'local' && currentCodeSource.path) {
-    return node.relativePath === '.'
-      ? currentCodeSource.path
-      : path.join(currentCodeSource.path, node.relativePath);
+    return resolvePath(currentCodeSource.path);
   }
 
-  // Git source or unconfigured — not yet supported
   return '';
+}
+
+const gitCacheDir = new Map<string, string>();
+
+async function resolveGitCodeSource(): Promise<string> {
+  if (!currentCodeSource || currentCodeSource.type !== 'git' || !currentCodeSource.url) return '';
+
+  const cacheKey = `${currentCodeSource.url}@${currentCodeSource.branch || 'main'}`;
+  const cached = gitCacheDir.get(cacheKey);
+  if (cached && fs.existsSync(cached)) return cached;
+
+  const repoName = (currentCodeSource.url.split('/').pop() || 'repo').replace(/\.git$/, '');
+  const cachePath = path.join(os.tmpdir(), 'module-agent-git', repoName);
+
+  if (fs.existsSync(cachePath)) {
+    defaultLogger.info(`Git cache exists, pulling: ${cachePath}`);
+    try {
+      const git = await import('simple-git');
+      await git.simpleGit(cachePath).pull();
+    } catch (err) {
+      defaultLogger.warn(`Git pull failed, using cached copy: ${(err as Error).message}`);
+    }
+  } else {
+    defaultLogger.info(`Cloning ${currentCodeSource.url} -> ${cachePath}`);
+    await fse.ensureDir(path.dirname(cachePath));
+    const git = await import('simple-git');
+    const branch = currentCodeSource.branch || 'main';
+    await git.simpleGit().clone(currentCodeSource.url, cachePath, ['--branch', branch, '--single-branch']);
+  }
+
+  gitCacheDir.set(cacheKey, cachePath);
+  return cachePath;
 }
 
 async function prepareModuleWorkspace(node: ModuleGraphNode): Promise<string> {
   if (!currentWorkspaceRoot) return node.absolutePath;
 
   const destDir = node.relativePath === '.'
-    ? currentWorkspaceRoot
+    ? path.join(currentWorkspaceRoot, node.name)
     : path.join(currentWorkspaceRoot, node.relativePath);
 
-  const srcDir = codeSourcePathForModule(node);
+  // Resolve source directory — support git clone
+  let srcDir = codeSourcePathForModule(node);
+  if (!srcDir && currentCodeSource?.type === 'git') {
+    const gitRoot = await resolveGitCodeSource();
+    if (gitRoot) {
+      // Try direct and src/ prefix mappings (same as codeSourcePathForModule)
+      const direct = path.join(gitRoot, node.relativePath);
+      const srcPath = path.join(gitRoot, 'src', node.relativePath);
+      if (node.relativePath === '.') {
+        srcDir = gitRoot;
+      } else if (fs.existsSync(direct)) {
+        srcDir = direct;
+      } else if (fs.existsSync(srcPath)) {
+        srcDir = srcPath;
+      } else {
+        srcDir = direct; // caller will check existence
+      }
+    }
+  }
   if (!srcDir) {
     defaultLogger.warn(`Module ${node.name}: no code source configured, skipping isolation`);
     return node.absolutePath;
   }
 
+  if (!fs.existsSync(srcDir)) {
+    defaultLogger.warn(`Module ${node.name}: source dir not found: ${srcDir}, skipping isolation`);
+    // Ensure workspace directory still exists so agent has a valid cwd
+    await fse.ensureDir(destDir);
+    return destDir;
+  }
+
   if (path.resolve(srcDir) === path.resolve(destDir)) return destDir;
+
+  // Collect submodule relative paths to exclude from root module copy
+  const subModulePaths = new Set<string>();
+  if (node.relativePath === '.') {
+    for (const childName of node.children) {
+      const child = currentGraph?.nodes.get(childName);
+      if (child?.relativePath) {
+        subModulePaths.add(child.relativePath);
+      }
+    }
+  }
 
   try {
     defaultLogger.info(`Isolating module ${node.name}: ${srcDir} -> ${destDir}`);
@@ -307,6 +387,10 @@ async function prepareModuleWorkspace(node: ModuleGraphNode): Promise<string> {
       filter: (src: string) => {
         const basename = path.basename(src);
         if (basename === 'node_modules' || basename === '.git') return false;
+        if (subModulePaths.size > 0) {
+          const rel = path.relative(srcDir, src);
+          if (rel && [...subModulePaths].some(s => rel === s || rel.startsWith(s + path.sep))) return false;
+        }
         return true;
       },
     });
@@ -540,6 +624,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle('agent:isRunning', (_event, moduleName: string) => {
     return agents.has(moduleName);
+  });
+
+  ipcMain.handle('agent:getRunning', () => {
+    return [...agents.keys()];
   });
 
   // ── Config IPC ──

@@ -113,7 +113,8 @@ export class MCPServer {
           return { content: [{ type: 'text', text: `模块未找到: ${args.module}` }], isError: true };
         }
 
-        const fullPath = path.join(this.workspaceRoot, mod.path, args.filePath);
+        const moduleDir = mod.path === '.' ? mod.name : mod.path;
+        const fullPath = path.join(this.workspaceRoot, moduleDir, args.filePath);
 
         if (args.operation === 'read') {
           if (!await fs.pathExists(fullPath)) {

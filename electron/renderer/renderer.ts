@@ -7,6 +7,7 @@ interface ModuleAgentApi {
   cancelAgent(moduleName: string): Promise<{}>;
   stopAgent(moduleName: string): Promise<{}>;
   isAgentRunning(moduleName: string): Promise<boolean>;
+  getRunningAgents(): Promise<string[]>;
   onAgentStream(callback: (data: { moduleName: string; update: string; data: Record<string, unknown> }) => void): () => void;
   saveAgentConfig(projectRoot: string, cmd: string, args: string[], codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }): Promise<{ success: boolean }>;
   getAgentConfig(projectRoot: string): Promise<{ command: string; args: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string } }>;
@@ -33,6 +34,24 @@ let panStartX = 0; let panStartY = 0; let panStartTX = 0; let panStartTY = 0; le
 
 const contextMap = new Map<string, ChatMsg[]>();
 let ctxPage = new Map<string, number>();
+let runningAgents = new Set<string>();
+let runningPollTimer: ReturnType<typeof setInterval> | null = null;
+
+async function refreshRunningAgents() {
+  try { runningAgents = new Set(await window.moduleAgent.getRunningAgents()); } catch {}
+  if (treeRoot) renderSvg();
+}
+
+function startRunningPoll() {
+  if (runningPollTimer) return;
+  refreshRunningAgents();
+  runningPollTimer = setInterval(refreshRunningAgents, 3000);
+}
+
+function stopRunningPoll() {
+  if (runningPollTimer) { clearInterval(runningPollTimer); runningPollTimer = null; }
+  runningAgents.clear();
+}
 
 function $id(id: string): HTMLElement { return document.getElementById(id)!; }
 function show(el: HTMLElement) { el.style.display = ''; }
@@ -621,6 +640,7 @@ async function startScan() {
     updateStatusBar();
     treeRoot = await window.moduleAgent.getTree();
     if (treeRoot) layoutAndRender();
+    startRunningPoll();
     localStorage.setItem('lastWorkspace', workspacePath); localStorage.setItem('lastProject', projectPath);
   } catch (err) { e.textContent = '错误: ' + (err as Error).message; e.style.display = ''; }
 }
@@ -628,6 +648,7 @@ function goBack() {
   if (streamListenerCleanup) { streamListenerCleanup(); streamListenerCleanup = null; }
   stopStream(); hide($id('main-screen')); show($id('setup-screen'));
   treeRoot = null; flattenedNodes = []; selectedNode = null; checkStartReady();
+  stopRunningPoll();
 }
 
 // ── Tree ──
@@ -673,15 +694,26 @@ function renderSvg() {
   for (const n of vis) {
     if (isCollapsedAncestor(n)) continue;
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g'); g.style.cursor = 'pointer';
+    const isNodeActive = selectedNode?.name === n.data.name;
+    const isRunning = runningAgents.has(n.data.name);
     const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     r.setAttribute('x', `${n.x}`); r.setAttribute('y', `${n.y}`); r.setAttribute('width', `${NODE_W}`); r.setAttribute('height', `${NODE_H}`);
-    r.setAttribute('class', selectedNode?.name === n.data.name ? 'node-rect active' : 'node-rect');
+    const cls = ['node-rect'];
+    if (isNodeActive) cls.push('active');
+    if (isRunning) cls.push('running');
+    r.setAttribute('class', cls.join(' '));
     const t1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     t1.setAttribute('x', `${n.x+10}`); t1.setAttribute('y', `${n.y+20}`); t1.setAttribute('class', 'node-text'); t1.textContent = n.data.name;
     const t2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     t2.setAttribute('x', `${n.x+10}`); t2.setAttribute('y', `${n.y+36}`); t2.setAttribute('class', 'node-subtext');
     t2.textContent = n.data.children.length > 0 ? `${n.data.children.length} 子模块` : (n.data.description||'').slice(0, 15);
     g.append(r, t1, t2);
+    if (isRunning) {
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', `${n.x + NODE_W - 10}`); dot.setAttribute('cy', `${n.y + 10}`); dot.setAttribute('r', '5');
+      dot.setAttribute('class', 'node-running-dot');
+      g.append(dot);
+    }
     if (n.data.children.length > 0) {
       const cx = n.x + NODE_W - 12, cy = n.y + NODE_H - 12;
       const cb = document.createElementNS('http://www.w3.org/2000/svg', 'circle');

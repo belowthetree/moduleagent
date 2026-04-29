@@ -25,7 +25,7 @@ export function createAgentConnection(
 ): AgentConnection {
   const { command, args = [], env, logger } = options;
   const cwd = options.cwd?.replace(/\\/g, '/');
-  const { cmd, resolvedArgs } = resolveCommand(command, args);
+  const { cmd, resolvedArgs, shell } = resolveCommand(command, args);
 
   logger?.info(`CONNECTION spawning: ${cmd} ${resolvedArgs.join(' ')} (cwd: ${cwd || process.cwd()})`);
 
@@ -34,6 +34,7 @@ export function createAgentConnection(
     env: { ...process.env, ...env },
     cwd,
     windowsHide: true,
+    ...(shell !== undefined ? { shell } : {}),
   });
 
   childProcess.on('error', (err) => {
@@ -60,7 +61,7 @@ export function createAgentConnection(
   return { connection, process: childProcess };
 }
 
-export function resolveCommand(command: string, args: string[]): { cmd: string; resolvedArgs: string[] } {
+export function resolveCommand(command: string, args: string[]): { cmd: string; resolvedArgs: string[]; shell?: boolean } {
   if (process.platform !== 'win32' || command.includes('/') || command.includes('\\')) {
     return { cmd: command, resolvedArgs: args };
   }
@@ -75,11 +76,33 @@ export function resolveCommand(command: string, args: string[]): { cmd: string; 
         const scriptRel = match[1]!.replace(/%dp0%\\?/g, '');
         const scriptPath = path.join(path.dirname(cmdPath), scriptRel);
         if (fs.existsSync(scriptPath)) {
-          return { cmd: 'node', resolvedArgs: [scriptPath, ...args] };
+          const nodeExe = findNodeExe();
+          if (nodeExe) {
+            return { cmd: nodeExe, resolvedArgs: [scriptPath, ...args] };
+          }
         }
       }
     } catch {}
+
+    // Fallback: spawn via cmd.exe so .cmd is handled properly
+    return { cmd: 'cmd.exe', resolvedArgs: ['/c', cmdPath, ...args], shell: false };
   }
 
   return { cmd: command, resolvedArgs: args };
+}
+
+function findNodeExe(): string | null {
+  const progFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
+  const progFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const candidates = [
+    path.join(progFiles, 'nodejs', 'node.exe'),
+    path.join(progFilesX86, 'nodejs', 'node.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'nodejs', 'node.exe'),
+    'node.exe',
+  ];
+
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return c; } catch {}
+  }
+  return null;
 }

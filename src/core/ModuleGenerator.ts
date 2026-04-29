@@ -91,18 +91,18 @@ export class ModuleGenerator {
       name: frontmatter.name,
       description: frontmatter.description,
     };
+    if (subModules.length > 0) {
+      fmObj.submodules = subModules.map(s => ({
+        name: s.name,
+        path: s.path,
+        description: s.description,
+      }));
+    }
 
     let yaml = '---\n';
     yaml += `${ModuleGenerator.yamlDump(fmObj, 0)}\n`;
     yaml += '---\n\n';
     yaml += body.trimEnd() + '\n';
-
-    if (subModules.length > 0) {
-      yaml += '\n## 子模块\n';
-      for (const sub of subModules) {
-        yaml += `- \`${sub.path}/\` - ${sub.description}\n`;
-      }
-    }
 
     return yaml;
   }
@@ -116,9 +116,11 @@ export class ModuleGenerator {
 
       if (Array.isArray(value)) {
         lines.push(`${prefix}${key}:`);
+        const isObjectArray = value.length > 0 && typeof value[0] === 'object' && value[0] !== null;
         for (const item of value) {
           if (typeof item === 'object' && item !== null) {
-            lines.push(`${prefix}  - ${ModuleGenerator.yamlInline(item as Record<string, unknown>)}`);
+            lines.push(`${prefix}  -`);
+            lines.push(ModuleGenerator.yamlDump(item as Record<string, unknown>, indent + 2));
           } else {
             lines.push(`${prefix}  - ${JSON.stringify(item)}`);
           }
@@ -132,18 +134,5 @@ export class ModuleGenerator {
     }
 
     return lines.join('\n');
-  }
-
-  private static yamlInline(obj: Record<string, unknown>): string {
-    const parts: string[] = [];
-    for (const [key, value] of Object.entries(obj)) {
-      if (value === undefined || value === null) continue;
-      if (typeof value === 'string' && !value.includes(' ') && !value.includes(':')) {
-        parts.push(`${key}: ${value}`);
-      } else {
-        throw new Error('Inline YAML only supports simple string values without spaces');
-      }
-    }
-    return `{ ${parts.join(', ')} }`;
   }
 }

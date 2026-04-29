@@ -11,7 +11,10 @@ export class ModuleParser {
     const { data, content } = matter(raw);
 
     const frontmatter = ModuleParser.parseFrontmatter(data);
-    const subModules = ModuleParser.parseSubModules(marked.lexer(content));
+    // Prefer frontmatter submodules; fall back to markdown body (legacy format)
+    const subModules = frontmatter.submodules?.length
+      ? frontmatter.submodules
+      : ModuleParser.parseSubModulesFromBody(marked.lexer(content));
     const description = ModuleParser.parseDescription(marked.lexer(content));
 
     return {
@@ -25,8 +28,25 @@ export class ModuleParser {
   private static parseFrontmatter(data: Record<string, unknown>): ModuleFrontmatter {
     const name = typeof data.name === 'string' ? data.name : path.basename(process.cwd());
     const description = typeof data.description === 'string' ? data.description : '';
+    const submodules = ModuleParser.parseSubModulesFromData(data.submodules);
 
-    return { name, description };
+    return { name, description, submodules };
+  }
+
+  private static parseSubModulesFromData(raw: unknown): SubModuleRef[] | undefined {
+    if (!Array.isArray(raw)) return undefined;
+    const result: SubModuleRef[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const obj = item as Record<string, unknown>;
+      const name = typeof obj.name === 'string' ? obj.name : '';
+      const subPath = typeof obj.path === 'string' ? obj.path : '';
+      const desc = typeof obj.description === 'string' ? obj.description : '';
+      if (name && subPath) {
+        result.push({ name, path: subPath, description: desc });
+      }
+    }
+    return result.length > 0 ? result : undefined;
   }
 
   private static parseDescription(tokens: Token[]): string {
@@ -46,7 +66,7 @@ export class ModuleParser {
     return '';
   }
 
-  private static parseSubModules(tokens: Token[]): SubModuleRef[] {
+  private static parseSubModulesFromBody(tokens: Token[]): SubModuleRef[] {
     const subModules: SubModuleRef[] = [];
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i];

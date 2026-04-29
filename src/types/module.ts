@@ -1,6 +1,7 @@
 export interface ModuleFrontmatter {
   name: string;
   description: string;
+  submodules?: SubModuleRef[];
 }
 
 export interface SubModuleRef {
