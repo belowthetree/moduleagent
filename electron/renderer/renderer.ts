@@ -238,6 +238,16 @@ function applyTransform() {
 }
 function resetView() { panX = 20; panY = 20; scale = 1; applyTransform(); }
 
+function focusOnRoot() {
+  const panel = $id('tree-panel');
+  const rootNode = flattenedNodes.find(n => n.data.name === treeRoot?.name);
+  if (!rootNode || !panel) return;
+  panX = panel.clientWidth / 2 - rootNode.x - NODE_W / 2;
+  panY = panel.clientHeight / 2 - rootNode.y - NODE_H / 2;
+  scale = 1;
+  applyTransform();
+}
+
 // ── Drawer resize ──
 function initDrawerResize() {
   const handle = document.getElementById('drawer-resize-handle');
@@ -359,7 +369,10 @@ function openDrawer(node: TreeNode) {
   $id('drawer').classList.add('open');
   $id('drawer-overlay').classList.add('open');
   $id('drawer-overlay').style.display = '';
+  const savedPanX = panX, savedPanY = panY, savedScale = scale;
   layoutAndRender();
+  panX = savedPanX; panY = savedPanY; scale = savedScale;
+  applyTransform();
 }
 function closeDrawer() {
   hideCancelButton();
@@ -367,7 +380,10 @@ function closeDrawer() {
   $id('drawer').classList.remove('open');
   $id('drawer-overlay').classList.remove('open');
   setTimeout(() => $id('drawer-overlay').style.display = 'none', 300);
+  const savedPanX = panX, savedPanY = panY, savedScale = scale;
   layoutAndRender();
+  panX = savedPanX; panY = savedPanY; scale = savedScale;
+  applyTransform();
 }
 function buildDrawerContent(node: TreeNode) {
   const name = node.name;
@@ -489,6 +505,20 @@ function renderContextCards(moduleName: string) {
       const id = card.getAttribute('data-id')!;
       const msg = msgs.find(m => m.id === id);
       if (msg) showModal(msg);
+    });
+  });
+
+  cardsEl.querySelectorAll('.ctx-thinking-toggle').forEach(toggle => {
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = toggle.getAttribute('data-id')!;
+      const content = document.getElementById('thinking-' + id);
+      const arrow = toggle.querySelector('.ctx-thinking-arrow');
+      if (content && arrow) {
+        const isOpen = content.style.display !== 'none';
+        content.style.display = isOpen ? 'none' : '';
+        arrow.textContent = isOpen ? '▶' : '▼';
+      }
     });
   });
 
@@ -731,8 +761,8 @@ function showModal(msg: ChatMsg) {
   if (msg.thinking) {
     sections += `
     <div class="modal-section">
-      <div class="modal-section-title">💭 思考过程</div>
-      <div class="content-text thinking-text">${escapeHtml(msg.thinking)}</div>
+      <div class="modal-section-title modal-thinking-toggle" data-action="toggle-modal-thinking">💭 思考过程 <span class="ctx-thinking-arrow">▶</span></div>
+      <div class="content-text thinking-text modal-thinking-content" style="display:none">${escapeHtml(msg.thinking)}</div>
     </div>`;
   }
   if (msg.tools) {
@@ -761,6 +791,19 @@ function showModal(msg: ChatMsg) {
     </div>
     ${sections}`;
   show($id('modal-overlay'));
+
+  const modalToggle = $id('modal-body').querySelector('.modal-thinking-toggle');
+  if (modalToggle) {
+    modalToggle.addEventListener('click', () => {
+      const content = $id('modal-body').querySelector('.modal-thinking-content') as HTMLElement;
+      const arrow = modalToggle.querySelector('.ctx-thinking-arrow');
+      if (content && arrow) {
+        const isOpen = content.style.display !== 'none';
+        content.style.display = isOpen ? 'none' : '';
+        arrow.textContent = isOpen ? '▶' : '▼';
+      }
+    });
+  }
 }
 function closeModal() { hide($id('modal-overlay')); }
 
@@ -801,7 +844,7 @@ async function startScan() {
     $id('status-path').textContent = (projectPath.split(/[/\\]/).pop() || projectPath) || '';
     updateStatusBar();
     treeRoot = await window.moduleAgent.getTree();
-    if (treeRoot) layoutAndRender();
+    if (treeRoot) { layoutAndRender(); focusOnRoot(); }
     startRunningPoll();
     localStorage.setItem('lastWorkspace', workspacePath); localStorage.setItem('lastProject', projectPath);
   } catch (err) { e.textContent = '错误: ' + (err as Error).message; e.style.display = ''; }

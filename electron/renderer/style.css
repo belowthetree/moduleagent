@@ -511,15 +511,46 @@ body {
   margin-top: 4px;
 }
 
-.ctx-card .ctx-thinking {
+.ctx-thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
+  margin-bottom: 2px;
+  cursor: pointer;
+  user-select: none;
+}
+.ctx-thinking-toggle:hover { color: var(--text); }
+.ctx-thinking-arrow { font-size: 9px; color: var(--text-dim); }
+.ctx-thinking-preview {
   color: var(--text-dim);
   font-style: italic;
-  margin-bottom: 2px;
-  line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+.ctx-thinking-content {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  line-height: 1.4;
+  margin-bottom: 4px;
+  padding: 6px 8px;
+  background: rgba(160,160,200,0.06);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.modal-thinking-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.modal-thinking-toggle:hover { color: var(--accent); }
+.modal-thinking-content { }
 }
 .ctx-card .ctx-tools {
   font-size: 11px;

@@ -150,14 +150,10 @@ function startMcpBackend(): Promise<number> {
           try {
             agentStatus.set(targetModule, 'streaming');
             const promptBlocks = buildPromptBlocks(targetModule, promptText);
-            const MCP_TIMEOUT_MS = 5 * 60 * 1000;
-            const result = await Promise.race([
-              entry.connection.prompt({
-                sessionId: entry.sessionId,
-                prompt: promptBlocks,
-              }),
-              new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Cross-module call timed out (5 min)')), MCP_TIMEOUT_MS)),
-            ]);
+            const result = await entry.connection.prompt({
+              sessionId: entry.sessionId,
+              prompt: promptBlocks,
+            });
             agentStatus.set(targetModule, 'idle');
             res.writeHead(200);
             const responseText = chunks.join('').trim();
