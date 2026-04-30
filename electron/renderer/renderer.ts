@@ -281,46 +281,37 @@ function showStreamStatus(msg: string) {
 
 function appendStream(text: string) {
   if (!selectedNode || !streamState.has(selectedNode.name)) return;
+  if (streamState.get(selectedNode.name)?.finished) return;
   const el = document.getElementById('stream-content');
   if (!el) return;
-  const hadCursor = el.querySelector('.stream-cursor');
-  if (hadCursor) hadCursor.remove();
-  el.innerHTML += escapeHtml(text);
-  el.innerHTML += '<span class="stream-cursor"></span>';
+  el.appendChild(document.createTextNode(text));
   const area = $id('stream-area');
   if (area) area.scrollTop = area.scrollHeight;
 }
 
 function appendThinking(text: string) {
   if (!selectedNode || !streamState.has(selectedNode.name)) return;
+  if (streamState.get(selectedNode.name)?.finished) return;
   const el = document.getElementById('stream-content');
   if (!el) return;
-  const hadCursor = el.querySelector('.stream-cursor');
-  if (hadCursor) hadCursor.remove();
-  el.innerHTML += `<span class="stream-thinking">${escapeHtml(text)}</span>`;
-  el.innerHTML += '<span class="stream-cursor"></span>';
+  el.insertAdjacentHTML('beforeend', `<span class="stream-thinking">${escapeHtml(text)}</span>`);
   const area = $id('stream-area');
   if (area) area.scrollTop = area.scrollHeight;
 }
 
 function appendToolCall(line: string) {
   if (!selectedNode || !streamState.has(selectedNode.name)) return;
+  if (streamState.get(selectedNode.name)?.finished) return;
   const el = document.getElementById('stream-content');
   if (!el) return;
-  const hadCursor = el.querySelector('.stream-cursor');
-  if (hadCursor) hadCursor.remove();
-  el.innerHTML += `<span class="stream-tool">\n${escapeHtml(line)}\n</span>`;
-  el.innerHTML += '<span class="stream-cursor"></span>';
+  el.insertAdjacentHTML('beforeend', `<span class="stream-tool">\n${escapeHtml(line)}\n</span>`);
   const area = $id('stream-area');
   if (area) area.scrollTop = area.scrollHeight;
 }
 
 function finishStream(moduleName: string) {
   const el = document.getElementById('stream-content');
-  if (el) {
-    const cursor = el.querySelector('.stream-cursor');
-    if (cursor) cursor.remove();
-  }
+  if (el) el.classList.remove('stream-active');
   const st = streamState.get(moduleName);
   const content = (st?.reply || '').trim();
   const thinking = (st?.thinking || '').trim();
@@ -335,8 +326,8 @@ function finishStream(moduleName: string) {
     saveContext(moduleName);
     renderContextCards(moduleName);
   }
-  streamState.delete(moduleName);
-  if (streamState.size === 0) clearStreamSnapshot();
+  if (st) { st.finished = true; }
+  saveStreamSnapshot();
 }
 
 function showCancelButton() {
@@ -401,14 +392,14 @@ function buildDrawerContent(node: TreeNode) {
     ? projectPath
     : (workspacePath || projectPath) + '/' + node.path.replace(/^\.\//, '');
 
-  const isStreaming = streamState.has(name);
+  const isStreaming = streamState.has(name) && !streamState.get(name)?.finished;
   const st = streamState.get(name);
-  const streamPlaceholder = isStreaming && st
+  const streamPlaceholder = st
     ? (st.thinking ? `<span class="stream-thinking">${escapeHtml(st.thinking)}</span>` : '')
       + st.tools.split('\n').filter(Boolean).map(l => `<span class="stream-tool">\n${escapeHtml(l)}\n</span>`).join('')
       + escapeHtml(st.reply)
-      + '<span class="stream-cursor"></span>'
     : '<div class="stream-empty">等待 Agent 响应...</div>';
+  const streamClass = isStreaming ? 'stream-active' : (st ? '' : 'stream-empty');
 
   $id('drawer-body').innerHTML = `
     <div class="info-compact">
@@ -423,7 +414,7 @@ function buildDrawerContent(node: TreeNode) {
     </div>
     <div class="split-zone">
       <div id="stream-area" class="stream-area">
-        <div id="stream-content" class="${isStreaming ? '' : 'stream-empty'}">${streamPlaceholder}</div>
+        <div id="stream-content" class="${streamClass}">${streamPlaceholder}</div>
       </div>
       <button class="btn-cancel-stream" id="btn-cancel-stream" style="${isStreaming ? '' : 'display:none'}">取消</button>
       <div class="splitter" id="drawer-splitter"></div>
@@ -608,7 +599,7 @@ function sendContextMsg(moduleName: string) {
 }
 
 let streamListenerCleanup: (() => void) | null = null;
-const streamState = new Map<string, { reply: string; thinking: string; tools: string }>();
+const streamState = new Map<string, { reply: string; thinking: string; tools: string; finished?: boolean }>();
 let streamSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function getStreamState(moduleName: string) {
@@ -619,10 +610,10 @@ function getStreamState(moduleName: string) {
 
 function saveStreamSnapshot() {
   if (streamState.size === 0) return;
-  const entries: { moduleName: string; reply: string; thinking: string; tools: string; time: string }[] = [];
+  const entries: { moduleName: string; reply: string; thinking: string; tools: string; finished?: boolean; time: string }[] = [];
   for (const [name, st] of streamState) {
     if (st.reply || st.thinking || st.tools) {
-      entries.push({ moduleName: name, reply: st.reply, thinking: st.thinking, tools: st.tools, time: now() });
+      entries.push({ moduleName: name, reply: st.reply, thinking: st.thinking, tools: st.tools, finished: st.finished, time: now() });
     }
   }
   if (entries.length > 0) localStorage.setItem('stream_snapshot', JSON.stringify(entries));
@@ -633,7 +624,7 @@ function scheduleStreamSave() {
   streamSaveTimer = setTimeout(() => {
     streamSaveTimer = null;
     saveStreamSnapshot();
-  }, 1000);
+  }, 2000);
 }
 
 function clearStreamSnapshot() {
@@ -644,10 +635,14 @@ function restoreStreamSnapshot(moduleName: string): ChatMsg | null {
   try {
     const raw = localStorage.getItem('stream_snapshot');
     if (!raw) return null;
-    const entries = JSON.parse(raw) as { moduleName: string; reply: string; thinking: string; tools: string; time: string }[];
-    const snap = entries.find(e => e.moduleName === moduleName);
-    if (!snap) return null;
+    const entries = JSON.parse(raw) as { moduleName: string; reply: string; thinking: string; tools: string; finished?: boolean; time: string }[];
+    const idx = entries.findIndex(e => e.moduleName === moduleName);
+    if (idx === -1) return null;
+    const snap = entries[idx]!;
     if (!snap.reply && !snap.thinking && !snap.tools) return null;
+    entries.splice(idx, 1);
+    if (entries.length > 0) localStorage.setItem('stream_snapshot', JSON.stringify(entries));
+    else localStorage.removeItem('stream_snapshot');
     return {
       id: 's' + Date.now(),
       role: 'agent',
@@ -655,7 +650,7 @@ function restoreStreamSnapshot(moduleName: string): ChatMsg | null {
       thinking: snap.thinking || '',
       tools: snap.tools || '',
       time: snap.time,
-      status: 'interrupted',
+      status: snap.finished ? 'completed' : 'interrupted',
       moduleName,
       agentCmd,
     };
@@ -666,6 +661,7 @@ function ensureStreamListener() {
   if (streamListenerCleanup) return;
   streamListenerCleanup = window.moduleAgent.onAgentStream(({ moduleName, update, data }) => {
     const st = getStreamState(moduleName);
+    if (st.finished) return;
     if (update === 'agent_message_chunk') {
       const block = (data as any).content as { type?: string; text?: string } | undefined;
       const text = block?.type === 'text' ? block.text : undefined;

@@ -298,7 +298,8 @@ body {
   color: var(--accent);
   margin-bottom: 4px;
 }
-.stream-area .stream-cursor {
+.stream-area .stream-active::after {
+  content: '';
   display: inline-block;
   width: 8px;
   height: 15px;
@@ -405,14 +406,14 @@ body {
 }
 .node-rect:hover { fill: var(--node-hover); stroke: var(--accent); }
 .node-rect.active { fill: var(--node-active); stroke: var(--accent2); stroke-width: 2; }
-.node-rect.agent-idle { stroke: var(--success); stroke-width: 2; filter: drop-shadow(0 0 4px rgba(158,206,106,0.3)); }
+.node-rect.agent-idle { stroke: var(--accent); stroke-width: 2; filter: drop-shadow(0 0 4px rgba(122,162,247,0.3)); }
 .node-rect.agent-streaming { stroke: var(--accent); stroke-width: 2; filter: drop-shadow(0 0 8px rgba(122,162,247,0.5)); }
 .node-rect.agent-error { stroke: var(--error); stroke-width: 2; filter: drop-shadow(0 0 4px rgba(247,118,142,0.4)); }
 
-.node-status-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
-.dot-idle { fill: var(--success); }
+.node-status-dot { }
+.dot-idle { fill: var(--accent); }
 .dot-streaming { fill: var(--accent); animation: pulse-dot 0.8s ease-in-out infinite; }
-.dot-error { fill: var(--error); animation: none; }
+.dot-error { fill: var(--error); }
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
