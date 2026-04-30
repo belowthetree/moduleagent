@@ -118,8 +118,7 @@ ModuleAgent/
 │   │       ├── tools/
 │   │       │   ├── ModuleCallTool.ts     # 调用其他模块执行任务
 │   │       │   ├── ModuleQueryTool.ts    # 查询其他模块信息
-│   │       │   ├── ModuleListTool.ts     # 列出所有可用模块
-│   │       │   └── FileAccessTool.ts     # 跨模块文件访问
+│   │       │   └── ModuleListTool.ts     # 列出所有可用模块
 │   │       └── CommunicationBus.ts      # 模块间消息路由
 │   │
 │   ├── agents/
@@ -391,7 +390,6 @@ class MCPServer {
   // - module_call: 调用目标模块执行任务
   // - module_query: 查询目标模块信息
   // - module_list: 列出所有可用模块
-  // - file_access: 跨模块文件读写
 }
 ```
 
@@ -402,7 +400,6 @@ class MCPServer {
 | `module_call` | `target: string`, `task: string`, `context?: object` | 向目标模块 Agent 发送任务并等待结果 |
 | `module_query` | `target: string`, `query: string` | 向目标模块查询信息 |
 | `module_list` | 无 | 列出项目所有模块及其描述 |
-| `file_access` | `module: string`, `path: string`, `op: "read" \| "write"`, `content?: string` | 跨模块文件访问 |
 
 ---
 

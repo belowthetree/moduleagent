@@ -12,13 +12,11 @@ async function main() {
   let graphFile = '';
   let backendUrl = '';
   let moduleName = '';
-  let workspaceRoot = '';
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--graph-file' && args[i + 1]) graphFile = args[++i]!;
     else if (args[i] === '--backend-url' && args[i + 1]) backendUrl = args[++i]!;
     else if (args[i] === '--module-name' && args[i + 1]) moduleName = args[++i]!;
-    else if (args[i] === '--workspace-root' && args[i + 1]) workspaceRoot = args[++i]!;
   }
 
   if (!graphFile) {
@@ -59,8 +57,6 @@ async function main() {
   const server = new MCPServer(bus, {
     name: 'module-agent-mcp',
     version: '0.1.0',
-    projectRoot: process.cwd(),
-    workspaceRoot: workspaceRoot || undefined,
     moduleName,
   });
 

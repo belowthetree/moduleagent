@@ -51,7 +51,7 @@ ModuleAgent/
 │   │   │       ├── fs.ts            # FsHandler — 工作区限制的文件读写
 │   │   │       └── terminal.ts      # TerminalHandler — 终端子进程管理
 │   │   ├── mcp/
-│   │   │   ├── MCPServer.ts         # MCP Server（暴露 4 个工具）
+│   │   │   ├── MCPServer.ts         # MCP Server（暴露 3 个工具）
 │   │   │   ├── CommunicationBus.ts  # 消息路由总线
 │   │   │   └── server-entry.ts      # MCP Server 独立入口（由 Agent 子进程启动）
 │   │   └── index.ts                 # 统一导出
@@ -70,8 +70,9 @@ ModuleAgent/
 │       └── module.ts                # ModuleDefinition, ModuleGraphNode 等
 ├── dist/
 │   └── mcp-server.cjs               # MCP Server 打包产物（563KB，自包含）
-├── mainagentprompt.md               # 主 Agent 系统提示
-├── subagentprompt.md                # 子 Agent 系统提示
+├── config/
+│   ├── mainagentprompt.md           # 主 Agent 系统提示
+│   └── subagentprompt.md            # 子 Agent 系统提示
 ├── test_acp.ts                      # ACP SDK 独立测试脚本
 ├── package.json
 └── tsconfig.json
@@ -113,7 +114,6 @@ Agent A (子进程)
 MCP Server (独立子进程)
   ├─ 通过 stdio 与 Agent 通信（MCP 协议）
   ├─ module_list    → 从 graph 文件读取，直接返回
-  ├─ file_access    → 通过 fs-extra 直接读写
   └─ module_call    → HTTP POST → Electron 后端 → 路由到目标 Agent
 
 Electron MCP 后端 (HTTP, 127.0.0.1:随机端口)
@@ -171,7 +171,6 @@ interface Client {
 | `module_list` | 无 | 列出所有模块及描述 |
 | `module_call` | targetModule, task, context? | 向目标模块发任务 |
 | `module_query` | targetModule, query | 查询目标模块 |
-| `file_access` | module, filePath, operation(read/write), content? | 跨模块文件操作 |
 
 ### 4.3 IPC 通道 (Electron)
 
@@ -344,7 +343,6 @@ npm run build:mcp-server    # dist/mcp-server.cjs
 ## 9. 待完成
 
 - [ ] `module_call` 的 HTTP 后端需要处理超时和大响应
-- [ ] MCP Server 的 `file_access` 路径校验需要加强
 - [ ] AgentManager/AgentRouter 与 Electron 路径整合（目前两套并行代码）
 - [ ] 模块代码同步到工作区（WorkspaceManager 未实现）
 - [ ] 生产构建（electron-builder 打包）

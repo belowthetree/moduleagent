@@ -3,28 +3,20 @@ import { StdioServerTransport } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import type { ModuleGraph as ModuleGraphType } from '../../types/module.js';
 import { CommunicationBus } from './CommunicationBus.js';
-import fs from 'fs-extra';
-import path from 'path';
 
 export interface MCPServerOptions {
   name?: string;
   version?: string;
-  projectRoot?: string;
-  workspaceRoot?: string;
   moduleName?: string;
 }
 
 export class MCPServer {
   private server: McpServer;
   private bus: CommunicationBus;
-  private projectRoot: string;
-  private workspaceRoot: string;
   private moduleName: string;
 
   constructor(bus: CommunicationBus, options: MCPServerOptions = {}) {
     this.bus = bus;
-    this.projectRoot = options.projectRoot || process.cwd();
-    this.workspaceRoot = options.workspaceRoot || this.projectRoot;
     this.moduleName = options.moduleName || '';
 
     this.server = new McpServer(
@@ -95,52 +87,11 @@ export class MCPServer {
       },
     );
 
-    this.server.registerTool(
-      'file_access',
-      {
-        description: '跨模块文件读写操作',
-        inputSchema: z.object({
-          module: z.string().describe('目标模块名称'),
-          filePath: z.string().describe('相对于模块根目录的文件路径'),
-          operation: z.enum(['read', 'write']).describe('操作类型'),
-          content: z.string().optional().describe('写入内容（write 操作时必填）'),
-        }),
-      },
-      async (args) => {
-        const modules = this.bus.listModules();
-        const mod = modules.find((m) => m.name === args.module);
-        if (!mod) {
-          return { content: [{ type: 'text', text: `模块未找到: ${args.module}` }], isError: true };
-        }
-
-        const moduleDir = mod.path === '.' ? mod.name : mod.path;
-        const fullPath = path.join(this.workspaceRoot, moduleDir, args.filePath);
-
-        if (args.operation === 'read') {
-          if (!await fs.pathExists(fullPath)) {
-            return { content: [{ type: 'text', text: `文件未找到: ${args.filePath}` }], isError: true };
-          }
-          const content = await fs.readFile(fullPath, 'utf-8');
-          return { content: [{ type: 'text', text: content }] };
-        }
-
-        if (args.operation === 'write') {
-          if (args.content === undefined) {
-            return { content: [{ type: 'text', text: '写入操作需要 content 参数' }], isError: true };
-          }
-          await fs.ensureDir(path.dirname(fullPath));
-          await fs.writeFile(fullPath, args.content, 'utf-8');
-          return { content: [{ type: 'text', text: `文件写入成功: ${args.filePath}` }] };
-        }
-
-        return { content: [{ type: 'text', text: `未知操作: ${args.operation}` }], isError: true };
-      },
-    );
   }
 
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
-    console.error('[MCPServer] Starting with tools: module_list, module_call, module_query, file_access');
+    console.error('[MCPServer] Starting with tools: module_list, module_call, module_query');
     await this.server.connect(transport);
     console.error('[MCPServer] Connected to stdio transport');
   }

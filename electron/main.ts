@@ -47,8 +47,8 @@ let cachedMainPrompt = '';
 let cachedSubPrompt = '';
 
 function loadSystemPrompts() {
-  const mainPath = path.join(currentProjectRoot, 'mainagentprompt.md');
-  const subPath = path.join(currentProjectRoot, 'subagentprompt.md');
+  const mainPath = path.join(currentProjectRoot, 'config', 'mainagentprompt.md');
+  const subPath = path.join(currentProjectRoot, 'config', 'subagentprompt.md');
   try { cachedMainPrompt = fs.readFileSync(mainPath, 'utf-8'); } catch { cachedMainPrompt = ''; }
   try { cachedSubPrompt = fs.readFileSync(subPath, 'utf-8'); } catch { cachedSubPrompt = ''; }
   if (cachedMainPrompt) defaultLogger.info(`Loaded main agent prompt (${cachedMainPrompt.length} chars)`);
@@ -426,7 +426,6 @@ function buildMcpServers(moduleName: string): McpServer[] {
 
   const args = [serverPath, '--graph-file', mcpGraphFile, '--backend-url', backendUrl];
   if (moduleName) args.push('--module-name', moduleName);
-  if (currentWorkspaceRoot) args.push('--workspace-root', currentWorkspaceRoot);
 
   const servers: McpServer[] = [{
     name: 'module-agent',
@@ -442,7 +441,7 @@ function buildMcpServers(moduleName: string): McpServer[] {
     } else if ('url' in s) {
       defaultLogger.info(`  http: ${(s as { url: string }).url}`);
     }
-    defaultLogger.info(`  Tools: module_list, module_call, module_query, file_access`);
+    defaultLogger.info(`  Tools: module_list, module_call, module_query`);
   }
 
   return servers;

@@ -251,8 +251,9 @@ Agent 的工作目录由模块的相对路径决定，该路径与父模块 fron
 
 ```
 工作目录/
-├── mainagentprompt.md     # 主 Agent 系统提示词
-├── subagentprompt.md      # 子 Agent 系统提示词
+├── config/
+│   ├── mainagentprompt.md  # 主 Agent 系统提示词
+│   └── subagentprompt.md   # 子 Agent 系统提示词
 ├── my-app/                # 根模块（使用模块名）
 │   ├── src/...
 │   ├── server/
@@ -273,10 +274,6 @@ Agent 的工作目录由模块的相对路径决定，该路径与父模块 fron
 |---|---|---|
 | 主 Agent（根模块） | `<工作目录>/<模块名>/` | 可见所有子模块文件夹，用于协调调度 |
 | 子 Agent | `<工作目录>/<相对路径>/` | 仅可见自己模块的文件 |
-
-### 跨模块文件访问
-
-`file_access` MCP 工具统一基于工作目录根路径解析路径。无论哪个 Agent 发起调用，`path.join(workspaceRoot, relativePath, filePath)` 的结果都一致，保证跨模块读写的一致性和安全性。
 
 ### 错误处理
 
