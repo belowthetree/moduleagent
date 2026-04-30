@@ -340,6 +340,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 60px;
+  overflow: hidden;
 }
 
 .drawer-body .ctx-card-list {
@@ -407,12 +408,12 @@ body {
 .node-rect:hover { fill: var(--node-hover); stroke: var(--accent); }
 .node-rect.active { fill: var(--node-active); stroke: var(--accent2); stroke-width: 2; }
 .node-rect.agent-idle { stroke: var(--accent); stroke-width: 2; filter: drop-shadow(0 0 4px rgba(122,162,247,0.3)); }
-.node-rect.agent-streaming { stroke: var(--accent); stroke-width: 2; filter: drop-shadow(0 0 8px rgba(122,162,247,0.5)); }
+.node-rect.agent-streaming { stroke: var(--success); stroke-width: 2; filter: drop-shadow(0 0 8px rgba(158,206,106,0.5)); }
 .node-rect.agent-error { stroke: var(--error); stroke-width: 2; filter: drop-shadow(0 0 4px rgba(247,118,142,0.4)); }
 
 .node-status-dot { }
 .dot-idle { fill: var(--accent); }
-.dot-streaming { fill: var(--accent); animation: pulse-dot 0.8s ease-in-out infinite; }
+.dot-streaming { fill: var(--success); animation: pulse-dot 0.8s ease-in-out infinite; }
 .dot-error { fill: var(--error); }
 
 @keyframes pulse-dot {

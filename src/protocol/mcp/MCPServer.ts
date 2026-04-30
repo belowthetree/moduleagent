@@ -49,19 +49,33 @@ export class MCPServer {
     this.server.registerTool(
       'module_call',
       {
-        description: '向目标模块发送任务请求并等待结果',
+        description: '向目标模块发送任务请求并等待结果。请按结构化格式填写各字段，便于目标模块准确理解任务。',
         inputSchema: z.object({
           targetModule: z.string().describe('目标模块名称'),
-          task: z.string().describe('任务描述'),
-          context: z.string().optional().describe('可选的上下文信息（JSON字符串）'),
+          goal: z.string().describe('任务目标：需要完成什么，尽量具体可执行'),
+          background: z.string().describe('背景：为什么需要此任务，在整体目标中的位置'),
+          expectedOutput: z.string().describe('预期输出：需要返回什么格式和内容'),
+          constraints: z.string().describe('约束条件：禁止做的事情，范围限定'),
         }),
       },
       async (args) => {
-        let contextObj: Record<string, unknown> | undefined;
-        if (args.context) {
-          try { contextObj = JSON.parse(args.context); } catch {}
-        }
-        const result = await this.bus.sendToModule({ targetModule: args.targetModule, task: args.task, context: contextObj, requestingModule: this.moduleName });
+        const taskText = [
+          `[跨模块请求]`,
+          `来源: ${this.moduleName || '(主模块)'}`,
+          `目标: ${args.goal}`,
+          `背景: ${args.background}`,
+          `预期输出: ${args.expectedOutput}`,
+          `约束: ${args.constraints}`,
+          `---`,
+          `请在模块范围内完成上述任务。`,
+        ].join('\n');
+
+        const result = await this.bus.sendToModule({
+          targetModule: args.targetModule,
+          task: taskText,
+          context: { requestingModule: this.moduleName, timestamp: Date.now() },
+          requestingModule: this.moduleName,
+        });
         const text = result.success
           ? `模块 ${args.targetModule} 调用成功:\n${result.result || '(无返回内容)'}`
           : `模块 ${args.targetModule} 调用失败: ${result.error}`;
@@ -76,10 +90,17 @@ export class MCPServer {
         inputSchema: z.object({
           targetModule: z.string().describe('目标模块名称'),
           query: z.string().describe('查询内容'),
+          background: z.string().describe('查询背景：为什么需要此信息'),
         }),
       },
       async (args) => {
-        const result = await this.bus.queryModule({ targetModule: args.targetModule, query: args.query, requestingModule: this.moduleName });
+        const queryText = [
+          `[查询请求，来自: ${this.moduleName || '(主模块)'}]`,
+          `背景: ${args.background}`,
+          `查询: ${args.query}`,
+        ].join('\n');
+
+        const result = await this.bus.queryModule({ targetModule: args.targetModule, query: queryText, requestingModule: this.moduleName });
         const text = result.success
           ? `查询结果:\n${result.answer || '(无返回内容)'}`
           : `查询失败: ${result.error}`;

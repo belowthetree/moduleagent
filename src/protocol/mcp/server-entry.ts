@@ -40,14 +40,20 @@ async function main() {
   bus.setModuleGraph(graph);
   bus.setGraphFile(graphFile);
 
+  const MCP_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
   if (backendUrl) {
     bus.onMessage(async (message) => {
       try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), MCP_TIMEOUT_MS);
         const resp = await fetch(backendUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(message),
+          signal: controller.signal,
         });
+        clearTimeout(timer);
         return await resp.json() as { success: boolean; result?: string; answer?: string; error?: string };
       } catch (err) {
         return { success: false, error: `Backend unreachable: ${(err as Error).message}` };

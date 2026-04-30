@@ -4,9 +4,11 @@ import type { ReadTextFileRequest, ReadTextFileResponse, WriteTextFileRequest } 
 
 export class FsHandler {
   private workspaceRoot: string;
+  private allowedDirs: string[];
 
-  constructor(workspaceRoot: string) {
+  constructor(workspaceRoot: string, subModuleDirs: string[] = []) {
     this.workspaceRoot = path.resolve(workspaceRoot);
+    this.allowedDirs = [this.workspaceRoot, ...subModuleDirs.map(d => path.resolve(d))];
   }
 
   async readFile(params: ReadTextFileRequest): Promise<ReadTextFileResponse> {
@@ -38,8 +40,9 @@ export class FsHandler {
 
   private resolvePath(filePath: string): string {
     const p = path.resolve(filePath);
-    if (!p.startsWith(this.workspaceRoot)) {
-      throw new Error(`Access denied: ${filePath} is outside workspace`);
+    const allowed = this.allowedDirs.some(dir => p.startsWith(dir + path.sep) || p === dir);
+    if (!allowed) {
+      throw new Error(`Access denied: ${filePath} is outside allowed module directories`);
     }
     return p;
   }

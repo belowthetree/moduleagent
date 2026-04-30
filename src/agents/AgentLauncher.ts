@@ -11,6 +11,10 @@ export interface AgentConfig {
   env?: Record<string, string>;
 }
 
+export interface LaunchOptions {
+  subModuleDirs?: string[];
+}
+
 export interface LaunchedAgent {
   connection: ClientSideConnection;
   process: ChildProcess;
@@ -20,9 +24,9 @@ export interface LaunchedAgent {
 }
 
 export class AgentLauncher {
-  async launch(config: AgentConfig, name: string, cwd: string, logger?: Logger): Promise<LaunchedAgent> {
+  async launch(config: AgentConfig, name: string, cwd: string, logger?: Logger, options?: LaunchOptions): Promise<LaunchedAgent> {
     cwd = cwd.replace(/\\/g, '/');
-    const fsHandler = new FsHandler(cwd);
+    const fsHandler = new FsHandler(cwd, options?.subModuleDirs || []);
     const terminalHandler = new TerminalHandler(cwd);
 
     const launched: LaunchedAgent = {

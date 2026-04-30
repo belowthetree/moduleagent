@@ -453,7 +453,13 @@ function renderContextCards(moduleName: string) {
 
   cardsEl.innerHTML = pageMsgs.map(m => {
     let extra = '';
-    if (m.thinking) extra += `<div class="ctx-thinking"><span class="ctx-tag tag-thinking">思考</span>${escapeHtml(m.thinking.slice(0, 60))}${m.thinking.length > 60 ? '...' : ''}</div>`;
+    if (m.thinking) extra += `
+      <div class="ctx-thinking-toggle" data-action="toggle-thinking" data-id="${m.id}">
+        <span class="ctx-tag tag-thinking">思考</span>
+        <span class="ctx-thinking-arrow">▶</span>
+        <span class="ctx-thinking-preview">${escapeHtml(m.thinking.slice(0, 40))}...</span>
+      </div>
+      <div class="ctx-thinking-content" id="thinking-${m.id}" style="display:none">${escapeHtml(m.thinking)}</div>`;
     if (m.tools) {
       const toolCount = (m.tools.match(/\[工具调用:/g) || []).length;
       extra += `<div class="ctx-tools"><span class="ctx-tag tag-tools">工具</span>${toolCount} 个工具调用</div>`;

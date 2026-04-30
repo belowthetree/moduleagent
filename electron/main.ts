@@ -150,10 +150,14 @@ function startMcpBackend(): Promise<number> {
           try {
             agentStatus.set(targetModule, 'streaming');
             const promptBlocks = buildPromptBlocks(targetModule, promptText);
-            const result = await entry.connection.prompt({
-              sessionId: entry.sessionId,
-              prompt: promptBlocks,
-            });
+            const MCP_TIMEOUT_MS = 5 * 60 * 1000;
+            const result = await Promise.race([
+              entry.connection.prompt({
+                sessionId: entry.sessionId,
+                prompt: promptBlocks,
+              }),
+              new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Cross-module call timed out (5 min)')), MCP_TIMEOUT_MS)),
+            ]);
             agentStatus.set(targetModule, 'idle');
             res.writeHead(200);
             const responseText = chunks.join('').trim();
@@ -237,7 +241,8 @@ async function ensureModuleAgentRunning(moduleName: string): Promise<boolean> {
   const cwd = node.relativePath === '.' ? currentProjectRoot : workspacePathForModule(node);
   try {
     defaultLogger.info(`MCP: auto-starting agent for module ${moduleName} (cmd=${cmd} cwd=${cwd})`);
-    const launched = await launcher.launch({ command: cmd, args }, moduleName, cwd, defaultLogger);
+    const subDirs = getSubModuleDirs(node);
+    const launched = await launcher.launch({ command: cmd, args }, moduleName, cwd, defaultLogger, { subModuleDirs: subDirs });
 
     launched.onSessionUpdate = (name, sessionId, notification) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -277,6 +282,14 @@ function workspacePathForModule(node: ModuleGraphNode): string {
       : path.join(currentWorkspaceRoot, node.relativePath);
   }
   return node.absolutePath || path.join(currentProjectRoot, node.relativePath);
+}
+
+function getSubModuleDirs(node: ModuleGraphNode): string[] {
+  if (!currentGraph) return [];
+  return node.children
+    .map(childName => currentGraph!.nodes.get(childName))
+    .filter((c): c is ModuleGraphNode => !!c)
+    .map(c => workspacePathForModule(c));
 }
 
 function codeSourcePathForModule(node: ModuleGraphNode): string {
@@ -546,7 +559,8 @@ function registerIpcHandlers() {
       }
 
       defaultLogger.info(`agent:start [${moduleName}] cmd=${cmd} args=[${args.join(',')}] cwd=${agentCwd}`);
-      const launched = await launcher.launch({ command: cmd, args }, moduleName, agentCwd, defaultLogger);
+      const subDirs = node ? getSubModuleDirs(node) : [];
+      const launched = await launcher.launch({ command: cmd, args }, moduleName, agentCwd, defaultLogger, { subModuleDirs: subDirs });
 
       // Forward session/update stream to renderer
       launched.onSessionUpdate = (name, sessionId, notification) => {

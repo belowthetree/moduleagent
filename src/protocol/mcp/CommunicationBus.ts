@@ -56,13 +56,7 @@ export class CommunicationBus {
 
     accessible.add(requestingModule);
     for (const child of node.children) accessible.add(child);
-    if (node.parent) {
-      accessible.add(node.parent);
-      const parentNode = this.moduleGraph.nodes.get(node.parent);
-      if (parentNode) {
-        for (const sibling of parentNode.children) accessible.add(sibling);
-      }
-    }
+    if (node.parent) accessible.add(node.parent);
 
     return accessible;
   }
