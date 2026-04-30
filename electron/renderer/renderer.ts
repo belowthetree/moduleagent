@@ -280,6 +280,7 @@ function showStreamStatus(msg: string) {
 }
 
 function appendStream(text: string) {
+  if (!selectedNode || !streamState.has(selectedNode.name)) return;
   const el = document.getElementById('stream-content');
   if (!el) return;
   const hadCursor = el.querySelector('.stream-cursor');
@@ -291,6 +292,7 @@ function appendStream(text: string) {
 }
 
 function appendThinking(text: string) {
+  if (!selectedNode || !streamState.has(selectedNode.name)) return;
   const el = document.getElementById('stream-content');
   if (!el) return;
   const hadCursor = el.querySelector('.stream-cursor');
@@ -302,6 +304,7 @@ function appendThinking(text: string) {
 }
 
 function appendToolCall(line: string) {
+  if (!selectedNode || !streamState.has(selectedNode.name)) return;
   const el = document.getElementById('stream-content');
   if (!el) return;
   const hadCursor = el.querySelector('.stream-cursor');
@@ -318,9 +321,10 @@ function finishStream(moduleName: string) {
     const cursor = el.querySelector('.stream-cursor');
     if (cursor) cursor.remove();
   }
-  const content = streamReply.trim();
-  const thinking = streamThinking.trim();
-  const tools = streamTools.trim();
+  const st = streamState.get(moduleName);
+  const content = (st?.reply || '').trim();
+  const thinking = (st?.thinking || '').trim();
+  const tools = (st?.tools || '').trim();
   if (content || thinking || tools) {
     getMsgs(moduleName).push({
       id: 'm' + Date.now(), role: 'agent',
@@ -331,11 +335,8 @@ function finishStream(moduleName: string) {
     saveContext(moduleName);
     renderContextCards(moduleName);
   }
-  streamingModule = '';
-  streamThinking = '';
-  streamTools = '';
-  streamReply = '';
-  clearStreamSnapshot();
+  streamState.delete(moduleName);
+  if (streamState.size === 0) clearStreamSnapshot();
 }
 
 function showCancelButton() {
@@ -355,16 +356,12 @@ function stopStream() {
   hideCancelButton();
   const el = document.getElementById('stream-content');
   if (el) el.innerHTML = '<div class="stream-empty">等待 Agent 响应...</div>';
-  streamingModule = '';
-  streamThinking = '';
-  streamTools = '';
-  streamReply = '';
-  clearStreamSnapshot();
+  if (selectedNode) streamState.delete(selectedNode.name);
+  if (streamState.size === 0) clearStreamSnapshot();
 }
 
 // ── Drawer ──
 function openDrawer(node: TreeNode) {
-  if (selectedNode?.name !== node.name) stopStream();
   selectedNode = node;
   $id('drawer-title').textContent = node.name;
   buildDrawerContent(node);
@@ -374,7 +371,7 @@ function openDrawer(node: TreeNode) {
   layoutAndRender();
 }
 function closeDrawer() {
-  stopStream();
+  hideCancelButton();
   selectedNode = null;
   $id('drawer').classList.remove('open');
   $id('drawer-overlay').classList.remove('open');
@@ -391,7 +388,7 @@ function buildDrawerContent(node: TreeNode) {
   }
 
   // Restore interrupted stream snapshot (only if not currently streaming to this module)
-  if (name !== streamingModule) {
+  if (!streamState.has(name)) {
     const snapMsg = restoreStreamSnapshot(name);
     if (snapMsg) {
       getMsgs(name).push(snapMsg);
@@ -404,11 +401,12 @@ function buildDrawerContent(node: TreeNode) {
     ? projectPath
     : (workspacePath || projectPath) + '/' + node.path.replace(/^\.\//, '');
 
-  const isStreaming = name === streamingModule;
-  const streamPlaceholder = isStreaming
-    ? (streamThinking ? `<span class="stream-thinking">${escapeHtml(streamThinking)}</span>` : '')
-      + streamTools.split('\n').filter(Boolean).map(l => `<span class="stream-tool">\n${escapeHtml(l)}\n</span>`).join('')
-      + escapeHtml(streamReply)
+  const isStreaming = streamState.has(name);
+  const st = streamState.get(name);
+  const streamPlaceholder = isStreaming && st
+    ? (st.thinking ? `<span class="stream-thinking">${escapeHtml(st.thinking)}</span>` : '')
+      + st.tools.split('\n').filter(Boolean).map(l => `<span class="stream-tool">\n${escapeHtml(l)}\n</span>`).join('')
+      + escapeHtml(st.reply)
       + '<span class="stream-cursor"></span>'
     : '<div class="stream-empty">等待 Agent 响应...</div>';
 
@@ -586,6 +584,7 @@ function sendContextMsg(moduleName: string) {
       }
 
       ensureStreamListener();
+      streamState.delete(moduleName);
       showStreamStatus('等待 Agent 响应...');
       showCancelButton();
 
@@ -609,21 +608,24 @@ function sendContextMsg(moduleName: string) {
 }
 
 let streamListenerCleanup: (() => void) | null = null;
-let streamingModule = '';
-let streamThinking = '';
-let streamTools = '';
-let streamReply = '';
+const streamState = new Map<string, { reply: string; thinking: string; tools: string }>();
 let streamSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
+function getStreamState(moduleName: string) {
+  let st = streamState.get(moduleName);
+  if (!st) { st = { reply: '', thinking: '', tools: '' }; streamState.set(moduleName, st); }
+  return st;
+}
+
 function saveStreamSnapshot() {
-  if (!streamingModule) return;
-  localStorage.setItem('stream_snapshot', JSON.stringify({
-    moduleName: streamingModule,
-    reply: streamReply,
-    thinking: streamThinking,
-    tools: streamTools,
-    time: now(),
-  }));
+  if (streamState.size === 0) return;
+  const entries: { moduleName: string; reply: string; thinking: string; tools: string; time: string }[] = [];
+  for (const [name, st] of streamState) {
+    if (st.reply || st.thinking || st.tools) {
+      entries.push({ moduleName: name, reply: st.reply, thinking: st.thinking, tools: st.tools, time: now() });
+    }
+  }
+  if (entries.length > 0) localStorage.setItem('stream_snapshot', JSON.stringify(entries));
 }
 
 function scheduleStreamSave() {
@@ -642,8 +644,9 @@ function restoreStreamSnapshot(moduleName: string): ChatMsg | null {
   try {
     const raw = localStorage.getItem('stream_snapshot');
     if (!raw) return null;
-    const snap = JSON.parse(raw) as { moduleName: string; reply: string; thinking: string; tools: string; time: string };
-    if (snap.moduleName !== moduleName) return null;
+    const entries = JSON.parse(raw) as { moduleName: string; reply: string; thinking: string; tools: string; time: string }[];
+    const snap = entries.find(e => e.moduleName === moduleName);
+    if (!snap) return null;
     if (!snap.reply && !snap.thinking && !snap.tools) return null;
     return {
       id: 's' + Date.now(),
@@ -661,29 +664,24 @@ function restoreStreamSnapshot(moduleName: string): ChatMsg | null {
 
 function ensureStreamListener() {
   if (streamListenerCleanup) return;
-  streamThinking = '';
-  streamTools = '';
-  streamReply = '';
-  streamingModule = '';
-  clearStreamSnapshot();
   streamListenerCleanup = window.moduleAgent.onAgentStream(({ moduleName, update, data }) => {
-    streamingModule = moduleName;
+    const st = getStreamState(moduleName);
     if (update === 'agent_message_chunk') {
       const block = (data as any).content as { type?: string; text?: string } | undefined;
       const text = block?.type === 'text' ? block.text : undefined;
-      if (text) { streamReply += text; appendStream(text); scheduleStreamSave(); }
+      if (text) { st.reply += text; if (selectedNode?.name === moduleName) appendStream(text); scheduleStreamSave(); }
     } else if (update === 'agent_thought_chunk') {
       const block = (data as any).content as { type?: string; text?: string } | undefined;
       const text = block?.type === 'text' ? block.text : undefined;
-      if (text) { streamThinking += text; appendThinking(text); scheduleStreamSave(); }
+      if (text) { st.thinking += text; if (selectedNode?.name === moduleName) appendThinking(text); scheduleStreamSave(); }
     } else if (update === 'tool_call') {
       const tc = data as any;
       const line = `[工具调用: ${tc.title || tc.toolCallId} | ${tc.status}]`;
-      streamTools += line + '\n';
-      appendToolCall(line);
+      st.tools += line + '\n';
+      if (selectedNode?.name === moduleName) appendToolCall(line);
       scheduleStreamSave();
     } else if (update === 'plan') {
-      appendStream(`\n[计划更新]\n`);
+      if (selectedNode?.name === moduleName) appendStream(`\n[计划更新]\n`);
     }
   });
 }
