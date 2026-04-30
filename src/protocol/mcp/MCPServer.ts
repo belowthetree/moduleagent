@@ -87,11 +87,34 @@ export class MCPServer {
       },
     );
 
+    this.server.registerTool(
+      'create_module',
+      {
+        description: '根据模块创建标准新建模块，包括创建模块文件夹、module.md文件，并更新模块节点树',
+        inputSchema: z.object({
+          name: z.string().describe('新模块的名称（只能包含字母、数字、连字符和下划线）'),
+          parentPath: z.string().optional().describe('父模块的相对路径，不指定则在项目根目录创建'),
+          description: z.string().optional().describe('模块描述，不指定则自动生成'),
+        }),
+      },
+      async (args) => {
+        const result = await this.bus.createModule({
+          name: args.name,
+          parentPath: args.parentPath,
+          description: args.description,
+        });
+        const text = result.success
+          ? `模块创建成功:\n${result.message}\n路径: ${result.modulePath}`
+          : `模块创建失败: ${result.message}`;
+        return { content: [{ type: 'text', text }] };
+      },
+    );
+
   }
 
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
-    console.error('[MCPServer] Starting with tools: module_list, module_call, module_query');
+    console.error('[MCPServer] Starting with tools: module_list, module_call, module_query, create_module');
     await this.server.connect(transport);
     console.error('[MCPServer] Connected to stdio transport');
   }

@@ -17,7 +17,7 @@ interface ModuleAgentApi {
 interface TreeNode { name: string; path: string; description: string; children: TreeNode[]; }
 interface ScanResult { root?: string; moduleCount?: number; error?: string; }
 interface LayoutNode { data: TreeNode; x: number; y: number; width: number; height: number; collapsed: boolean; subtreeHeight: number; }
-interface ChatMsg { id: string; role: 'user' | 'agent' | 'cross'; content: string; thinking: string; tools: string; time: string; status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error'; moduleName: string; agentCmd: string; crossDirection?: 'sent' | 'received'; crossModule?: string; }
+interface ChatMsg { id: string; role: 'user' | 'agent' | 'cross'; content: string; thinking: string; tools: string; time: string; status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error' | 'interrupted'; moduleName: string; agentCmd: string; crossDirection?: 'sent' | 'received'; crossModule?: string; }
 
 declare global { interface Window { moduleAgent: ModuleAgentApi; } }
 
@@ -31,6 +31,7 @@ let workspacePath = ''; let projectPath = ''; let agentCmd = 'opencode'; let age
 let codeSourceType: 'git' | 'local' = 'local'; let codeSourcePath = ''; let codeSourceUrl = ''; let codeSourceBranch = '';
 let panX = 0; let panY = 0; let isPanning = false;
 let panStartX = 0; let panStartY = 0; let panStartTX = 0; let panStartTY = 0; let scale = 1;
+let drawerWidth = 420;
 
 const contextMap = new Map<string, ChatMsg[]>();
 let ctxPage = new Map<string, number>();
@@ -237,6 +238,41 @@ function applyTransform() {
 }
 function resetView() { panX = 20; panY = 20; scale = 1; applyTransform(); }
 
+// ── Drawer resize ──
+function initDrawerResize() {
+  const handle = document.getElementById('drawer-resize-handle');
+  const drawer = document.getElementById('drawer');
+  if (!handle || !drawer) return;
+
+  let dragging = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    dragging = true;
+    startX = e.clientX;
+    startWidth = drawer.getBoundingClientRect().width;
+    handle.classList.add('dragging');
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const delta = startX - e.clientX;
+    const newWidth = Math.min(800, Math.max(280, startWidth + delta));
+    drawerWidth = newWidth;
+    document.documentElement.style.setProperty('--drawer-width', newWidth + 'px');
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (dragging) {
+      dragging = false;
+      handle.classList.remove('dragging');
+      localStorage.setItem('drawerWidth', String(drawerWidth));
+    }
+  });
+}
+
 // ── Stream ──
 function showStreamStatus(msg: string) {
   const el = document.getElementById('stream-content');
@@ -295,9 +331,11 @@ function finishStream(moduleName: string) {
     saveContext(moduleName);
     renderContextCards(moduleName);
   }
+  streamingModule = '';
   streamThinking = '';
   streamTools = '';
   streamReply = '';
+  clearStreamSnapshot();
 }
 
 function showCancelButton() {
@@ -317,9 +355,11 @@ function stopStream() {
   hideCancelButton();
   const el = document.getElementById('stream-content');
   if (el) el.innerHTML = '<div class="stream-empty">等待 Agent 响应...</div>';
+  streamingModule = '';
   streamThinking = '';
   streamTools = '';
   streamReply = '';
+  clearStreamSnapshot();
 }
 
 // ── Drawer ──
@@ -350,10 +390,33 @@ function buildDrawerContent(node: TreeNode) {
     if (saved.length > 0) contextMap.set(name, saved);
   }
 
+  // Restore interrupted stream snapshot (only if not currently streaming to this module)
+  if (name !== streamingModule) {
+    const snapMsg = restoreStreamSnapshot(name);
+    if (snapMsg) {
+      getMsgs(name).push(snapMsg);
+      setPage(name, Math.max(0, Math.ceil(getMsgs(name).length / CTX_PAGE) - 1));
+      saveContext(name);
+    }
+  }
+
+  const agentCwd = node.path === '.'
+    ? projectPath
+    : (workspacePath || projectPath) + '/' + node.path.replace(/^\.\//, '');
+
+  const isStreaming = name === streamingModule;
+  const streamPlaceholder = isStreaming
+    ? (streamThinking ? `<span class="stream-thinking">${escapeHtml(streamThinking)}</span>` : '')
+      + streamTools.split('\n').filter(Boolean).map(l => `<span class="stream-tool">\n${escapeHtml(l)}\n</span>`).join('')
+      + escapeHtml(streamReply)
+      + '<span class="stream-cursor"></span>'
+    : '<div class="stream-empty">等待 Agent 响应...</div>';
+
   $id('drawer-body').innerHTML = `
     <div class="info-compact">
       <span class="ic-item"><span class="ic-label">路径</span><span class="ic-value">${node.path}</span></span>
       <span class="ic-item"><span class="ic-label">子模块</span><span class="ic-value">${node.children.length} 个</span></span>
+      <span class="ic-item"><span class="ic-label">Agent CWD</span><span class="ic-value">${escapeHtml(agentCwd)}</span></span>
     </div>
     <div class="desc">${node.description || '无描述'}</div>
     <div class="ctx-top-controls">
@@ -362,9 +425,9 @@ function buildDrawerContent(node: TreeNode) {
     </div>
     <div class="split-zone">
       <div id="stream-area" class="stream-area">
-        <div id="stream-content" class="stream-empty">等待 Agent 响应...</div>
+        <div id="stream-content" class="${isStreaming ? '' : 'stream-empty'}">${streamPlaceholder}</div>
       </div>
-      <button class="btn-cancel-stream" id="btn-cancel-stream" style="display:none;">取消</button>
+      <button class="btn-cancel-stream" id="btn-cancel-stream" style="${isStreaming ? '' : 'display:none'}">取消</button>
       <div class="splitter" id="drawer-splitter"></div>
       <div class="ctx-bottom">
         <div id="ctx-cards" class="ctx-card-list"></div>
@@ -513,7 +576,8 @@ function sendContextMsg(moduleName: string) {
 
   (async () => {
     try {
-      const cwd = workspacePath || (selectedNode ? selectedNode.path : '.');
+      const isRoot = selectedNode?.path === '.';
+      const cwd = isRoot ? projectPath : (workspacePath || (selectedNode ? selectedNode.path : '.'));
       const args = agentArgs ? agentArgs.split(/\s+/).filter(Boolean) : [];
       const startResult = await window.moduleAgent.startAgent(moduleName, agentCmd, args, cwd);
       if (startResult.error) {
@@ -545,29 +609,79 @@ function sendContextMsg(moduleName: string) {
 }
 
 let streamListenerCleanup: (() => void) | null = null;
+let streamingModule = '';
 let streamThinking = '';
 let streamTools = '';
 let streamReply = '';
+let streamSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function saveStreamSnapshot() {
+  if (!streamingModule) return;
+  localStorage.setItem('stream_snapshot', JSON.stringify({
+    moduleName: streamingModule,
+    reply: streamReply,
+    thinking: streamThinking,
+    tools: streamTools,
+    time: now(),
+  }));
+}
+
+function scheduleStreamSave() {
+  if (streamSaveTimer) return;
+  streamSaveTimer = setTimeout(() => {
+    streamSaveTimer = null;
+    saveStreamSnapshot();
+  }, 1000);
+}
+
+function clearStreamSnapshot() {
+  localStorage.removeItem('stream_snapshot');
+}
+
+function restoreStreamSnapshot(moduleName: string): ChatMsg | null {
+  try {
+    const raw = localStorage.getItem('stream_snapshot');
+    if (!raw) return null;
+    const snap = JSON.parse(raw) as { moduleName: string; reply: string; thinking: string; tools: string; time: string };
+    if (snap.moduleName !== moduleName) return null;
+    if (!snap.reply && !snap.thinking && !snap.tools) return null;
+    return {
+      id: 's' + Date.now(),
+      role: 'agent',
+      content: snap.reply || '',
+      thinking: snap.thinking || '',
+      tools: snap.tools || '',
+      time: snap.time,
+      status: 'interrupted',
+      moduleName,
+      agentCmd,
+    };
+  } catch { return null; }
+}
 
 function ensureStreamListener() {
   if (streamListenerCleanup) return;
   streamThinking = '';
   streamTools = '';
   streamReply = '';
+  streamingModule = '';
+  clearStreamSnapshot();
   streamListenerCleanup = window.moduleAgent.onAgentStream(({ moduleName, update, data }) => {
+    streamingModule = moduleName;
     if (update === 'agent_message_chunk') {
       const block = (data as any).content as { type?: string; text?: string } | undefined;
       const text = block?.type === 'text' ? block.text : undefined;
-      if (text) { streamReply += text; appendStream(text); }
+      if (text) { streamReply += text; appendStream(text); scheduleStreamSave(); }
     } else if (update === 'agent_thought_chunk') {
       const block = (data as any).content as { type?: string; text?: string } | undefined;
       const text = block?.type === 'text' ? block.text : undefined;
-      if (text) { streamThinking += text; appendThinking(text); }
+      if (text) { streamThinking += text; appendThinking(text); scheduleStreamSave(); }
     } else if (update === 'tool_call') {
       const tc = data as any;
       const line = `[工具调用: ${tc.title || tc.toolCallId} | ${tc.status}]`;
       streamTools += line + '\n';
       appendToolCall(line);
+      scheduleStreamSave();
     } else if (update === 'plan') {
       appendStream(`\n[计划更新]\n`);
     }
@@ -651,7 +765,7 @@ function showModal(msg: ChatMsg) {
 function closeModal() { hide($id('modal-overlay')); }
 
 function statusLabel(s: string): string {
-  const map: Record<string, string> = { sent: '已发送', pending: '等待中', thinking: '思考中', executing: '执行中', completed: '已完成', error: '失败' };
+  const map: Record<string, string> = { sent: '已发送', pending: '等待中', thinking: '思考中', executing: '执行中', completed: '已完成', error: '失败', interrupted: '中断' };
   return map[s] || s;
 }
 function escapeHtml(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -816,6 +930,13 @@ function init() {
   $id('modal-overlay').addEventListener('click', e => { if (e.target === $id('modal-overlay')) closeModal(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeDrawer(); } });
   initPan();
+  initDrawerResize();
+
+  const savedWidth = localStorage.getItem('drawerWidth');
+  if (savedWidth) {
+    drawerWidth = parseInt(savedWidth, 10) || 420;
+    document.documentElement.style.setProperty('--drawer-width', drawerWidth + 'px');
+  }
 
   // Cross-module context listener
   window.moduleAgent.onCrossContext(({ moduleName, crossModule, direction, phase, content, time }) => {

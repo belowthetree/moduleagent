@@ -107,6 +107,15 @@ export class ModuleGenerator {
     return yaml;
   }
 
+  static createModuleMd(name: string, description?: string): string {
+    const desc = description || `${name} 模块`;
+    return ModuleGenerator.composeModuleMd(
+      { name, description: desc },
+      `# ${name}\n\n## 模块说明\n\n待补充\n`,
+      [],
+    );
+  }
+
   private static yamlDump(obj: Record<string, unknown>, indent: number): string {
     const lines: string[] = [];
     const prefix = '  '.repeat(indent);

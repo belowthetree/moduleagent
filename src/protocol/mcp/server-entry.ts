@@ -38,6 +38,7 @@ async function main() {
 
   const bus = new CommunicationBus();
   bus.setModuleGraph(graph);
+  bus.setGraphFile(graphFile);
 
   if (backendUrl) {
     bus.onMessage(async (message) => {

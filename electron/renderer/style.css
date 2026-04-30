@@ -194,6 +194,21 @@ body {
 }
 .drawer.open { right: 0; }
 
+.drawer-resize-handle {
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+.drawer-resize-handle:hover,
+.drawer-resize-handle.dragging {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
 .drawer-header {
   display: flex;
   align-items: center;
@@ -476,6 +491,7 @@ body {
 .st-executing { background: #1f3a2f; color: #9ece6a; }
 .st-completed { background: #1a3220; color: #9ece6a; }
 .st-error { background: #3a1520; color: #f7768e; }
+.st-interrupted { background: #3d3520; color: #e0af68; }
 
 .ctx-card .ctx-preview {
   font-size: 12px;

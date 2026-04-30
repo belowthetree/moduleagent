@@ -47,10 +47,10 @@ let cachedMainPrompt = '';
 let cachedSubPrompt = '';
 
 function loadSystemPrompts() {
-  const mainPath = path.join(currentProjectRoot, 'config', 'mainagentprompt.md');
-  const subPath = path.join(currentProjectRoot, 'config', 'subagentprompt.md');
-  try { cachedMainPrompt = fs.readFileSync(mainPath, 'utf-8'); } catch { cachedMainPrompt = ''; }
-  try { cachedSubPrompt = fs.readFileSync(subPath, 'utf-8'); } catch { cachedSubPrompt = ''; }
+  const mainPath = path.join(app.getAppPath(), 'config', 'mainagentprompt.md');
+  const subPath = path.join(app.getAppPath(), 'config', 'subagentprompt.md');
+  try { cachedMainPrompt = fs.readFileSync(mainPath, 'utf-8'); } catch (err) { cachedMainPrompt = ''; defaultLogger.warn(`Failed to read main agent prompt: ${(err as Error).message}`); }
+  try { cachedSubPrompt = fs.readFileSync(subPath, 'utf-8'); } catch (err) { cachedSubPrompt = ''; defaultLogger.warn(`Failed to read sub-agent prompt: ${(err as Error).message}`); }
   if (cachedMainPrompt) defaultLogger.info(`Loaded main agent prompt (${cachedMainPrompt.length} chars)`);
   if (cachedSubPrompt) defaultLogger.info(`Loaded sub-agent prompt (${cachedSubPrompt.length} chars)`);
 }
@@ -63,15 +63,17 @@ function buildPromptBlocks(moduleName: string, userText: string): ContentBlock[]
     sessionPrompted.add(moduleName);
 
     // System prompt
-    const systemPrompt = moduleName === 'main' ? cachedMainPrompt : cachedSubPrompt;
+    const systemPrompt = moduleName === currentGraph?.root ? cachedMainPrompt : cachedSubPrompt;
     if (systemPrompt) {
       blocks.push({ type: 'text', text: systemPrompt + '\n\n---\n\n' });
+      defaultLogger.info(`[${moduleName}] system prompt: ${systemPrompt.slice(0, 120)}... (${systemPrompt.length} chars)`);
     }
 
     // Module context (module.md content)
     const node = currentGraph?.nodes.get(moduleName);
     if (node?.definition?.body) {
       blocks.push({ type: 'text', text: `# Module: ${moduleName}\n\n${node.definition.body}\n\n---\n\n` });
+      defaultLogger.info(`[${moduleName}] module context: ${node.definition.body.slice(0, 120)}... (${node.definition.body.length} chars)`);
     }
   }
 
@@ -229,8 +231,10 @@ async function ensureModuleAgentRunning(moduleName: string): Promise<boolean> {
     args = config.agents.default.args || [];
   } catch {}
 
-  await prepareModuleWorkspace(node);
-  const cwd = workspacePathForModule(node);
+  if (node.relativePath !== '.') {
+    await prepareModuleWorkspace(node);
+  }
+  const cwd = node.relativePath === '.' ? currentProjectRoot : workspacePathForModule(node);
   try {
     defaultLogger.info(`MCP: auto-starting agent for module ${moduleName} (cmd=${cmd} cwd=${cwd})`);
     const launched = await launcher.launch({ command: cmd, args }, moduleName, cwd, defaultLogger);
@@ -536,7 +540,7 @@ function registerIpcHandlers() {
       // Compute isolated cwd when workspace is configured
       let agentCwd = cwd;
       const node = currentGraph?.nodes.get(moduleName);
-      if (node && currentWorkspaceRoot) {
+      if (node && currentWorkspaceRoot && node.relativePath !== '.') {
         await prepareModuleWorkspace(node);
         agentCwd = workspacePathForModule(node);
       }
