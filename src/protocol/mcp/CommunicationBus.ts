@@ -47,9 +47,44 @@ export class CommunicationBus {
     this.messageHandler = handler;
   }
 
+  private getAccessibleModules(requestingModule: string): Set<string> {
+    const accessible = new Set<string>();
+    if (!this.moduleGraph) return accessible;
+
+    const node = this.moduleGraph.nodes.get(requestingModule);
+    if (!node) return accessible;
+
+    accessible.add(requestingModule);
+    for (const child of node.children) accessible.add(child);
+    if (node.parent) {
+      accessible.add(node.parent);
+      const parentNode = this.moduleGraph.nodes.get(node.parent);
+      if (parentNode) {
+        for (const sibling of parentNode.children) accessible.add(sibling);
+      }
+    }
+
+    return accessible;
+  }
+
+  private checkAccess(requestingModule: string | undefined, targetModule: string): boolean {
+    if (!requestingModule) return true;
+    if (!this.moduleGraph) return false;
+
+    const root = this.moduleGraph.root;
+    if (requestingModule === root) return true;
+
+    const accessible = this.getAccessibleModules(requestingModule);
+    return accessible.has(targetModule);
+  }
+
   async sendToModule(request: ModuleCallRequest): Promise<ModuleCallResult> {
     if (!this.moduleGraph) {
       return { success: false, error: 'Module graph not initialized' };
+    }
+
+    if (!this.checkAccess(request.requestingModule, request.targetModule)) {
+      return { success: false, error: `Access denied: cannot communicate with module "${request.targetModule}"` };
     }
 
     const targetNode = this.moduleGraph.nodes.get(request.targetModule);
@@ -69,6 +104,10 @@ export class CommunicationBus {
       return { success: false, error: 'Module graph not initialized' };
     }
 
+    if (!this.checkAccess(request.requestingModule, request.targetModule)) {
+      return { success: false, error: `Access denied: cannot communicate with module "${request.targetModule}"` };
+    }
+
     const targetNode = this.moduleGraph.nodes.get(request.targetModule);
     if (!targetNode) {
       return { success: false, error: `Module not found: ${request.targetModule}` };
@@ -84,8 +123,12 @@ export class CommunicationBus {
   listModules(requestingModule?: string): { name: string; description: string; path: string }[] {
     if (!this.moduleGraph) return [];
 
+    const accessible = requestingModule ? this.getAccessibleModules(requestingModule) : null;
+    const root = this.moduleGraph.root;
+
     const result: { name: string; description: string; path: string }[] = [];
     for (const [name, node] of this.moduleGraph.nodes) {
+      if (accessible && requestingModule !== root && !accessible.has(name)) continue;
       result.push({
         name,
         description: node.definition.frontmatter.description,

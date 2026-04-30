@@ -40,7 +40,7 @@ export class MCPServer {
         inputSchema: z.object({}),
       },
       async () => {
-        const modules = this.bus.listModules();
+        const modules = this.bus.listModules(this.moduleName);
         const result = modules.map((m) => `- **${m.name}**: ${m.description} (路径: ${m.path})`).join('\n');
         return { content: [{ type: 'text', text: result || '无可用模块' }] };
       },
