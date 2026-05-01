@@ -4,6 +4,7 @@ import { CliError } from './utils/output.js';
 import { listModules } from './commands/list.js';
 import { getModule } from './commands/get.js';
 import { serve } from './commands/serve.js';
+import { tui } from './commands/tui.js';
 
 const HELP = `Usage: module-agent <command> [options]
 
@@ -11,6 +12,7 @@ Commands:
   list              List all modules in the project
   get <name>        Show detailed information for a module
   serve             Run in persistent stdio NDJSON mode
+  tui               Interactive terminal UI (chat + module tree)
 
 Options:
   --project <path>  Path to project root (auto-detected from cwd if omitted)
@@ -63,6 +65,10 @@ async function main() {
 
       case 'serve':
         await serve({ projectRoot: resolveProjectRoot(projectFlag) });
+        break;
+
+      case 'tui':
+        await tui({ projectRoot: resolveProjectRoot(projectFlag) });
         break;
 
       default:

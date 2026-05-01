@@ -39,10 +39,7 @@ export class AgentLauncher {
 
     const clientFactory = (): Client => ({
       requestPermission: async (params) => {
-        console.log(`[${name}] 请求权限: 工具调用 ${params.toolCall.toolCallId}`);
-        const options = params.options.map((o) => `  ${o.optionId}: ${o.name}`).join('\n');
-        console.log(options);
-        console.log('[权限] 自动允许 (开发模式)');
+        logger?.info(`[${name}] Permission requested: ${params.toolCall.toolCallId}, auto-allowing`);
         return {
           outcome: {
             outcome: 'selected' as const,
@@ -55,9 +52,9 @@ export class AgentLauncher {
         const u = params.update;
         if (u.sessionUpdate === 'agent_message_chunk' || u.sessionUpdate === 'agent_thought_chunk') {
           const block = (u as { content: { type?: string; text?: string } }).content;
-          console.log(`[${name}] stream chunk type=${block?.type} len=${block?.text?.length || 0}`);
+          logger?.debug(`[${name}] stream chunk type=${block?.type} len=${block?.text?.length || 0}`);
         } else if (u.sessionUpdate === 'tool_call') {
-          console.log(`[${name}] tool_call: ${(u as { title?: string }).title || 'unknown'}`);
+          logger?.info(`[${name}] tool_call: ${(u as { title?: string }).title || 'unknown'}`);
         }
         if (launched.onSessionUpdate) {
           launched.onSessionUpdate(name, params.sessionId, params);

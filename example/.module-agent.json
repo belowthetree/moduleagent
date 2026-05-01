@@ -2,13 +2,15 @@
   "agents": {
     "default": {
       "command": "opencode",
-      "args": [
-        "acp"
-      ]
+      "args": ["acp"]
     }
   },
   "exclude": [],
   "workspace": {
     "path": "~/.module-agent/workspaces"
+  },
+  "codeSource": {
+    "type": "local",
+    "path": ""
   }
 }
