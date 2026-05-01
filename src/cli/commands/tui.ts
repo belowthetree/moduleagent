@@ -4,6 +4,8 @@ import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { AgentLauncher, type LaunchedAgent } from '../../agents/AgentLauncher.js';
 import { runSetup } from './setup.js';
 import { TuiInput } from './input.js';
+import { ContextManager, type ChatMsg, makeId, timeStr } from '../../context/ContextManager.js';
+import { FileStore } from '../../context/FileStore.js';
 import type { ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../../types/module.js';
 import type { ClientSideConnection, SessionNotification } from '@agentclientprotocol/sdk';
 import type { ChildProcess } from 'child_process';
@@ -12,8 +14,8 @@ import type { ProjectConfig } from '../../config/defaults.js';
 // ── ANSI helpers ──
 
 const CSI = '\x1b[';
-const CLEAR_SCREEN = `${CSI}2J`;
-const CURSOR_HOME = `${CSI}H`;
+const ALT_SCREEN = `${CSI}?1049h`;
+const NORMAL_SCREEN = `${CSI}?1049l`;
 const HIDE_CURSOR = `${CSI}?25l`;
 const SHOW_CURSOR = `${CSI}?25h`;
 
@@ -113,11 +115,14 @@ class ModuleAgentTui {
   private sessionPrompted = new Set<string>();
   private running = true;
   private busy = false;
+  private scrollOffset = 0;
+  private ctx!: ContextManager;
 
   // Chat buffer — all output goes here
   private chatLines: string[] = [];
   private partialLine = ''; // incomplete agent stream line
-  private thinkingStart = -1; // index in chatLines where current thinking block starts
+  private thinkingStart = -1; // index in chatLines where thinking block starts
+  private thinkingEnd = -1;   // index where thinking block ends (exclusive)
 
   constructor(projectRoot: string, config: ProjectConfig, bufferedLines: string[]) {
     this.projectRoot = projectRoot;
@@ -130,13 +135,17 @@ class ModuleAgentTui {
     await this.scanProject();
     this.currentModule = this.graph.root;
 
+    this.ctx = new ContextManager(new FileStore(this.projectRoot));
+    this.loadHistory();
+
     this.input = new TuiInput({
       onLine: (line) => this.handleLine(line),
       onShutdown: () => this.shutdown(),
       getStatusBar: () => this.getCurrentStatusBar(),
+      onScroll: (delta) => this.handleScroll(delta),
     });
 
-    process.stdout.write(CLEAR_SCREEN + CURSOR_HOME + HIDE_CURSOR);
+    process.stdout.write(ALT_SCREEN + HIDE_CURSOR);
 
     // Render the layout frame (sep + status + input) before processing input
     this.renderFullLayout();
@@ -171,6 +180,7 @@ class ModuleAgentTui {
   private appendLine(line: string): void {
     const wrapped = this.wrapLine(line);
     for (const w of wrapped) this.chatLines.push(w);
+    this.scrollOffset = 0; // new content → scroll to bottom
   }
 
   private appendStream(text: string): void {
@@ -192,16 +202,19 @@ class ModuleAgentTui {
   }
 
   private collapseThinking(): void {
-    if (this.thinkingStart < 0 || this.thinkingStart >= this.chatLines.length) return;
+    if (this.thinkingStart < 0) return;
+    const end = this.thinkingEnd >= 0 ? this.thinkingEnd : this.chatLines.length;
+    if (this.thinkingStart >= end) { this.thinkingStart = -1; this.thinkingEnd = -1; return; }
     // Count chars in thinking block
     let totalChars = 0;
-    for (let i = this.thinkingStart; i < this.chatLines.length; i++) {
-      totalChars += this.chatLines[i]!.replace(/\x1b\[[0-9;]*m/g, '').length;
+    for (let i = this.thinkingStart; i < end; i++) {
+      totalChars += (this.chatLines[i] || '').replace(/\x1b\[[0-9;]*m/g, '').length;
     }
-    // Remove ANSI-stripped thinking lines, replace with collapsed summary
-    this.chatLines.splice(this.thinkingStart, this.chatLines.length - this.thinkingStart);
+    // Replace thinking lines with collapsed summary
+    this.chatLines.splice(this.thinkingStart, end - this.thinkingStart);
     this.appendLine(dim(`[Thinking: ${totalChars} chars]`));
     this.thinkingStart = -1;
+    this.thinkingEnd = -1;
     this.renderChatArea();
   }
 
@@ -228,8 +241,9 @@ class ModuleAgentTui {
   private renderChatArea(): void {
     const rows = this.chatRows();
     const total = this.chatLines.length;
-    const start = Math.max(0, total - rows);
+    const start = Math.max(0, total - rows - this.scrollOffset);
     const visible = this.chatLines.slice(start, start + rows);
+    const scrolledUp = this.scrollOffset > 0;
 
     for (let row = 0; row < rows; row++) {
       cursorTo(process.stdout, 0, row);
@@ -241,6 +255,42 @@ class ModuleAgentTui {
         process.stdout.write(display);
       }
     }
+
+    // Scroll indicator
+    if (scrolledUp && rows > 1) {
+      cursorTo(process.stdout, (process.stdout.columns || 80) - 10, 0);
+      process.stdout.write(dim(`  ↑${this.scrollOffset}`));
+    }
+  }
+
+  private loadHistory(): void {
+    const msgs = this.ctx.getMessages(this.currentModule);
+    if (msgs.length === 0) return;
+    this.appendLine(dim('── history ──'));
+    for (const msg of msgs) {
+      if (msg.role === 'user') {
+        this.appendLine(green(`[you] `) + msg.content);
+        this.appendLine(dim('─'.repeat(Math.min((process.stdout.columns || 80) - 2, 40))));
+      } else {
+        // Truncate agent response to last 3 lines for brevity
+        const lines = msg.content.split('\n');
+        const preview = lines.slice(-3).join('\n');
+        if (lines.length > 3) this.appendLine(dim(`[agent — ${lines.length} lines]`));
+        this.appendLine(preview);
+        this.appendLine('');
+      }
+    }
+    this.appendLine('');
+  }
+
+  private handleScroll(delta: number): void {
+    if (delta === 0) {
+      this.scrollOffset = 0;
+    } else {
+      const maxScroll = Math.max(0, this.chatLines.length - this.chatRows() + 1);
+      this.scrollOffset = Math.max(0, Math.min(maxScroll, this.scrollOffset + delta));
+    }
+    this.renderChatArea();
   }
 
   private renderFullLayout(): void {
@@ -338,6 +388,7 @@ class ModuleAgentTui {
     } else {
       this.busy = true;
       this.appendLine(green(`[you] `) + trimmed);
+      this.appendLine(dim('─'.repeat(process.stdout.columns ? Math.min(process.stdout.columns - 2, 40) : 40)));
       this.renderChatArea();
       this.sendMessage(trimmed).finally(() => {
         this.busy = false;
@@ -348,15 +399,27 @@ class ModuleAgentTui {
 
   private async sendMessage(text: string): Promise<void> {
     this.thinkingStart = -1;
+    this.thinkingEnd = -1;
+
     try {
       const entry = await this.ensureAgent(this.currentModule);
+      const sid = entry.sessionId;
+
+      // Save user message with sessionId
+      this.ctx.addMessage(this.currentModule, {
+        id: makeId(), role: 'user', content: text,
+        thinking: '', tools: '', time: timeStr(),
+        status: 'completed', moduleName: this.currentModule, sessionId: sid,
+      });
+
       this.agentStatuses.set(this.currentModule, 'streaming');
       this.renderStatusBar();
 
       const blocks = this.buildPromptBlocks(this.currentModule, text);
+      const agentStartIdx = this.chatLines.length;
 
       await entry.connection.prompt({
-        sessionId: entry.sessionId,
+        sessionId: sid,
         prompt: blocks,
       });
 
@@ -364,6 +427,17 @@ class ModuleAgentTui {
       this.collapseThinking();
       this.agentStatuses.set(this.currentModule, 'idle');
       this.renderStatusBar();
+
+      // Save agent response
+      const responseLines = this.chatLines.slice(agentStartIdx);
+      const responseText = responseLines.map(l => l.replace(/\x1b\[[0-9;]*m/g, '')).join('\n').trim();
+      if (responseText) {
+        this.ctx.addMessage(this.currentModule, {
+          id: makeId(), role: 'agent', content: responseText.slice(0, 2000),
+          thinking: '', tools: '', time: timeStr(),
+          status: 'completed', moduleName: this.currentModule, sessionId: sid,
+        });
+      }
     } catch (err) {
       this.flushStream();
       this.collapseThinking();
@@ -388,21 +462,28 @@ class ModuleAgentTui {
         }
         this.appendStream(dim(block.text));
         this.renderChatArea();
+        this.input.renderInput();
       }
     } else if (u.sessionUpdate === 'agent_message_chunk') {
       const block = (u as { content: { type?: string; text?: string } }).content;
       if (block?.text) {
-        this.flushStream();
-        this.thinkingStart = -1; // end thinking block
+        if (this.thinkingStart >= 0 && this.thinkingEnd < 0) {
+          this.flushStream();
+          this.thinkingEnd = this.chatLines.length;
+        }
         this.appendStream(block.text);
         this.renderChatArea();
+        this.input.renderInput();
       }
     } else if (u.sessionUpdate === 'tool_call') {
       const title = (u as { title?: string }).title || 'tool';
-      this.flushStream();
-      this.thinkingStart = -1;
+      if (this.thinkingStart >= 0 && this.thinkingEnd < 0) {
+        this.flushStream();
+        this.thinkingEnd = this.chatLines.length;
+      }
       this.appendLine(yellow(`[tool] ${title}`));
       this.renderChatArea();
+      this.input.renderInput();
     }
   }
 
@@ -446,6 +527,10 @@ class ModuleAgentTui {
       case 'status': this.cmdStatus(); break;
       case 'help': case 'h': this.cmdHelp(); break;
       case 'quit': case 'q': case 'exit': this.cmdQuit(); return;
+      case 'clear':
+        this.ctx.clearModule(this.currentModule);
+        this.appendLine(dim('Context cleared.'));
+        break;
       default:
         this.appendLine(red(`Unknown command: /${cmd}`));
     }
@@ -477,6 +562,7 @@ class ModuleAgentTui {
     if (!this.graph.nodes.has(name)) { this.appendLine(red(`Module not found: ${name}`)); return; }
     this.currentModule = name;
     this.appendLine(green(`Switched to module: ${name}`));
+    this.loadHistory();
     try { await this.ensureAgent(name); } catch {}
   }
 
@@ -505,6 +591,7 @@ class ModuleAgentTui {
       `  ${cyan('/tree')}       Show module tree with status`,
       `  ${cyan('/switch')} <n> Switch to module <n>`,
       `  ${cyan('/status')}     Show current module info`,
+      `  ${cyan('/clear')}      Clear conversation history`,
       `  ${cyan('/quit')}       Exit TUI`,
       `  ${cyan('/help')}       Show this help`,
     ];
@@ -528,7 +615,7 @@ class ModuleAgentTui {
       try { entry.process.kill(); } catch {}
     }
     this.agents.clear();
-    process.stdout.write(SHOW_CURSOR + '\n');
+    process.stdout.write(SHOW_CURSOR + NORMAL_SCREEN + '\n');
     process.exit(0);
   }
 }

@@ -34,6 +34,7 @@ const COMMANDS: CommandDef[] = [
   { cmd: '/switch', desc: 'Switch to module <name>', takesArg: true },
   { cmd: '/status', desc: 'Show current module info', takesArg: false },
   { cmd: '/quit', desc: 'Exit TUI', takesArg: false },
+  { cmd: '/clear', desc: 'Clear conversation history', takesArg: false },
   { cmd: '/help', desc: 'Show this help', takesArg: false },
 ];
 
@@ -41,6 +42,7 @@ export interface InputCallbacks {
   onLine: (line: string) => void;
   onShutdown: () => void;
   getStatusBar: () => string;
+  onScroll: (delta: number) => void;
 }
 
 export class TuiInput {
@@ -158,12 +160,16 @@ export class TuiInput {
         if (this.mode === 'command') {
           this.selectedIdx = Math.max(0, this.selectedIdx - 1);
           this.renderCommandMode();
+        } else {
+          this.callbacks.onScroll(-1);
         }
         break;
       case '\x1b[B': // Down
         if (this.mode === 'command') {
           this.selectedIdx = Math.min(this.candidates.length - 1, this.selectedIdx + 1);
           this.renderCommandMode();
+        } else {
+          this.callbacks.onScroll(1);
         }
         break;
       case '\x1b[C':
@@ -191,6 +197,7 @@ export class TuiInput {
       this.updateCandidates();
       this.renderCommandMode();
     } else {
+      this.callbacks.onScroll(0); // typing resets scroll
       this.renderInput();
     }
   }
@@ -219,6 +226,7 @@ export class TuiInput {
     this.buffer = '';
     this.cursor = 0;
     this.mode = 'chat';
+    this.callbacks.onScroll(0); // reset scroll to bottom
     process.stdout.write('\n');
     this.callbacks.onLine(line);
   }
