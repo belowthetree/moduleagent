@@ -320,8 +320,36 @@ function appendToolCall(line: string) {
 }
 
 function finishStream(moduleName: string) {
-  const el = document.getElementById('stream-content');
-  if (el) el.classList.remove('stream-active');
+  if (selectedNode?.name === moduleName) {
+    const el = document.getElementById('stream-content');
+    if (el) {
+      el.classList.remove('stream-active');
+      // Collapse thinking spans into toggle
+      el.querySelectorAll('.stream-thinking').forEach(span => {
+        const text = span.textContent || '';
+        if (!text.trim()) return;
+        const wrapper = document.createElement('span');
+        wrapper.className = 'ctx-thinking-toggle';
+        wrapper.innerHTML = `<span class="ctx-tag tag-thinking">思考</span><span class="ctx-thinking-arrow">▶</span>`;
+        wrapper.style.cursor = 'pointer';
+        wrapper.addEventListener('click', () => {
+          const content = wrapper.nextElementSibling as HTMLElement;
+          const arrow = wrapper.querySelector('.ctx-thinking-arrow');
+          if (content && arrow) {
+            const isOpen = content.style.display !== 'none';
+            content.style.display = isOpen ? 'none' : '';
+            arrow.textContent = isOpen ? '▶' : '▼';
+          }
+        });
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'ctx-thinking-content';
+        contentDiv.textContent = text;
+        contentDiv.style.display = 'none';
+        span.replaceWith(wrapper);
+        wrapper.after(contentDiv);
+      });
+    }
+  }
   const st = streamState.get(moduleName);
   const content = (st?.reply || '').trim();
   const thinking = (st?.thinking || '').trim();
