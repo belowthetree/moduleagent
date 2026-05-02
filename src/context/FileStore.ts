@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import { createHash } from 'crypto';
 import type { ChatMsg, ContextStore } from './ContextManager.js';
+import { defaultLogger as log } from '../core/Logger.js';
 
 export class FileStore implements ContextStore {
   private baseDir: string;
@@ -10,6 +11,7 @@ export class FileStore implements ContextStore {
   constructor(projectRoot: string) {
     const hash = createHash('sha256').update(projectRoot).digest('hex').slice(0, 12);
     this.baseDir = path.join(os.homedir(), '.module-agent', 'contexts', hash);
+    log.debug(`FileStore baseDir: ${this.baseDir}`);
   }
 
   private filePath(moduleName: string): string {
@@ -21,23 +23,38 @@ export class FileStore implements ContextStore {
     try {
       const fp = this.filePath(moduleName);
       if (fs.existsSync(fp)) {
-        return JSON.parse(fs.readFileSync(fp, 'utf-8')) as ChatMsg[];
+        const raw = fs.readFileSync(fp, 'utf-8');
+        const msgs = JSON.parse(raw) as ChatMsg[];
+        log.debug(`FileStore load: ${moduleName} (${msgs.length} msgs, ${raw.length} bytes)`);
+        return msgs;
       }
-    } catch {}
+    } catch (err) {
+      log.error(`FileStore load error: ${moduleName} | ${(err as Error).message}`);
+    }
     return [];
   }
 
   save(moduleName: string, msgs: ChatMsg[]): void {
     try {
-      fs.writeFileSync(this.filePath(moduleName), JSON.stringify(msgs, null, 2), 'utf-8');
-    } catch {}
+      const fp = this.filePath(moduleName);
+      const data = JSON.stringify(msgs, null, 2);
+      fs.writeFileSync(fp, data, 'utf-8');
+      log.debug(`FileStore save: ${moduleName} (${msgs.length} msgs, ${data.length} bytes)`);
+    } catch (err) {
+      log.error(`FileStore save error: ${moduleName} | ${(err as Error).message}`);
+    }
   }
 
   remove(moduleName: string): void {
     try {
       const fp = this.filePath(moduleName);
-      if (fs.existsSync(fp)) fs.unlinkSync(fp);
-    } catch {}
+      if (fs.existsSync(fp)) {
+        fs.unlinkSync(fp);
+        log.debug(`FileStore remove: ${moduleName}`);
+      }
+    } catch (err) {
+      log.error(`FileStore remove error: ${moduleName} | ${(err as Error).message}`);
+    }
   }
 
   list(): string[] {
@@ -46,7 +63,8 @@ export class FileStore implements ContextStore {
       return fs.readdirSync(this.baseDir)
         .filter(f => f.endsWith('.json'))
         .map(f => f.replace(/\.json$/, ''));
-    } catch {
+    } catch (err) {
+      log.error(`FileStore list error: ${(err as Error).message}`);
       return [];
     }
   }

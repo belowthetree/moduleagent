@@ -4,6 +4,7 @@ import matter from 'gray-matter';
 import type { ModuleDefinition, ModuleFrontmatter, SubModuleRef } from '../types/module.js';
 import { marked } from 'marked';
 import type { Token, Tokens } from 'marked';
+import { defaultLogger as log } from './Logger.js';
 
 export class ModuleParser {
   static async parseFile(filePath: string): Promise<ModuleDefinition> {
@@ -17,6 +18,7 @@ export class ModuleParser {
       : ModuleParser.parseSubModulesFromBody(marked.lexer(content));
     const description = ModuleParser.parseDescription(marked.lexer(content));
 
+    log.debug(`ModuleParser: ${filePath} name=${frontmatter.name} submodules=${subModules.length} body=${content.trim().length}chars`);
     return {
       frontmatter,
       body: content.trim(),

@@ -3,6 +3,7 @@ import path from 'path';
 import { isBuiltinExcluded } from './ExclusionRules.js';
 import type { ModuleDescriptor } from '../types/module.js';
 import { ModuleParser } from './ModuleParser.js';
+import { defaultLogger as log } from './Logger.js';
 
 export interface ScanOptions {
   projectRoot: string;
@@ -17,8 +18,10 @@ export class ModuleScanner {
       throw new Error(`Project root does not exist: ${projectRoot}`);
     }
 
+    log.info(`ModuleScanner: scanning ${projectRoot}`);
     const modules: ModuleDescriptor[] = [];
     await ModuleScanner.scanDir(projectRoot, projectRoot, extraExclude, modules);
+    log.info(`ModuleScanner: found ${modules.length} modules in ${projectRoot}`);
     return modules;
   }
 
@@ -56,7 +59,7 @@ export class ModuleScanner {
             definition,
           });
         } catch (err) {
-          console.error(`Failed to parse ${fullPath}:`, err);
+          log.error(`ModuleScanner: failed to parse ${fullPath} | ${(err as Error).message}`);
         }
       }
     }

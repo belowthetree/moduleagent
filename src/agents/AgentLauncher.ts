@@ -1,9 +1,10 @@
 import { createAgentConnection } from '../protocol/acp/connection.js';
 import { FsHandler } from '../protocol/acp/handlers/fs.js';
 import { TerminalHandler } from '../protocol/acp/handlers/terminal.js';
-import type { ClientSideConnection, Client, SessionNotification } from '@agentclientprotocol/sdk';
+import type { ClientSideConnection, Client, SessionNotification, AgentCapabilities } from '@agentclientprotocol/sdk';
 import type { ChildProcess } from 'child_process';
 import type { Logger } from '../core/Logger.js';
+import { defaultLogger } from '../core/Logger.js';
 
 export interface AgentConfig {
   command: string;
@@ -20,12 +21,16 @@ export interface LaunchedAgent {
   process: ChildProcess;
   name: string;
   cwd: string;
+  agentCapabilities?: AgentCapabilities;
   onSessionUpdate: ((moduleName: string, sessionId: string, update: SessionNotification) => void) | null;
 }
 
 export class AgentLauncher {
   async launch(config: AgentConfig, name: string, cwd: string, logger?: Logger, options?: LaunchOptions): Promise<LaunchedAgent> {
+    const log = logger || defaultLogger;
     cwd = cwd.replace(/\\/g, '/');
+    log.info(`Agent launch: ${name} cwd=${cwd} cmd=${config.command}`);
+
     const fsHandler = new FsHandler(cwd, options?.subModuleDirs || []);
     const terminalHandler = new TerminalHandler(cwd);
 
@@ -39,7 +44,7 @@ export class AgentLauncher {
 
     const clientFactory = (): Client => ({
       requestPermission: async (params) => {
-        logger?.info(`[${name}] Permission requested: ${params.toolCall.toolCallId}, auto-allowing`);
+        log.info(`[${name}] Permission requested: ${params.toolCall.toolCallId}, auto-allowing`);
         return {
           outcome: {
             outcome: 'selected' as const,
@@ -52,9 +57,9 @@ export class AgentLauncher {
         const u = params.update;
         if (u.sessionUpdate === 'agent_message_chunk' || u.sessionUpdate === 'agent_thought_chunk') {
           const block = (u as { content: { type?: string; text?: string } }).content;
-          logger?.debug(`[${name}] stream chunk type=${block?.type} len=${block?.text?.length || 0}`);
+          log.debug(`[${name}] stream chunk type=${block?.type} len=${block?.text?.length || 0}`);
         } else if (u.sessionUpdate === 'tool_call') {
-          logger?.info(`[${name}] tool_call: ${(u as { title?: string }).title || 'unknown'}`);
+          log.info(`[${name}] tool_call: ${(u as { title?: string }).title || 'unknown'}`);
         }
         if (launched.onSessionUpdate) {
           launched.onSessionUpdate(name, params.sessionId, params);
@@ -76,12 +81,12 @@ export class AgentLauncher {
         args: config.args,
         env: config.env,
         cwd,
-        logger,
+        logger: log,
       },
       clientFactory,
     );
 
-    await connection.initialize({
+    const initResult = await connection.initialize({
       protocolVersion: 1,
       clientCapabilities: {
         fs: { readTextFile: true, writeTextFile: true },
@@ -92,6 +97,9 @@ export class AgentLauncher {
         version: '0.1.0',
       },
     });
+
+    launched.agentCapabilities = initResult.agentCapabilities;
+    log.info(`Agent initialized: ${name} capabilities={ loadSession: ${initResult.agentCapabilities?.loadSession ?? false}, fs: true }`);
 
     launched.connection = connection;
     launched.process = process;

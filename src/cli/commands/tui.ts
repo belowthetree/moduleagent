@@ -1,15 +1,21 @@
 import { cursorTo, clearLine } from 'readline';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
-import { AgentLauncher, type LaunchedAgent } from '../../agents/AgentLauncher.js';
 import { runSetup } from './setup.js';
 import { TuiInput } from './input.js';
 import { ContextManager, type ChatMsg, makeId, timeStr } from '../../context/ContextManager.js';
 import { FileStore } from '../../context/FileStore.js';
+import { AgentManager, type AgentEntry as ManagerAgentEntry } from '../../agents/AgentManager.js';
+import { AgentRouter } from '../../agents/AgentRouter.js';
+import { defaultLogger as log } from '../../core/Logger.js';
 import type { ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../../types/module.js';
-import type { ClientSideConnection, SessionNotification } from '@agentclientprotocol/sdk';
-import type { ChildProcess } from 'child_process';
+import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { ProjectConfig } from '../../config/defaults.js';
+
+const HISTORY_FILE = path.join(os.homedir(), '.module-agent', 'input-history.json');
 
 // ── ANSI helpers ──
 
@@ -17,6 +23,10 @@ const CSI = '\x1b[';
 const ALT_SCREEN = `${CSI}?1049h`;
 const NORMAL_SCREEN = `${CSI}?1049l`;
 const HIDE_CURSOR = `${CSI}?25l`;
+const MOUSE_SGR_ON = `${CSI}?1000h${CSI}?1006h`;
+const MOUSE_SGR_OFF = `${CSI}?1006l${CSI}?1000l`;
+const ALT_SCROLL_ON = `${CSI}?1007h`;
+const ALT_SCROLL_OFF = `${CSI}?1007l`;
 const SHOW_CURSOR = `${CSI}?25h`;
 
 function color(code: number, text: string): string {
@@ -31,13 +41,6 @@ const red = (s: string) => color(31, s);
 const gray = (s: string) => color(90, s);
 
 // ── Types ──
-
-interface AgentEntry {
-  connection: ClientSideConnection;
-  process: ChildProcess;
-  sessionId: string;
-  launched: LaunchedAgent;
-}
 
 type AgentStatus = 'idle' | 'streaming' | 'error' | 'offline';
 
@@ -86,16 +89,39 @@ function buildStatusBar(currentModule: string, node: ModuleGraphNode | undefined
   return `Module: ${cyan(currentModule)}${pathStr}  Agent: ${statusColors[status]}`;
 }
 
+// ── Input history persistence ──
+
+function loadInputHistory(): string[] {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      const raw = fs.readFileSync(HISTORY_FILE, 'utf-8');
+      const data = JSON.parse(raw);
+      if (Array.isArray(data)) return data.slice(-100);
+    }
+  } catch {}
+  return [];
+}
+
+function saveInputHistory(lines: string[]): void {
+  try {
+    const dir = path.dirname(HISTORY_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(lines, null, 2), 'utf-8');
+  } catch {}
+}
+
 // ── TUI Class ──
 
 export interface TuiOptions { projectRoot: string; }
 
 export async function tui(options: TuiOptions): Promise<void> {
   try {
+    log.info(`TUI: starting with projectRoot=${options.projectRoot}`);
     const setup = await runSetup(options.projectRoot);
     const t = new ModuleAgentTui(setup.projectRoot, setup.config, setup.bufferedLines);
     await t.run();
   } catch (err) {
+    log.error(`TUI: failed to start | ${(err as Error).message}`);
     process.stderr.write(red(`\nError: ${(err as Error).message}\n`));
     process.stderr.write(dim('\nRun: module-agent tui --project <project-dir>\n'));
     process.exit(1);
@@ -107,12 +133,11 @@ class ModuleAgentTui {
   private graph!: ModuleGraphType;
   private config: ProjectConfig;
   private currentModule: string;
-  private agents = new Map<string, AgentEntry>();
   private agentStatuses = new Map<string, AgentStatus>();
-  private launcher = new AgentLauncher();
+  private manager!: AgentManager;
+  private router!: AgentRouter;
   private input!: TuiInput;
   private bufferedLines: string[];
-  private sessionPrompted = new Set<string>();
   private running = true;
   private busy = false;
   private scrollOffset = 0;
@@ -123,6 +148,8 @@ class ModuleAgentTui {
   private partialLine = ''; // incomplete agent stream line
   private thinkingStart = -1; // index in chatLines where thinking block starts
   private thinkingEnd = -1;   // index where thinking block ends (exclusive)
+  private agentStartIdx = -1; // index in chatLines where current agent response starts
+  private pendingSessionId = ''; // sessionId for the in-progress stream
 
   constructor(projectRoot: string, config: ProjectConfig, bufferedLines: string[]) {
     this.projectRoot = projectRoot;
@@ -134,16 +161,27 @@ class ModuleAgentTui {
   async run(): Promise<void> {
     await this.scanProject();
     this.currentModule = this.graph.root;
+    log.info(`TUI: project scanned, root=${this.graph.root}, modules=${this.graph.nodes.size}`);
+
+    this.manager = new AgentManager(this.config, this.graph);
+    this.router = new AgentRouter(this.manager, this.graph);
 
     this.ctx = new ContextManager(new FileStore(this.projectRoot));
     this.loadHistory();
+
+    const savedHistory = loadInputHistory();
 
     this.input = new TuiInput({
       onLine: (line) => this.handleLine(line),
       onShutdown: () => this.shutdown(),
       getStatusBar: () => this.getCurrentStatusBar(),
       onScroll: (delta) => this.handleScroll(delta),
+      onRefreshChat: () => this.renderChatArea(),
+      onHistoryChange: (lines) => saveInputHistory(lines),
     });
+    if (savedHistory.length > 0) {
+      this.input.setHistory(savedHistory);
+    }
 
     process.stdout.write(ALT_SCREEN + HIDE_CURSOR);
 
@@ -160,6 +198,16 @@ class ModuleAgentTui {
     }
 
     this.input.start();
+
+    // Mouse tracking: disable alternate-scroll (1007l) so wheel→mouse events,
+    // then enable basic tracking (1000h) + SGR encoding (1006h)
+    const mouseSetup = ALT_SCROLL_OFF + MOUSE_SGR_ON;
+    process.stdout.write(mouseSetup);
+    try {
+      const ttyFd = fs.openSync('/dev/tty', 'w');
+      fs.writeSync(ttyFd, mouseSetup);
+      fs.closeSync(ttyFd);
+    } catch {}
   }
 
   // ── Scan ──
@@ -337,40 +385,23 @@ class ModuleAgentTui {
 
   // ── Agent management ──
 
-  private async ensureAgent(moduleName: string): Promise<AgentEntry> {
-    const existing = this.agents.get(moduleName);
-    if (existing) return existing;
+  private async ensureAgent(moduleName: string): Promise<ManagerAgentEntry> {
+    if (this.manager.hasAgent(moduleName)) {
+      return this.manager.getAgent(moduleName)!;
+    }
 
     const node = this.graph.nodes.get(moduleName);
     if (!node) throw new Error(`Module not found: ${moduleName}`);
 
-    const cmd = this.config.agents.default.command;
-    const args = this.config.agents.default.args || [];
-    const cwd = node.absolutePath;
-
+    log.info(`TUI: starting agent for ${moduleName} at ${node.absolutePath}`);
     this.appendLine(dim(`[system] Starting agent for ${moduleName}...`));
 
-    const launched = await this.launcher.launch(
-      { command: cmd, args }, moduleName, cwd, undefined, { subModuleDirs: [] },
+    const entry = await this.manager.startModuleAgent(
+      moduleName,
+      node.absolutePath,
+      (name, _sid, notification) => this.handleStream(name, notification),
     );
 
-    launched.onSessionUpdate = (_name, _sid, notification) => {
-      this.handleStream(moduleName, notification);
-    };
-
-    const result = await launched.connection.newSession({
-      cwd: launched.cwd, mcpServers: [],
-    });
-
-    this.sessionPrompted.delete(moduleName);
-
-    const entry: AgentEntry = {
-      connection: launched.connection,
-      process: launched.process,
-      sessionId: result.sessionId,
-      launched,
-    };
-    this.agents.set(moduleName, entry);
     this.agentStatuses.set(moduleName, 'idle');
     this.renderStatusBar();
 
@@ -403,25 +434,24 @@ class ModuleAgentTui {
 
     try {
       const entry = await this.ensureAgent(this.currentModule);
-      const sid = entry.sessionId;
+      const sid = entry.sessionId!;
+
+      log.info(`TUI: sending to ${this.currentModule} session=${sid.slice(0, 8)} (${text.length} chars)`);
 
       // Save user message with sessionId
       this.ctx.addMessage(this.currentModule, {
         id: makeId(), role: 'user', content: text,
-        thinking: '', tools: '', time: timeStr(),
+        thinking: '', time: timeStr(),
         status: 'completed', moduleName: this.currentModule, sessionId: sid,
       });
 
       this.agentStatuses.set(this.currentModule, 'streaming');
       this.renderStatusBar();
 
-      const blocks = this.buildPromptBlocks(this.currentModule, text);
-      const agentStartIdx = this.chatLines.length;
+      this.agentStartIdx = this.chatLines.length;
+      this.pendingSessionId = sid;
 
-      await entry.connection.prompt({
-        sessionId: sid,
-        prompt: blocks,
-      });
+      await this.router.sendToAgent(entry, text);
 
       this.flushStream();
       this.collapseThinking();
@@ -429,22 +459,41 @@ class ModuleAgentTui {
       this.renderStatusBar();
 
       // Save agent response
-      const responseLines = this.chatLines.slice(agentStartIdx);
+      const responseLines = this.chatLines.slice(this.agentStartIdx);
       const responseText = responseLines.map(l => l.replace(/\x1b\[[0-9;]*m/g, '')).join('\n').trim();
       if (responseText) {
         this.ctx.addMessage(this.currentModule, {
           id: makeId(), role: 'agent', content: responseText.slice(0, 2000),
-          thinking: '', tools: '', time: timeStr(),
+          thinking: '', time: timeStr(),
           status: 'completed', moduleName: this.currentModule, sessionId: sid,
         });
       }
+      log.info(`TUI: response saved for ${this.currentModule} (${responseText.length} chars)`);
+      this.agentStartIdx = -1;
+      this.pendingSessionId = '';
     } catch (err) {
+      log.error(`TUI: sendMessage failed | ${(err as Error).message}`);
       this.flushStream();
       this.collapseThinking();
+      // Save partial response even on error
+      if (this.agentStartIdx >= 0) {
+        const responseLines = this.chatLines.slice(this.agentStartIdx);
+        const responseText = responseLines.map(l => l.replace(/\x1b\[[0-9;]*m/g, '')).join('\n').trim();
+        if (responseText) {
+          this.ctx.addMessage(this.currentModule, {
+            id: makeId(), role: 'agent', content: responseText.slice(0, 2000),
+            thinking: '', time: timeStr(),
+            status: 'completed', moduleName: this.currentModule, sessionId: this.pendingSessionId,
+          });
+          log.info(`TUI: partial response saved on error for ${this.currentModule} (${responseText.length} chars)`);
+        }
+      }
       this.agentStatuses.set(this.currentModule, 'error');
       this.appendLine(red(`[error] ${(err as Error).message}`));
       this.renderChatArea();
       this.renderStatusBar();
+      this.agentStartIdx = -1;
+      this.pendingSessionId = '';
     }
   }
 
@@ -485,25 +534,6 @@ class ModuleAgentTui {
       this.renderChatArea();
       this.input.renderInput();
     }
-  }
-
-  private buildPromptBlocks(moduleName: string, userText: string) {
-    const blocks: { type: 'text'; text: string }[] = [];
-    const isFirst = !this.sessionPrompted.has(moduleName);
-
-    if (isFirst) {
-      this.sessionPrompted.add(moduleName);
-      const node = this.graph.nodes.get(moduleName);
-      if (node?.definition?.body) {
-        blocks.push({
-          type: 'text',
-          text: `# Module: ${moduleName}\n\n${node.definition.body}\n\n---\n\n`,
-        });
-      }
-    }
-
-    blocks.push({ type: 'text', text: userText });
-    return blocks;
   }
 
   private renderStatusBar(): void {
@@ -598,8 +628,27 @@ class ModuleAgentTui {
     for (const l of lines) this.appendLine(l);
   }
 
+  private savePartialResponse(): void {
+    if (this.agentStartIdx < 0) return;
+    this.flushStream();
+    this.collapseThinking();
+    const responseLines = this.chatLines.slice(this.agentStartIdx);
+    const responseText = responseLines.map(l => l.replace(/\x1b\[[0-9;]*m/g, '')).join('\n').trim();
+    if (responseText) {
+      log.info(`TUI: saving partial response for ${this.currentModule} (${responseText.length} chars)`);
+      this.ctx.addMessage(this.currentModule, {
+        id: makeId(), role: 'agent', content: responseText.slice(0, 2000),
+        thinking: '', time: timeStr(),
+        status: 'completed', moduleName: this.currentModule, sessionId: this.pendingSessionId,
+      });
+    }
+    this.agentStartIdx = -1;
+    this.pendingSessionId = '';
+  }
+
   private cmdQuit(): void {
     this.running = false;
+    this.savePartialResponse();
     this.appendLine(dim('Goodbye.'));
     this.renderChatArea();
     this.shutdown();
@@ -608,14 +657,18 @@ class ModuleAgentTui {
   // ── Shutdown ──
 
   private shutdown(): void {
+    log.info('TUI: shutting down');
+    this.savePartialResponse();
     if (!this.running) { setTimeout(() => process.exit(0), 50); return; }
     this.running = false;
     this.input.stop();
-    for (const [, entry] of this.agents) {
-      try { entry.process.kill(); } catch {}
-    }
-    this.agents.clear();
-    process.stdout.write(SHOW_CURSOR + NORMAL_SCREEN + '\n');
+    this.manager.stopAll();
+    process.stdout.write(SHOW_CURSOR + MOUSE_SGR_OFF + ALT_SCROLL_ON + NORMAL_SCREEN + '\n');
+    try {
+      const ttyFd = fs.openSync('/dev/tty', 'w');
+      fs.writeSync(ttyFd, MOUSE_SGR_OFF + ALT_SCROLL_ON);
+      fs.closeSync(ttyFd);
+    } catch {}
     process.exit(0);
   }
 }

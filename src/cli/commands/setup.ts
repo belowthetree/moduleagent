@@ -5,6 +5,7 @@ import { ModuleGenerator } from '../../core/ModuleGenerator.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';
 import { DEFAULT_CONFIG, type ProjectConfig } from '../../config/defaults.js';
 import { saveLastProject } from '../utils/project-root.js';
+import { defaultLogger as log } from '../../core/Logger.js';
 
 export interface SetupResult {
   projectRoot: string;
@@ -62,12 +63,14 @@ export async function runSetup(
   let projectRoot = cliProject ? path.resolve(cliProject) : '';
   if (projectRoot && !fs.existsSync(projectRoot)) {
     console.log(`Project path does not exist: ${projectRoot}`);
+    log.warn(`Setup: project path does not exist: ${projectRoot}`);
     projectRoot = '';
   }
 
   if (!projectRoot) {
     projectRoot = path.resolve(process.cwd());
   }
+  log.info(`Setup: projectRoot=${projectRoot}`);
 
   // Ensure module.md exists
   while (!fs.existsSync(path.join(projectRoot, 'module.md'))) {
@@ -81,8 +84,10 @@ export async function runSetup(
         const mdPath = path.join(projectRoot, 'module.md');
         fs.writeFileSync(mdPath, content, 'utf-8');
         console.log(`Generated: ${mdPath}`);
+        log.info(`Setup: generated module.md (${content.length} chars)`);
       } catch (err) {
         console.log(`Failed to generate: ${(err as Error).message}`);
+        log.error(`Setup: module.md generation failed: ${(err as Error).message}`);
         continue;
       }
     } else if (trimmed.toLowerCase() === 'n' || trimmed.toLowerCase() === 'no') {
@@ -128,8 +133,10 @@ export async function runSetup(
     try {
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
       console.log(`Saved: ${configPath}`);
+      log.info(`Setup: saved config to ${configPath}`);
     } catch (err) {
       console.log(`Warning: could not save config: ${(err as Error).message}`);
+      log.warn(`Setup: could not save config: ${(err as Error).message}`);
     }
   }
 

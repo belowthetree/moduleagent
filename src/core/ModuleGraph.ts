@@ -1,4 +1,5 @@
 import type { ModuleDescriptor, ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../types/module.js';
+import { defaultLogger as log } from './Logger.js';
 
 export class ModuleGraph {
   private nodes: Map<string, ModuleGraphNode> = new Map();
@@ -44,6 +45,7 @@ export class ModuleGraph {
       }
     }
 
+    log.info(`ModuleGraph: built with ${this.nodes.size} nodes, root=${this.root}`);
     return {
       root: this.root,
       nodes: new Map(this.nodes),

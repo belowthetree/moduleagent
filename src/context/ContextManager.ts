@@ -1,3 +1,5 @@
+import { defaultLogger as log } from '../core/Logger.js';
+
 export interface ChatMsg {
   id: string;
   role: 'user' | 'agent';
@@ -23,7 +25,9 @@ export class ContextManager {
 
   getMessages(moduleName: string): ChatMsg[] {
     if (!this.cache.has(moduleName)) {
-      this.cache.set(moduleName, this.store.load(moduleName));
+      const msgs = this.store.load(moduleName);
+      this.cache.set(moduleName, msgs);
+      log.info(`Context loaded: ${moduleName} (${msgs.length} msgs)`);
     }
     return this.cache.get(moduleName)!;
   }
@@ -32,11 +36,13 @@ export class ContextManager {
     const msgs = this.getMessages(moduleName);
     msgs.push(msg);
     this.store.save(moduleName, msgs);
+    log.info(`Context add: ${moduleName} role=${msg.role} (${msg.content.length} chars, total ${msgs.length} msgs)`);
   }
 
   clearModule(moduleName: string): void {
     this.cache.delete(moduleName);
     this.store.remove(moduleName);
+    log.info(`Context cleared: ${moduleName}`);
   }
 
   clearAll(): void {
@@ -44,6 +50,7 @@ export class ContextManager {
       this.store.remove(name);
     }
     this.cache.clear();
+    log.info(`Context cleared all`);
   }
 
   getModules(): string[] {

@@ -43,6 +43,8 @@ export interface InputCallbacks {
   onShutdown: () => void;
   getStatusBar: () => string;
   onScroll: (delta: number) => void;
+  onRefreshChat: () => void;
+  onHistoryChange?: (history: string[]) => void;
 }
 
 export class TuiInput {
@@ -51,7 +53,13 @@ export class TuiInput {
   private mode: 'chat' | 'command' = 'chat';
   private candidates: CommandDef[] = [];
   private selectedIdx = 0;
+  private lastCandidateLines = 0;
+  private lastStartRow = 0;
   private callbacks: InputCallbacks;
+  // Input history
+  private history: string[] = [];
+  private historyIdx = -1; // -1 = not navigating, else index into history[]
+  private savedDraft = ''; // saved input before history navigation
   private inputRow = 0;
   private stdin: NodeJS.ReadStream;
   private prevRaw: boolean;
@@ -87,6 +95,10 @@ export class TuiInput {
     process.stdout.write('\n');
   }
 
+  setHistory(lines: string[]): void {
+    this.history = [...lines];
+  }
+
   redrawPrompt(): void {
     if (this.rl) return;
     this.inputRow = (process.stdout.rows || 24) - 3;
@@ -97,12 +109,14 @@ export class TuiInput {
     if (this.rl) return;
     if (row !== undefined) this.inputRow = row;
     const cols = process.stdout.columns || 80;
+    const prompt = '> ';
+    const before = this.buffer.slice(0, this.cursor);
+    const at = this.buffer[this.cursor] || ' ';
+    const after = this.buffer.slice(this.cursor + 1);
+    const line = prompt + before + '\x1b[7m' + at + '\x1b[27m' + after;
     cursorTo(process.stdout, 0, this.inputRow);
     clearLine(process.stdout, 0);
-    const line = '> ' + this.buffer;
-    process.stdout.write(line);
-    const cursorCol = Math.min(2 + displayWidth(this.buffer.slice(0, this.cursor)), cols - 1);
-    cursorTo(process.stdout, cursorCol, this.inputRow);
+    process.stdout.write(line.slice(0, cols));
   }
 
   private startReadline(): void {
@@ -120,11 +134,37 @@ export class TuiInput {
 
     while (i < str.length) {
       if (str[i] === '\x1b') {
-        if (str.startsWith('\x1b[', i)) {
-          const end = str.indexOf('~', i);
-          const seq = end > i ? str.slice(i, end + 1) : str.slice(i, i + 3);
-          this.handleAnsi(seq);
-          i += seq.length;
+        // X10 mouse encoding: \x1b[M + 3 bytes (b x y), each offset by 32
+        if (str.startsWith('\x1b[M', i) && str.length - i >= 6) {
+          const b = str.charCodeAt(i + 3) - 32;
+          if (b === 64) this.callbacks.onScroll(-1);
+          else if (b === 65) this.callbacks.onScroll(1);
+          i += 6;
+          continue;
+        }
+
+        if (str.startsWith('\x1b[', i) || str.startsWith('\x1bO', i)) {
+          const tildeEnd = str.indexOf('~', i);
+          // Find the final byte (a letter A-Z or a-z for CSI/SS3 sequences)
+          let seqLen = 0;
+          if (tildeEnd > i) {
+            seqLen = tildeEnd - i + 1;
+          } else {
+            for (let j = i + 1; j < str.length && j < i + 30; j++) {
+              const c = str.charCodeAt(j);
+              if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) {
+                seqLen = j - i + 1;
+                break;
+              }
+            }
+          }
+          if (seqLen > 0) {
+            const seq = str.slice(i, i + seqLen);
+            this.handleAnsi(seq);
+            i += seqLen;
+          } else {
+            i++;
+          }
         } else {
           if (this.mode === 'command') this.cancelCommand();
           i++;
@@ -147,6 +187,9 @@ export class TuiInput {
         i++; continue;
       }
 
+      if (code === 16 && this.mode === 'chat') { this.historyUp(); i++; continue; }
+      if (code === 14 && this.mode === 'chat') { this.historyDown(); i++; continue; }
+
       if (code === 127 || code === 8) { this.handleBackspace(); i++; continue; }
 
       if (code >= 32 && code !== 127) this.insertChar(str[i]!);
@@ -155,37 +198,90 @@ export class TuiInput {
   };
 
   private handleAnsi(seq: string): void {
+    // SGR mouse events: \x1b[<N;X;Y[Mm]  (64=scroll up, 65=scroll down)
+    if (seq.startsWith('\x1b[<')) {
+      const m = seq.match(/^\x1b\[<(\d+);\d+;\d+[Mm]$/);
+      if (m) {
+        const btn = parseInt(m[1]!, 10);
+        log.info(`[SCROLL] SGR btn=${btn}`);
+        if (btn === 64) this.callbacks.onScroll(-1);
+        else if (btn === 65) this.callbacks.onScroll(1);
+      }
+      return;
+    }
+
     switch (seq) {
-      case '\x1b[A': // Up
+      case '\x1b[A': case '\x1bOA': // Up
         if (this.mode === 'command') {
           this.selectedIdx = Math.max(0, this.selectedIdx - 1);
           this.renderCommandMode();
         } else {
-          this.callbacks.onScroll(-1);
+          this.historyUp();
         }
         break;
-      case '\x1b[B': // Down
+      case '\x1b[B': case '\x1bOB': // Down
         if (this.mode === 'command') {
           this.selectedIdx = Math.min(this.candidates.length - 1, this.selectedIdx + 1);
           this.renderCommandMode();
         } else {
-          this.callbacks.onScroll(1);
+          this.historyDown();
         }
         break;
-      case '\x1b[C':
+      case '\x1b[C': case '\x1bOC':
         this.cursor = Math.min(this.buffer.length, this.cursor + 1);
         if (this.mode === 'chat') this.renderInput();
         break;
-      case '\x1b[D':
+      case '\x1b[D': case '\x1bOD':
         this.cursor = Math.max(0, this.cursor - 1);
         if (this.mode === 'chat') this.renderInput();
         break;
+      case '\x1b[1;5A': // Ctrl+Up
+        if (this.mode === 'chat') this.historyUp();
+        break;
+      case '\x1b[1;5B': // Ctrl+Down
+        if (this.mode === 'chat') this.historyDown();
+        break;
     }
+  }
+
+  private historyUp(): void {
+    if (this.history.length === 0) return;
+    if (this.historyIdx === -1) {
+      this.savedDraft = this.buffer;
+      this.historyIdx = this.history.length - 1;
+    } else if (this.historyIdx > 0) {
+      this.historyIdx--;
+    }
+    this.buffer = this.history[this.historyIdx]!;
+    this.cursor = this.buffer.length;
+    this.renderInput();
+  }
+
+  private historyDown(): void {
+    if (this.historyIdx === -1) return;
+    if (this.historyIdx < this.history.length - 1) {
+      this.historyIdx++;
+      this.buffer = this.history[this.historyIdx]!;
+      this.cursor = this.buffer.length;
+    } else {
+      this.historyIdx = -1;
+      this.buffer = this.savedDraft;
+      this.cursor = this.buffer.length;
+    }
+    this.renderInput();
+  }
+
+  private resetHistoryNav(): void {
+    if (this.historyIdx === -1) return;
+    this.buffer = this.savedDraft;
+    this.cursor = this.buffer.length;
+    this.historyIdx = -1;
   }
 
   // ── Buffer mutations ──
 
   private insertChar(ch: string): void {
+    this.resetHistoryNav();
     this.buffer = this.buffer.slice(0, this.cursor) + ch + this.buffer.slice(this.cursor);
     this.cursor++;
 
@@ -203,6 +299,7 @@ export class TuiInput {
   }
 
   private handleBackspace(): void {
+    this.resetHistoryNav();
     if (this.cursor === 0) {
       if (this.mode === 'command' && this.buffer.length <= 1) { this.cancelCommand(); return; }
       return;
@@ -223,10 +320,19 @@ export class TuiInput {
 
   private submitLine(): void {
     const line = this.buffer;
+    // Save non-empty, non-duplicate lines to history (max 100)
+    if (line.trim() && this.history[this.history.length - 1] !== line) {
+      this.history.push(line);
+      if (this.history.length > 100) this.history.shift();
+      this.callbacks.onHistoryChange?.(this.history);
+    }
+    this.historyIdx = -1;
+    this.savedDraft = '';
     this.buffer = '';
     this.cursor = 0;
     this.mode = 'chat';
     this.callbacks.onScroll(0); // reset scroll to bottom
+    this.renderInput();
     process.stdout.write('\n');
     this.callbacks.onLine(line);
   }
@@ -236,6 +342,17 @@ export class TuiInput {
     this.buffer = '';
     this.cursor = 0;
     this.candidates = [];
+    // Clear the candidate list rows rendered above input
+    if (this.lastCandidateLines > 0) {
+      const rows = process.stdout.rows || 24;
+      const startRow = Math.max(0, rows - 3 - this.lastCandidateLines + 1);
+      for (let i = 0; i < this.lastCandidateLines; i++) {
+        cursorTo(process.stdout, 0, startRow + i);
+        clearLine(process.stdout, 0);
+      }
+      this.lastCandidateLines = 0;
+    }
+    this.callbacks.onRefreshChat();
     this.renderInput();
   }
 
@@ -243,16 +360,13 @@ export class TuiInput {
     const selected = this.candidates[this.selectedIdx];
     if (!selected) return;
 
-    if (selected.takesArg) {
-      this.buffer = selected.cmd + ' ';
-      this.cursor = this.buffer.length;
-      this.mode = 'chat';
-      this.candidates = [];
-      this.renderInput();
-    } else {
-      this.buffer = selected.cmd;
-      this.submitLine();
-    }
+    this.buffer = selected.takesArg ? selected.cmd + ' ' : selected.cmd;
+    this.cursor = this.buffer.length;
+    this.mode = 'chat';
+    this.candidates = [];
+    this.lastCandidateLines = 0;
+    this.callbacks.onRefreshChat();
+    this.renderInput();
   }
 
   // ── Command matching ──
@@ -283,6 +397,13 @@ export class TuiInput {
     const statusLines = statusBar.split('\n');
     const totalExtra = lines.length + 1 + statusLines.length + 1; // candidates + gap + status + input
     const startRow = Math.max(0, rows - 3 - totalExtra);
+    this.lastCandidateLines = totalExtra + 1; // rows from startRow up to input
+
+    // When the candidate list shrinks, refresh chat to restore covered content
+    if (this.lastStartRow > 0 && startRow > this.lastStartRow) {
+      this.callbacks.onRefreshChat();
+    }
+    this.lastStartRow = startRow;
 
     // Render candidates
     for (let i = 0; i < lines.length; i++) {
@@ -303,10 +424,6 @@ export class TuiInput {
     }
 
     // Input
-    cursorTo(process.stdout, 0, rows - 3);
-    clearLine(process.stdout, 0);
-    process.stdout.write('> ' + this.buffer);
-    const cursorCol = Math.min(2 + displayWidth(this.buffer.slice(0, this.cursor)), cols - 1);
-    cursorTo(process.stdout, cursorCol, rows - 3);
+    this.renderInput(rows - 3);
   }
 }

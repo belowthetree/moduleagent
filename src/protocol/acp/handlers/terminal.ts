@@ -11,6 +11,7 @@ import type {
   KillTerminalRequest,
   ReleaseTerminalRequest,
 } from '@agentclientprotocol/sdk';
+import { defaultLogger as log } from '../../../core/Logger.js';
 
 interface TerminalState {
   process: ChildProcess;
@@ -85,14 +86,17 @@ export class TerminalHandler {
     proc.on('exit', (code, signal) => {
       state.exitStatus = { exitCode: code ?? -1, signal };
       state.resolved = true;
+      log.debug(`Terminal ${terminalId} exited: code=${code} signal=${signal}`);
     });
 
     proc.on('error', () => {
       state.exitStatus = { exitCode: -1, signal: null };
       state.resolved = true;
+      log.warn(`Terminal ${terminalId} error`);
     });
 
     this.terminals.set(terminalId, state);
+    log.debug(`Terminal created: ${terminalId} cmd=${params.command} cwd=${cwd}`);
     return { terminalId };
   }
 
@@ -130,6 +134,7 @@ export class TerminalHandler {
 
     if (!state.process.killed) {
       state.process.kill();
+      log.debug(`Terminal killed: ${params.terminalId}`);
     }
   }
 
@@ -139,5 +144,6 @@ export class TerminalHandler {
       state.process.kill();
     }
     this.terminals.delete(params.terminalId);
+    log.debug(`Terminal released: ${params.terminalId}`);
   }
 }

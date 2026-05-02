@@ -1,7 +1,7 @@
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { ProjectConfig } from '../config/defaults.js';
 import { AgentLauncher, type LaunchedAgent, type AgentConfig } from './AgentLauncher.js';
-import type { McpServer } from '@agentclientprotocol/sdk';
+import type { AgentCapabilities, McpServer, SessionNotification } from '@agentclientprotocol/sdk';
 import type { Logger } from '../core/Logger.js';
 
 export interface AgentEntry {
@@ -10,6 +10,7 @@ export interface AgentEntry {
   agent: LaunchedAgent;
   sessionId?: string;
   modulePath: string;
+  capabilities?: AgentCapabilities;
 }
 
 export class AgentManager {
@@ -28,9 +29,15 @@ export class AgentManager {
     this.logger = logger;
   }
 
-  async startMainAgent(mainCwd: string): Promise<AgentEntry> {
+  async startMainAgent(
+    mainCwd: string,
+    onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void,
+  ): Promise<AgentEntry> {
     const config = this.resolveAgentConfig('main');
     const agent = await this.launcher.launch(config, 'main', mainCwd, this.logger);
+    if (onSessionUpdate) {
+      agent.onSessionUpdate = onSessionUpdate;
+    }
     this.logger?.info(`MCP: newSession for main agent with ${this.mcpConfig.length} mcp servers`);
     for (const s of this.mcpConfig) {
       if ('command' in s) {
@@ -46,18 +53,26 @@ export class AgentManager {
       agent,
       sessionId,
       modulePath: mainCwd,
+      capabilities: agent.agentCapabilities,
     };
     this.agents.set('main', entry);
     return entry;
   }
 
-  async startModuleAgent(moduleName: string, moduleCwd: string): Promise<AgentEntry> {
+  async startModuleAgent(
+    moduleName: string,
+    moduleCwd: string,
+    onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void,
+  ): Promise<AgentEntry> {
     if (this.agents.has(moduleName)) {
       return this.agents.get(moduleName)!;
     }
 
     const config = this.resolveAgentConfig(moduleName);
     const agent = await this.launcher.launch(config, moduleName, moduleCwd, this.logger);
+    if (onSessionUpdate) {
+      agent.onSessionUpdate = onSessionUpdate;
+    }
     this.logger?.info(`MCP: newSession for ${moduleName} agent with ${this.mcpConfig.length} mcp servers`);
     const result = await agent.connection.newSession({ cwd: agent.cwd, mcpServers: this.mcpConfig });
     const sessionId = result.sessionId;
@@ -68,6 +83,7 @@ export class AgentManager {
       agent,
       sessionId,
       modulePath: moduleCwd,
+      capabilities: agent.agentCapabilities,
     };
     this.agents.set(moduleName, entry);
     return entry;

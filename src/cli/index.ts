@@ -5,6 +5,9 @@ import { listModules } from './commands/list.js';
 import { getModule } from './commands/get.js';
 import { serve } from './commands/serve.js';
 import { tui } from './commands/tui.js';
+import { defaultLogger, LogLevel } from '../core/Logger.js';
+
+defaultLogger.configure('logs', LogLevel.INFO);
 
 const HELP = `Usage: module-agent <command> [options]
 
@@ -46,6 +49,8 @@ async function main() {
     }
   }
 
+  defaultLogger.info(`CLI invoked: ${command} ${positional.join(' ')}`.trim());
+
   try {
     switch (command) {
       case 'list':
@@ -72,10 +77,12 @@ async function main() {
         break;
 
       default:
+        defaultLogger.warn(`Unknown command: ${command}`);
         process.stderr.write(`Unknown command: ${command}\n\n${HELP}\n`);
         process.exit(2);
     }
   } catch (err) {
+    defaultLogger.error(`Command failed: ${command} | ${(err as Error).message}`);
     if (err instanceof CliError) {
       process.stderr.write(JSON.stringify({ success: false, error: err.message }) + '\n');
       process.exit(err.exitCode);
@@ -86,6 +93,7 @@ async function main() {
 }
 
 main().catch((err) => {
+  defaultLogger.error(`Fatal: ${(err as Error).message}`);
   process.stderr.write(`Fatal: ${(err as Error).message}\n`);
   process.exit(1);
 });

@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { isBuiltinExcluded } from './ExclusionRules.js';
 import type { ModuleFrontmatter } from '../types/module.js';
+import { defaultLogger as log } from './Logger.js';
 
 export interface GenerateOptions {
   dirPath: string;
@@ -13,6 +14,7 @@ export class ModuleGenerator {
   static async generate(options: GenerateOptions): Promise<string> {
     const { dirPath } = options;
 
+    log.info(`ModuleGenerator: generating for ${dirPath}`);
     if (!await fs.pathExists(dirPath)) {
       throw new Error(`Directory does not exist: ${dirPath}`);
     }
@@ -22,11 +24,13 @@ export class ModuleGenerator {
     const subModules = await ModuleGenerator.inferSubModules(dirPath, options.extraExclude || []);
     const body = await ModuleGenerator.inferBody(dirPath, dirName);
 
-    return ModuleGenerator.composeModuleMd(
+    const result = ModuleGenerator.composeModuleMd(
       { name: dirName, description },
       body,
       subModules,
     );
+    log.info(`ModuleGenerator: generated module.md for ${dirName} (${subModules.length} submodules, ${result.length} chars)`);
+    return result;
   }
 
   private static async inferDescription(dirPath: string): Promise<string> {
