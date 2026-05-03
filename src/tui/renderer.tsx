@@ -1,13 +1,17 @@
 import { createCliRenderer } from '@opentui/core';
 import { render } from '@opentui/solid';
+import path from 'path';
 import App from './App.js';
 import { tuiState } from './state.js';
 import { executeCommand } from './commands.js';
 import { AgentService } from './services/AgentService.js';
 import { createStreamHandler } from './services/StreamHandler.js';
+import { defaultLogger, LogLevel } from '../core/Logger.js';
 import type { ChatMessage } from './types.js';
 
 export async function startTui(projectRoot: string) {
+  defaultLogger.configure(path.join(projectRoot, 'logs'), LogLevel.INFO);
+
   const renderer = await createCliRenderer({
     exitOnCtrlC: false,  // Custom Ctrl+C handling
     targetFps: 30,
@@ -139,6 +143,30 @@ export async function startTui(projectRoot: string) {
   import('./config.js').then(async ({ validateModuleAgentJson }) => {
     if (await validateModuleAgentJson(projectRoot)) {
       await (globalThis as any).__tuiInitAgent(projectRoot);
+
+      // Warn if modulesPath is not configured (prefer new field, fallback to codeSource.path)
+      const { ConfigLoader } = await import('../config/ConfigLoader.js');
+      const config = await ConfigLoader.load(projectRoot);
+      const hasModulesPath = config.modulesPath || (config.codeSource.type === 'local' && config.codeSource.path);
+      if (!hasModulesPath) {
+        const msg: ChatMessage = {
+          id: `sys-${Date.now()}`,
+          role: 'system',
+          content: '⚠️ 未配置模块文件夹 (modulesPath)，仅扫描了当前项目。\n输入 /setup 可配置模块文件夹路径。',
+          time: new Date().toLocaleTimeString(),
+        };
+        tuiState.setMessages([...tuiState.messages(), msg]);
+      }
+    } else {
+      const msg: ChatMessage = {
+        id: `sys-${Date.now()}`,
+        role: 'system',
+        content: '⚠️ 未找到 .module-agent.json，请先完成配置。\n输入 /setup 可随时重新配置。',
+        time: new Date().toLocaleTimeString(),
+      };
+      tuiState.setMessages([msg]);
+      tuiState.setSetupStep(0);
+      tuiState.setScreen('setup');
     }
   });
 

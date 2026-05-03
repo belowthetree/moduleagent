@@ -144,6 +144,10 @@ export async function runSetup(
       config.agents.default.args = argsStr.trim().split(/\s+/);
     }
 
+    // 4.5. 模块文件夹 — where module.md files are discovered
+    const modFolder = await reader.readLine(`  模块文件夹 (module.md 所在路径) [${config.modulesPath || '(未指定)'}]: `);
+    if (modFolder.trim()) config.modulesPath = modFolder.trim();
+
     // 5. 代码来源类型
     const srcType = await reader.readLine(`  代码来源类型 (local/git) [${config.codeSource.type || 'local'}]: `);
     if (srcType.trim() === 'git') {
@@ -182,6 +186,7 @@ export async function runSetup(
 
   console.log('');
   console.log(`  模块目录:      ${projectRoot}`);
+  console.log(`  模块文件夹:    ${config.modulesPath || '(未指定)'}`);
   console.log(`  工作目录:      ${config.workspace.path}`);
   console.log(`  Agent:        ${config.agents.default.command} ${(config.agents.default.args || []).join(' ')}`);
   console.log(`  代码来源:      ${csInfo}`);

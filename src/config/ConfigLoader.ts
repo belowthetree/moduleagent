@@ -2,17 +2,18 @@ import fs from 'fs-extra';
 import path from 'path';
 import { DEFAULT_CONFIG, type ProjectConfig } from './defaults.js';
 import { ProjectConfigSchema } from './schema.js';
+import { defaultLogger } from '../core/Logger.js';
 
 export class ConfigLoader {
   static async load(projectRoot: string): Promise<ProjectConfig> {
     const configPath = path.join(projectRoot, '.module-agent.json');
 
     if (!await fs.pathExists(configPath)) {
-      console.log(`[config] 配置文件不存在: ${configPath}，使用默认配置`);
+      defaultLogger.info(`[config] 配置文件不存在: ${configPath}，使用默认配置`);
       return { ...DEFAULT_CONFIG };
     }
 
-    console.log(`[config] 配置文件路径: ${configPath}`);
+    defaultLogger.info(`[config] 配置文件路径: ${configPath}`);
     const raw = await fs.readJson(configPath);
     const result = ProjectConfigSchema.safeParse(raw);
 
@@ -22,7 +23,7 @@ export class ConfigLoader {
       return { ...DEFAULT_CONFIG };
     }
 
-    console.log('[config] 配置详情:', JSON.stringify(result.data, null, 2));
+    defaultLogger.info('[config] 配置详情:', JSON.stringify(result.data, null, 2));
     return result.data;
   }
 

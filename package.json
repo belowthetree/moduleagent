@@ -9,7 +9,7 @@
     "build:main": "esbuild electron/main.ts --bundle --outfile=electron/main.cjs --platform=node --format=cjs --external:electron --external:fs-extra --external:gray-matter --external:marked --external:simple-git --external:zod --external:path --external:url --external:esbuild --external:@agentclientprotocol/sdk",
     "build:preload": "esbuild electron/preload.ts --bundle --outfile=electron/preload.cjs --platform=node --format=cjs --external:electron",
     "build:mcp-server": "esbuild src/protocol/mcp/server-entry.ts --bundle --outfile=dist/mcp-server.cjs --platform=node --format=cjs",
-    "build:cli": "esbuild src/cli/index.ts --bundle --outfile=dist/cli.cjs --platform=node --format=cjs",
+    "build:cli": "esbuild src/cli/index.ts --bundle --outfile=dist/cli.cjs --platform=node --format=cjs --external:@opentui/core --external:@opentui/solid --external:@opentui/keymap",
     "build:electron": "npm run build:renderer && npm run build:main && npm run build:preload && npm run build:mcp-server && npm run build:cli",
     "electron": "npm run build:electron && electron .",
     "dist": "npm run build:renderer && electron-builder build --win portable",

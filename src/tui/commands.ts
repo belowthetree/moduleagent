@@ -26,6 +26,7 @@ export function executeCommand(input: string): void {
         '/list       — 列出所有模块',
         '/get <name> — 查看模块详情',
         '/mode <id>  — 切换 agent 模式',
+        '/setup      — 重新配置项目 (codeSource, workspace 等)',
         '/clear      — 清空上下文',
         '/help       — 显示此帮助',
         '/quit       — 退出 TUI',
@@ -120,6 +121,14 @@ export function executeCommand(input: string): void {
     case '/clear': {
       tuiState.setMessages([]);
       addSystemMsg('上下文已清空');
+      break;
+    }
+
+    case '/setup':
+    case '/config': {
+      addSystemMsg('正在打开配置向导...');
+      tuiState.setSetupStep(0);
+      tuiState.setScreen('setup');
       break;
     }
 

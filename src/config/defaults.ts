@@ -21,6 +21,7 @@ export interface ProjectConfig {
     path: string;
   };
   codeSource: CodeSourceConfig;
+  modulesPath?: string;
 }
 
 export const DEFAULT_CONFIG: ProjectConfig = {
@@ -38,4 +39,5 @@ export const DEFAULT_CONFIG: ProjectConfig = {
     type: 'local',
     path: '',
   },
+  modulesPath: '',
 };

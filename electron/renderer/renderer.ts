@@ -9,8 +9,8 @@ interface ModuleAgentApi {
   isAgentRunning(moduleName: string): Promise<boolean>;
   getRunningAgents(): Promise<{ name: string; status: 'idle' | 'streaming' | 'error' }[]>;
   onAgentStream(callback: (data: { moduleName: string; update: string; data: Record<string, unknown> }) => void): () => void;
-  saveAgentConfig(projectRoot: string, cmd: string, args: string[], codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }): Promise<{ success: boolean }>;
-  getAgentConfig(projectRoot: string): Promise<{ command: string; args: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string } }>;
+  saveAgentConfig(projectRoot: string, cmd: string, args: string[], codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }, modulesPath?: string): Promise<{ success: boolean }>;
+  getAgentConfig(projectRoot: string): Promise<{ command: string; args: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }; modulesPath?: string }>;
   onCrossContext(callback: (data: { moduleName: string; crossModule: string; direction: 'sent' | 'received'; phase: 'request' | 'response'; content: string; time: string }) => void): () => void;
 }
 
@@ -188,7 +188,7 @@ function saveSettings() {
     const cs = codeSourceType === 'local'
       ? { type: 'local' as const, path: codeSourcePath }
       : { type: 'git' as const, url: codeSourceUrl, branch: codeSourceBranch || undefined };
-    window.moduleAgent.saveAgentConfig(projectPath, agentCmd, args, cs);
+    window.moduleAgent.saveAgentConfig(projectPath, agentCmd, args, cs, projectPath);
   }
 
   checkStartReady();

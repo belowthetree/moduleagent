@@ -1,9 +1,12 @@
+import path from 'path';
 import { AgentManager, type AgentEntry } from '../../agents/AgentManager.js';
 import { AgentRouter } from '../../agents/AgentRouter.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
-import type { ModuleGraph as ModuleGraphType } from '../../types/module.js';
+import { defaultLogger } from '../../core/Logger.js';
+import { normalizeCodeSourcePath } from '../../core/PathUtils.js';
+import type { ModuleDescriptor, ModuleGraph as ModuleGraphType } from '../../types/module.js';
 import type { ProjectConfig } from '../../config/defaults.js';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { StreamHandler } from './StreamHandler.js';
@@ -38,10 +41,45 @@ export class AgentService {
     this.setStatus('loading');
 
     this.config = await ConfigLoader.load(projectRoot);
-    const descriptors = await ModuleScanner.scan({
+
+    const descriptors: ModuleDescriptor[] = [];
+
+    const projectDesc = await ModuleScanner.scan({
       projectRoot,
       extraExclude: this.config.exclude,
     });
+    descriptors.push(...projectDesc);
+
+    // Resolve the module scanning path: modulesPath (new) takes priority,
+    // falling back to codeSource.path for backward compatibility.
+    const moduleScanPath = this.config.modulesPath
+      ? normalizeCodeSourcePath(this.config.modulesPath)
+      : this.config.codeSource.type === 'local' && this.config.codeSource.path
+        ? normalizeCodeSourcePath(this.config.codeSource.path)
+        : '';
+
+    if (moduleScanPath && moduleScanPath !== path.resolve(projectRoot)) {
+      defaultLogger.info(`ModuleScanner: scanning modulesPath ${moduleScanPath}`);
+      try {
+        const codeDesc = await ModuleScanner.scan({
+          projectRoot: moduleScanPath,
+          extraExclude: this.config.exclude,
+        });
+        const seen = new Set(projectDesc.map((d) => d.moduleMdPath));
+        for (const d of codeDesc) {
+          if (!seen.has(d.moduleMdPath)) {
+            descriptors.push(d);
+          }
+        }
+        defaultLogger.info(`ModuleScanner: found ${codeDesc.length} modules in modulesPath`);
+      } catch (err) {
+        defaultLogger.warn(`ModuleScanner: failed to scan modulesPath ${moduleScanPath} | ${(err as Error).message}`);
+      }
+    } else {
+      defaultLogger.warn(`ModuleScanner: modulesPath is empty — only scanning project root. Run 'module-agent config' to configure.`);
+    }
+
+    defaultLogger.info(`ModuleScanner: total ${descriptors.length} modules`);
     this.graph = new ModuleGraph().build(descriptors, projectRoot);
 
     this.agentManager = new AgentManager(this.config, this.graph, []);

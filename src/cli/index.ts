@@ -4,6 +4,7 @@ import { CliError } from './utils/output.js';
 import { listModules } from './commands/list.js';
 import { getModule } from './commands/get.js';
 import { serve } from './commands/serve.js';
+import { runSetup } from './commands/setup.js';
 import { defaultLogger, LogLevel } from '../core/Logger.js';
 
 defaultLogger.configure('logs', LogLevel.INFO);
@@ -15,6 +16,7 @@ Commands:
   get <name>        Show detailed information for a module
   serve             Run in persistent stdio NDJSON mode
   tui               Interactive terminal UI (chat + module tree) — requires Bun
+  config            Run interactive setup to create/update .module-agent.json
 
 Options:
   --project <path>  Path to project root (auto-detected from cwd if omitted)
@@ -69,6 +71,10 @@ async function main() {
 
       case 'serve':
         await serve({ projectRoot: resolveProjectRoot(projectFlag) });
+        break;
+
+      case 'config':
+        await runSetup(projectFlag);
         break;
 
       case 'tui': {

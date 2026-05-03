@@ -11,6 +11,7 @@ import { ModuleGraph } from '../src/core/ModuleGraph.js';
 import { ConfigLoader } from '../src/config/ConfigLoader.js';
 import { DEFAULT_CONFIG, type ProjectConfig } from '../src/config/defaults.js';
 import { Logger, LogLevel, defaultLogger } from '../src/core/Logger.js';
+import { normalizeCodeSourcePath } from '../src/core/PathUtils.js';
 import { AgentLauncher, type LaunchedAgent } from '../src/agents/AgentLauncher.js';
 import type { ClientSideConnection, SessionNotification, ContentBlock, McpServer } from '@agentclientprotocol/sdk';
 import type { ChildProcess } from 'child_process';
@@ -308,7 +309,7 @@ function codeSourcePathForModule(node: ModuleGraphNode): string {
   };
 
   if (currentCodeSource.type === 'local' && currentCodeSource.path) {
-    return resolvePath(currentCodeSource.path);
+    return resolvePath(normalizeCodeSourcePath(currentCodeSource.path));
   }
 
   return '';
@@ -495,6 +496,26 @@ function registerIpcHandlers() {
     try {
       const config = await ConfigLoader.loadOrCreate(projectRoot);
       const descriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
+
+      // Also scan modulesPath (or fallback to codeSource.path) for additional modules
+      const moduleScanPath = config.modulesPath
+        ? normalizeCodeSourcePath(config.modulesPath)
+        : config.codeSource.type === 'local' && config.codeSource.path
+          ? normalizeCodeSourcePath(config.codeSource.path)
+          : '';
+      if (moduleScanPath && moduleScanPath !== path.resolve(projectRoot)) {
+        try {
+          const extraDesc = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
+          const seen = new Set(descriptors.map((d) => d.moduleMdPath));
+          for (const d of extraDesc) {
+            if (!seen.has(d.moduleMdPath)) descriptors.push(d);
+          }
+          defaultLogger.info(`project:scan found ${extraDesc.length} extra modules in ${moduleScanPath}`);
+        } catch (err) {
+          defaultLogger.warn(`project:scan failed to scan modulesPath ${moduleScanPath}: ${(err as Error).message}`);
+        }
+      }
+
       const graph = new ModuleGraph().build(descriptors, projectRoot);
       currentGraph = graph;
       currentProjectRoot = projectRoot;
@@ -659,7 +680,7 @@ function registerIpcHandlers() {
   });
 
   // ── Config IPC ──
-  ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string } }) => {
+  ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }; modulesPath?: string }) => {
     const configPath = path.join(projectRoot, '.module-agent.json');
     let config: ProjectConfig;
     try {
@@ -670,6 +691,7 @@ function registerIpcHandlers() {
     if (updates.command) config.agents.default.command = updates.command;
     if (updates.args) config.agents.default.args = updates.args;
     if (updates.codeSource) config.codeSource = updates.codeSource;
+    if (updates.modulesPath !== undefined) config.modulesPath = updates.modulesPath;
     await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
     defaultLogger.info(`config:save wrote to ${configPath}`);
     return { success: true };
@@ -678,9 +700,9 @@ function registerIpcHandlers() {
   ipcMain.handle('config:get', async (_event, projectRoot: string) => {
     try {
       const config = await ConfigLoader.load(projectRoot);
-      return { command: config.agents.default.command, args: config.agents.default.args || [], codeSource: config.codeSource };
+      return { command: config.agents.default.command, args: config.agents.default.args || [], codeSource: config.codeSource, modulesPath: config.modulesPath };
     } catch {
-      return { command: DEFAULT_CONFIG.agents.default.command, args: DEFAULT_CONFIG.agents.default.args || [], codeSource: DEFAULT_CONFIG.codeSource };
+      return { command: DEFAULT_CONFIG.agents.default.command, args: DEFAULT_CONFIG.agents.default.args || [], codeSource: DEFAULT_CONFIG.codeSource, modulesPath: DEFAULT_CONFIG.modulesPath };
     }
   });
 }

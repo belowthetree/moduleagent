@@ -30,6 +30,9 @@ export default function SetupWizard(props: SetupWizardProps) {
   const [workspacePath, setWorkspacePath] = createSignal(
     existing.workspacePath || defaultConfig.workspace.path,
   );
+  const [modulesPath, setModulesPath] = createSignal(
+    existing.modulesPath || "",
+  );
   const [codeSourceType, setCodeSourceType] = createSignal<string>(
     existing.codeSourceType || "local",
   );
@@ -72,10 +75,10 @@ export default function SetupWizard(props: SetupWizardProps) {
     const step = tuiState.setupStep();
 
     if (key.name === "return") {
-      if (step < 4) {
+      if (step < 5) {
         saveStepData(step);
         tuiState.setSetupStep(step + 1);
-      } else if (step === 4) {
+      } else if (step === 5) {
         handleComplete();
       }
     } else if (key.name === "escape") {
@@ -85,7 +88,7 @@ export default function SetupWizard(props: SetupWizardProps) {
         saveStepData(step);
         tuiState.setSetupStep(step - 1);
       }
-    } else if (key.name === "tab" && step === 3) {
+    } else if (key.name === "tab" && step === 4) {
       setCodeSourceType((prev) => (prev === "local" ? "git" : "local"));
     }
   });
@@ -102,9 +105,12 @@ export default function SetupWizard(props: SetupWizardProps) {
         data.projectRoot = projectRoot();
         break;
       case 2:
-        data.workspacePath = workspacePath();
+        data.modulesPath = modulesPath();
         break;
       case 3:
+        data.workspacePath = workspacePath();
+        break;
+      case 4:
         data.codeSourceType = codeSourceType();
         data.codeSourcePath = codeSourcePath();
         data.codeSourceUrl = codeSourceUrl();
@@ -141,6 +147,7 @@ export default function SetupWizard(props: SetupWizardProps) {
         path: data.workspacePath || defaultConfig.workspace.path,
       },
       codeSource,
+      modulesPath: data.modulesPath || "",
     };
 
     const root = data.projectRoot || process.cwd();
@@ -159,6 +166,7 @@ export default function SetupWizard(props: SetupWizardProps) {
       `Agent 命令: ${data.command || defaultConfig.agents.default.command} ${data.args || (defaultConfig.agents.default.args ?? []).join(" ")}`,
     );
     lines.push(`项目目录: ${data.projectRoot || process.cwd()}`);
+    lines.push(`模块文件夹: ${data.modulesPath || "(未指定)"}`);
     lines.push(`工作区: ${data.workspacePath || defaultConfig.workspace.path}`);
 
     if ((data.codeSourceType || "local") === "local") {
@@ -216,8 +224,21 @@ export default function SetupWizard(props: SetupWizardProps) {
         </>
       )}
 
-      {/* ── Step 2: 工作区目录 ──────────────────────────────────────── */}
+      {/* ── Step 2: 模块文件夹 (module.md 所在路径) ────────────────── */}
       {step() === 2 && (
+        <>
+          <text>模块文件夹</text>
+          <text dim>module.md 文件所在的目录。留空则仅扫描项目目录。</text>
+          <input
+            focused={true}
+            value={modulesPath()}
+            onInput={(v: string) => setModulesPath(v)}
+          />
+        </>
+      )}
+
+      {/* ── Step 3: 工作区目录 ──────────────────────────────────────── */}
+      {step() === 3 && (
         <>
           <text>工作区目录</text>
           <input
@@ -228,8 +249,8 @@ export default function SetupWizard(props: SetupWizardProps) {
         </>
       )}
 
-      {/* ── Step 3: 代码来源 ───────────────────────────────────────── */}
-      {step() === 3 && (
+      {/* ── Step 4: 代码来源 ───────────────────────────────────────── */}
+      {step() === 4 && (
         <>
           <text>代码来源 (Tab 切换)</text>
           <text
@@ -274,8 +295,8 @@ export default function SetupWizard(props: SetupWizardProps) {
         </>
       )}
 
-      {/* ── Step 4: 确认设置 ───────────────────────────────────────── */}
-      {step() === 4 && (
+      {/* ── Step 5: 确认设置 ───────────────────────────────────────── */}
+      {step() === 5 && (
         <>
           <text>确认设置</text>
           <text>{summaryText()}</text>

@@ -22,6 +22,7 @@ export const ProjectConfigSchema = z.object({
     path: z.string(),
   }),
   codeSource: CodeSourceSchema,
+  modulesPath: z.string().optional(),
 });
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
