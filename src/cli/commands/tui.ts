@@ -1,4 +1,3 @@
-import { cursorTo, clearLine } from 'readline';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -11,7 +10,7 @@ import { FileStore } from '../../context/FileStore.js';
 import { AgentManager, type AgentEntry as ManagerAgentEntry } from '../../agents/AgentManager.js';
 import { AgentRouter } from '../../agents/AgentRouter.js';
 import { defaultLogger as log } from '../../core/Logger.js';
-import type { ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../../types/module.js';
+import type { ModuleGraph as ModuleGraphType } from '../../types/module.js';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { ProjectConfig } from '../../config/defaults.js';
 
@@ -20,14 +19,6 @@ const HISTORY_FILE = path.join(os.homedir(), '.module-agent', 'input-history.jso
 // ── ANSI helpers ──
 
 const CSI = '\x1b[';
-const ALT_SCREEN = `${CSI}?1049h`;
-const NORMAL_SCREEN = `${CSI}?1049l`;
-const HIDE_CURSOR = `${CSI}?25l`;
-const MOUSE_SGR_ON = `${CSI}?1000h${CSI}?1006h`;
-const MOUSE_SGR_OFF = `${CSI}?1006l${CSI}?1000l`;
-const ALT_SCROLL_ON = `${CSI}?1007h`;
-const ALT_SCROLL_OFF = `${CSI}?1007l`;
-const SHOW_CURSOR = `${CSI}?25h`;
 
 function color(code: number, text: string): string {
   return `${CSI}${code}m${text}${CSI}0m`;
@@ -74,19 +65,6 @@ function renderTree(graph: ModuleGraphType, agentStatuses: Map<string, AgentStat
 
   if (graph.root) buildLines(graph.root, '', true);
   return lines;
-}
-
-// ── Status bar (single line) ──
-
-function buildStatusBar(currentModule: string, node: ModuleGraphNode | undefined, status: AgentStatus): string {
-  const statusColors: Record<AgentStatus, string> = {
-    idle: green('idle'),
-    streaming: yellow('streaming'),
-    error: red('error'),
-    offline: dim('offline'),
-  };
-  const pathStr = node ? `  Path: ${dim(node.relativePath)}` : '';
-  return `Module: ${cyan(currentModule)}${pathStr}  Agent: ${statusColors[status]}`;
 }
 
 // ── Input history persistence ──
@@ -140,7 +118,6 @@ class ModuleAgentTui {
   private bufferedLines: string[];
   private running = true;
   private busy = false;
-  private scrollOffset = 0;
   private ctx!: ContextManager;
 
   // Chat buffer — all output goes here
@@ -174,22 +151,18 @@ class ModuleAgentTui {
     this.input = new TuiInput({
       onLine: (line) => this.handleLine(line),
       onShutdown: () => this.shutdown(),
-      getStatusBar: () => this.getCurrentStatusBar(),
-      onScroll: (delta) => this.handleScroll(delta),
-      onRefreshChat: () => this.renderChatArea(),
+      getStatusBar: () => '',
+      onScroll: () => {},
+      onRefreshChat: () => {},
       onHistoryChange: (lines) => saveInputHistory(lines),
     });
     if (savedHistory.length > 0) {
       this.input.setHistory(savedHistory);
     }
 
-    process.stdout.write(ALT_SCREEN + HIDE_CURSOR);
-
-    // Render the layout frame (sep + status + input) before processing input
-    this.renderFullLayout();
-
-    // Show cursor at input position
-    process.stdout.write(SHOW_CURSOR);
+    // Print module tree on startup
+    this.printStatus();
+    this.appendLine('');
 
     // Process buffered lines from setup (commands like /list /quit)
     for (const line of this.bufferedLines) {
@@ -198,16 +171,6 @@ class ModuleAgentTui {
     }
 
     this.input.start();
-
-    // Mouse tracking: disable alternate-scroll (1007l) so wheel→mouse events,
-    // then enable basic tracking (1000h) + SGR encoding (1006h)
-    const mouseSetup = ALT_SCROLL_OFF + MOUSE_SGR_ON;
-    process.stdout.write(mouseSetup);
-    try {
-      const ttyFd = fs.openSync('/dev/tty', 'w');
-      fs.writeSync(ttyFd, mouseSetup);
-      fs.closeSync(ttyFd);
-    } catch {}
   }
 
   // ── Scan ──
@@ -223,16 +186,14 @@ class ModuleAgentTui {
     }
   }
 
-  // ── Chat buffer ──
+  // ── Output ──
 
   private appendLine(line: string): void {
-    const wrapped = this.wrapLine(line);
-    for (const w of wrapped) this.chatLines.push(w);
-    this.scrollOffset = 0; // new content → scroll to bottom
+    this.chatLines.push(line);
+    process.stdout.write(line + '\n');
   }
 
   private appendStream(text: string): void {
-    // Append streaming text to partial line, splitting on newlines
     this.partialLine += text;
     while (this.partialLine.includes('\n')) {
       const idx = this.partialLine.indexOf('\n');
@@ -253,63 +214,17 @@ class ModuleAgentTui {
     if (this.thinkingStart < 0) return;
     const end = this.thinkingEnd >= 0 ? this.thinkingEnd : this.chatLines.length;
     if (this.thinkingStart >= end) { this.thinkingStart = -1; this.thinkingEnd = -1; return; }
-    // Count chars in thinking block
     let totalChars = 0;
     for (let i = this.thinkingStart; i < end; i++) {
       totalChars += (this.chatLines[i] || '').replace(/\x1b\[[0-9;]*m/g, '').length;
     }
-    // Replace thinking lines with collapsed summary
     this.chatLines.splice(this.thinkingStart, end - this.thinkingStart);
     this.appendLine(dim(`[Thinking: ${totalChars} chars]`));
     this.thinkingStart = -1;
     this.thinkingEnd = -1;
-    this.renderChatArea();
   }
 
-  private wrapLine(line: string): string[] {
-    const cols = process.stdout.columns || 80;
-    const maxW = cols - 2;
-    if (line.length <= maxW) return [line];
-    const result: string[] = [];
-    let remaining = line;
-    while (remaining.length > maxW) {
-      result.push(remaining.slice(0, maxW));
-      remaining = remaining.slice(maxW);
-    }
-    if (remaining) result.push(remaining);
-    return result;
-  }
-
-  // ── Layout rendering ──
-
-  private chatRows(): number {
-    return Math.max(1, (process.stdout.rows || 24) - 4); // sep + input + sep + status
-  }
-
-  private renderChatArea(): void {
-    const rows = this.chatRows();
-    const total = this.chatLines.length;
-    const start = Math.max(0, total - rows - this.scrollOffset);
-    const visible = this.chatLines.slice(start, start + rows);
-    const scrolledUp = this.scrollOffset > 0;
-
-    for (let row = 0; row < rows; row++) {
-      cursorTo(process.stdout, 0, row);
-      clearLine(process.stdout, 0);
-      if (row < visible.length) {
-        const display = visible[row]!.length > (process.stdout.columns || 80)
-          ? visible[row]!.slice(0, (process.stdout.columns || 80) - 1)
-          : visible[row]!;
-        process.stdout.write(display);
-      }
-    }
-
-    // Scroll indicator
-    if (scrolledUp && rows > 1) {
-      cursorTo(process.stdout, (process.stdout.columns || 80) - 10, 0);
-      process.stdout.write(dim(`  ↑${this.scrollOffset}`));
-    }
-  }
+  // ── Output helpers ──
 
   private loadHistory(): void {
     const msgs = this.ctx.getMessages(this.currentModule);
@@ -320,7 +235,6 @@ class ModuleAgentTui {
         this.appendLine(green(`[you] `) + msg.content);
         this.appendLine(dim('─'.repeat(Math.min((process.stdout.columns || 80) - 2, 40))));
       } else {
-        // Truncate agent response to last 3 lines for brevity
         const lines = msg.content.split('\n');
         const preview = lines.slice(-3).join('\n');
         if (lines.length > 3) this.appendLine(dim(`[agent — ${lines.length} lines]`));
@@ -331,56 +245,14 @@ class ModuleAgentTui {
     this.appendLine('');
   }
 
-  private handleScroll(delta: number): void {
-    if (delta === 0) {
-      this.scrollOffset = 0;
-    } else {
-      const maxScroll = Math.max(0, this.chatLines.length - this.chatRows() + 1);
-      this.scrollOffset = Math.max(0, Math.min(maxScroll, this.scrollOffset + delta));
-    }
-    this.renderChatArea();
-  }
-
-  private renderFullLayout(): void {
-    const rows = process.stdout.rows || 24;
-    const chatR = this.chatRows();
-    const sep1 = chatR;        // separator above input
-    const inputRow = chatR + 1; // input
-    const sep2 = chatR + 2;    // separator below input
-    const statusRow = chatR + 3; // status bar
-
-    // Clear chat area
-    for (let row = 0; row < chatR; row++) {
-      cursorTo(process.stdout, 0, row);
-      clearLine(process.stdout, 0);
-    }
-
-    // Separator above input
-    cursorTo(process.stdout, 0, sep1);
-    clearLine(process.stdout, 0);
-    process.stdout.write(gray('─'.repeat(process.stdout.columns || 80)));
-
-    // Input
-    this.input.renderInput(inputRow);
-
-    // Separator below input
-    cursorTo(process.stdout, 0, sep2);
-    clearLine(process.stdout, 0);
-    process.stdout.write(gray('─'.repeat(process.stdout.columns || 80)));
-
-    // Status bar
-    cursorTo(process.stdout, 0, statusRow);
-    clearLine(process.stdout, 0);
-    process.stdout.write(this.getCurrentStatusBar());
-
-    // Render chat content
-    this.renderChatArea();
-  }
-
-  private getCurrentStatusBar(): string {
+  private printStatus(): void {
     const node = this.graph.nodes.get(this.currentModule);
     const status = this.agentStatuses.get(this.currentModule) || 'offline';
-    return buildStatusBar(this.currentModule, node, status);
+    const statusColors: Record<AgentStatus, string> = {
+      idle: green('idle'), streaming: yellow('streaming'), error: red('error'), offline: dim('offline'),
+    };
+    const pathStr = node ? `  ${dim(node.relativePath)}` : '';
+    process.stdout.write(dim(`[${this.currentModule}]`) + `${pathStr}  ${statusColors[status]}\n`);
   }
 
   // ── Agent management ──
@@ -403,7 +275,6 @@ class ModuleAgentTui {
     );
 
     this.agentStatuses.set(moduleName, 'idle');
-    this.renderStatusBar();
 
     return entry;
   }
@@ -420,8 +291,7 @@ class ModuleAgentTui {
       this.busy = true;
       this.appendLine(green(`[you] `) + trimmed);
       this.appendLine(dim('─'.repeat(process.stdout.columns ? Math.min(process.stdout.columns - 2, 40) : 40)));
-      this.renderChatArea();
-      this.sendMessage(trimmed).finally(() => {
+        this.sendMessage(trimmed).finally(() => {
         this.busy = false;
         this.input.redrawPrompt();
       });
@@ -446,8 +316,7 @@ class ModuleAgentTui {
       });
 
       this.agentStatuses.set(this.currentModule, 'streaming');
-      this.renderStatusBar();
-
+  
       this.agentStartIdx = this.chatLines.length;
       this.pendingSessionId = sid;
 
@@ -456,8 +325,7 @@ class ModuleAgentTui {
       this.flushStream();
       this.collapseThinking();
       this.agentStatuses.set(this.currentModule, 'idle');
-      this.renderStatusBar();
-
+  
       // Save agent response
       const responseLines = this.chatLines.slice(this.agentStartIdx);
       const responseText = responseLines.map(l => l.replace(/\x1b\[[0-9;]*m/g, '')).join('\n').trim();
@@ -490,9 +358,7 @@ class ModuleAgentTui {
       }
       this.agentStatuses.set(this.currentModule, 'error');
       this.appendLine(red(`[error] ${(err as Error).message}`));
-      this.renderChatArea();
-      this.renderStatusBar();
-      this.agentStartIdx = -1;
+          this.agentStartIdx = -1;
       this.pendingSessionId = '';
     }
   }
@@ -510,9 +376,7 @@ class ModuleAgentTui {
           this.thinkingStart = this.chatLines.length;
         }
         this.appendStream(dim(block.text));
-        this.renderChatArea();
-        this.input.renderInput();
-      }
+          }
     } else if (u.sessionUpdate === 'agent_message_chunk') {
       const block = (u as { content: { type?: string; text?: string } }).content;
       if (block?.text) {
@@ -521,8 +385,6 @@ class ModuleAgentTui {
           this.thinkingEnd = this.chatLines.length;
         }
         this.appendStream(block.text);
-        this.renderChatArea();
-        this.input.renderInput();
       }
     } else if (u.sessionUpdate === 'tool_call') {
       const title = (u as { title?: string }).title || 'tool';
@@ -531,16 +393,7 @@ class ModuleAgentTui {
         this.thinkingEnd = this.chatLines.length;
       }
       this.appendLine(yellow(`[tool] ${title}`));
-      this.renderChatArea();
-      this.input.renderInput();
     }
-  }
-
-  private renderStatusBar(): void {
-    const statusRow = this.chatRows() + 3; // sep + input + sep
-    cursorTo(process.stdout, 0, statusRow);
-    clearLine(process.stdout, 0);
-    process.stdout.write(this.getCurrentStatusBar());
   }
 
   // ── Commands ──
@@ -564,8 +417,6 @@ class ModuleAgentTui {
       default:
         this.appendLine(red(`Unknown command: /${cmd}`));
     }
-    this.renderChatArea();
-    this.renderStatusBar();
     this.input.redrawPrompt();
   }
 
@@ -650,7 +501,6 @@ class ModuleAgentTui {
     this.running = false;
     this.savePartialResponse();
     this.appendLine(dim('Goodbye.'));
-    this.renderChatArea();
     this.shutdown();
   }
 
@@ -663,12 +513,7 @@ class ModuleAgentTui {
     this.running = false;
     this.input.stop();
     this.manager.stopAll();
-    process.stdout.write(SHOW_CURSOR + MOUSE_SGR_OFF + ALT_SCROLL_ON + NORMAL_SCREEN + '\n');
-    try {
-      const ttyFd = fs.openSync('/dev/tty', 'w');
-      fs.writeSync(ttyFd, MOUSE_SGR_OFF + ALT_SCROLL_ON);
-      fs.closeSync(ttyFd);
-    } catch {}
+    process.stdout.write('\n');
     process.exit(0);
   }
 }

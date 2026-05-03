@@ -1,4 +1,4 @@
-import { clearLine, cursorTo, createInterface } from 'readline';
+import { createInterface } from 'readline';
 import type { Interface } from 'readline';
 
 // ── ANSI ──
@@ -53,14 +53,11 @@ export class TuiInput {
   private mode: 'chat' | 'command' = 'chat';
   private candidates: CommandDef[] = [];
   private selectedIdx = 0;
-  private lastCandidateLines = 0;
-  private lastStartRow = 0;
   private callbacks: InputCallbacks;
   // Input history
   private history: string[] = [];
   private historyIdx = -1; // -1 = not navigating, else index into history[]
   private savedDraft = ''; // saved input before history navigation
-  private inputRow = 0;
   private stdin: NodeJS.ReadStream;
   private prevRaw: boolean;
   private rl?: Interface;
@@ -82,7 +79,6 @@ export class TuiInput {
     this.stdin.removeAllListeners('data');
     this.stdin.setRawMode(true);
     this.stdin.on('data', this.onData);
-    this.inputRow = (process.stdout.rows || 24) - 3;
     this.renderInput();
   }
 
@@ -101,22 +97,19 @@ export class TuiInput {
 
   redrawPrompt(): void {
     if (this.rl) return;
-    this.inputRow = (process.stdout.rows || 24) - 3;
     this.renderInput();
   }
 
-  renderInput(row?: number): void {
+  renderInput(): void {
     if (this.rl) return;
-    if (row !== undefined) this.inputRow = row;
     const cols = process.stdout.columns || 80;
     const prompt = '> ';
     const before = this.buffer.slice(0, this.cursor);
     const at = this.buffer[this.cursor] || ' ';
     const after = this.buffer.slice(this.cursor + 1);
     const line = prompt + before + '\x1b[7m' + at + '\x1b[27m' + after;
-    cursorTo(process.stdout, 0, this.inputRow);
-    clearLine(process.stdout, 0);
-    process.stdout.write(line.slice(0, cols));
+    // Inline mode: \r to start of line, clear, redraw
+    process.stdout.write('\r\x1b[K' + line.slice(0, cols));
   }
 
   private startReadline(): void {
@@ -203,7 +196,6 @@ export class TuiInput {
       const m = seq.match(/^\x1b\[<(\d+);\d+;\d+[Mm]$/);
       if (m) {
         const btn = parseInt(m[1]!, 10);
-        log.info(`[SCROLL] SGR btn=${btn}`);
         if (btn === 64) this.callbacks.onScroll(-1);
         else if (btn === 65) this.callbacks.onScroll(1);
       }
@@ -331,8 +323,7 @@ export class TuiInput {
     this.buffer = '';
     this.cursor = 0;
     this.mode = 'chat';
-    this.callbacks.onScroll(0); // reset scroll to bottom
-    this.renderInput();
+    // Inline mode: just newline — don't render empty prompt before the message
     process.stdout.write('\n');
     this.callbacks.onLine(line);
   }
@@ -342,17 +333,6 @@ export class TuiInput {
     this.buffer = '';
     this.cursor = 0;
     this.candidates = [];
-    // Clear the candidate list rows rendered above input
-    if (this.lastCandidateLines > 0) {
-      const rows = process.stdout.rows || 24;
-      const startRow = Math.max(0, rows - 3 - this.lastCandidateLines + 1);
-      for (let i = 0; i < this.lastCandidateLines; i++) {
-        cursorTo(process.stdout, 0, startRow + i);
-        clearLine(process.stdout, 0);
-      }
-      this.lastCandidateLines = 0;
-    }
-    this.callbacks.onRefreshChat();
     this.renderInput();
   }
 
@@ -364,8 +344,6 @@ export class TuiInput {
     this.cursor = this.buffer.length;
     this.mode = 'chat';
     this.candidates = [];
-    this.lastCandidateLines = 0;
-    this.callbacks.onRefreshChat();
     this.renderInput();
   }
 
@@ -381,7 +359,6 @@ export class TuiInput {
 
   private renderCommandMode(): void {
     const cols = process.stdout.columns || 80;
-    const rows = process.stdout.rows || 24;
 
     const lines: string[] = [];
     for (let i = 0; i < this.candidates.length; i++) {
@@ -393,37 +370,8 @@ export class TuiInput {
     }
     if (lines.length === 0) lines.push(dim('  No matching commands'));
 
-    const statusBar = this.callbacks.getStatusBar();
-    const statusLines = statusBar.split('\n');
-    const totalExtra = lines.length + 1 + statusLines.length + 1; // candidates + gap + status + input
-    const startRow = Math.max(0, rows - 3 - totalExtra);
-    this.lastCandidateLines = totalExtra + 1; // rows from startRow up to input
-
-    // When the candidate list shrinks, refresh chat to restore covered content
-    if (this.lastStartRow > 0 && startRow > this.lastStartRow) {
-      this.callbacks.onRefreshChat();
-    }
-    this.lastStartRow = startRow;
-
-    // Render candidates
-    for (let i = 0; i < lines.length; i++) {
-      cursorTo(process.stdout, 0, startRow + i);
-      clearLine(process.stdout, 0);
-      process.stdout.write(lines[i]!);
-    }
-
-    // Gap row
-    cursorTo(process.stdout, 0, startRow + lines.length);
-    clearLine(process.stdout, 0);
-
-    // Status bar
-    for (let i = 0; i < statusLines.length; i++) {
-      cursorTo(process.stdout, 0, startRow + lines.length + 1 + i);
-      clearLine(process.stdout, 0);
-      process.stdout.write(statusLines[i]!);
-    }
-
-    // Input
-    this.renderInput(rows - 3);
+    // Inline mode: print candidates as output, then redraw prompt
+    for (const l of lines) process.stdout.write(l + '\n');
+    this.renderInput();
   }
 }
