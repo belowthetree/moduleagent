@@ -2,8 +2,9 @@ import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import fse from 'fs-extra';
-import http from 'node:http';
 import os from 'os';
+import http from 'node:http';
+
 import { context as esbuildContext } from 'esbuild';
 import { ModuleScanner } from '../src/core/ModuleScanner.js';
 import { ModuleGraph } from '../src/core/ModuleGraph.js';
@@ -208,7 +209,7 @@ function writeMcpGraphFile(graph: ModuleGraphType): string {
     nodesObj[name] = node;
   }
   const data = JSON.stringify({ root: graph.root, nodes: nodesObj });
-  const filePath = path.join(os.tmpdir(), `module-agent-graph-${Date.now()}.json`);
+  const filePath = path.join(os.tmpdir(), 'mcp-graph.json');
   fs.writeFileSync(filePath, data, 'utf-8');
   return filePath;
 }
@@ -323,7 +324,7 @@ async function resolveGitCodeSource(): Promise<string> {
   if (cached && fs.existsSync(cached)) return cached;
 
   const repoName = (currentCodeSource.url.split('/').pop() || 'repo').replace(/\.git$/, '');
-  const cachePath = path.join(os.tmpdir(), 'module-agent-git', repoName);
+  const cachePath = path.join(os.tmpdir(), 'module-agent-git-cache', repoName);
 
   if (fs.existsSync(cachePath)) {
     defaultLogger.info(`Git cache exists, pulling: ${cachePath}`);

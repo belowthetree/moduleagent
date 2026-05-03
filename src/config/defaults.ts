@@ -32,7 +32,7 @@ export const DEFAULT_CONFIG: ProjectConfig = {
   },
   exclude: [],
   workspace: {
-    path: '~/.module-agent/workspaces',
+    path: '.module-agent/workspaces',
   },
   codeSource: {
     type: 'local',

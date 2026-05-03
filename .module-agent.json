@@ -1,15 +1,18 @@
 {
   "agents": {
     "default": {
-      "command": "claude",
+      "command": "opencode",
       "args": [
-        "--acp",
-        "--dangerously-skip-permissions"
+        "acp"
       ]
     }
   },
   "exclude": [],
   "workspace": {
-    "path": "~/.module-agent/workspaces"
+    "path": "E:\\Project\\workspace\\workspace"
+  },
+  "codeSource": {
+    "type": "local",
+    "path": "E:\\Project\\workspace\\agent-cli"
   }
 }

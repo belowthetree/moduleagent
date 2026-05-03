@@ -10,7 +10,6 @@ import { defaultLogger as log } from '../../core/Logger.js';
 export interface SetupResult {
   projectRoot: string;
   config: ProjectConfig;
-  /** Remaining lines buffered during setup (not consumed by prompts) */
   bufferedLines: string[];
 }
 
@@ -38,7 +37,6 @@ function createLineReader(rl: readline.Interface) {
     },
     drain(): string[] {
       rl.removeListener('line', handler);
-      // Resolve any pending waiter with empty string
       if (waiter) {
         waiter('');
         waiter = null;
@@ -48,6 +46,10 @@ function createLineReader(rl: readline.Interface) {
       return remaining;
     },
   };
+}
+
+function isConfigComplete(config: ProjectConfig): boolean {
+  return !!(config.agents.default.command && config.workspace.path);
 }
 
 export async function runSetup(
@@ -60,6 +62,9 @@ export async function runSetup(
 
   const reader = createLineReader(rl);
 
+  // ── Resolve module directory (project root) ──
+
+  const hasExplicitProject = !!cliProject;
   let projectRoot = cliProject ? path.resolve(cliProject) : '';
   if (projectRoot && !fs.existsSync(projectRoot)) {
     console.log(`Project path does not exist: ${projectRoot}`);
@@ -70,85 +75,121 @@ export async function runSetup(
   if (!projectRoot) {
     projectRoot = path.resolve(process.cwd());
   }
-  log.info(`Setup: projectRoot=${projectRoot}`);
+  log.info(`Setup: initial projectRoot=${projectRoot}`);
 
-  // Ensure module.md exists
-  while (!fs.existsSync(path.join(projectRoot, 'module.md'))) {
-    console.log(`\nNo module.md found at: ${projectRoot}\n`);
-    const answer = await reader.readLine('Auto-generate module.md? (Y/n/enter path): ');
-    const trimmed = answer.trim();
+  // ── Load or create config ──
 
-    if (trimmed === '' || trimmed.toLowerCase() === 'y' || trimmed.toLowerCase() === 'yes') {
-      try {
-        const content = await ModuleGenerator.generate({ dirPath: projectRoot });
-        const mdPath = path.join(projectRoot, 'module.md');
-        fs.writeFileSync(mdPath, content, 'utf-8');
-        console.log(`Generated: ${mdPath}`);
-        log.info(`Setup: generated module.md (${content.length} chars)`);
-      } catch (err) {
-        console.log(`Failed to generate: ${(err as Error).message}`);
-        log.error(`Setup: module.md generation failed: ${(err as Error).message}`);
-        continue;
-      }
-    } else if (trimmed.toLowerCase() === 'n' || trimmed.toLowerCase() === 'no') {
-      const newPath = await reader.readLine('Enter project root path: ');
-      const resolved = path.resolve(newPath.trim());
-      if (!fs.existsSync(resolved)) {
-        console.log(`Path does not exist: ${resolved}`);
-        continue;
-      }
-      projectRoot = resolved;
-    } else {
-      const resolved = path.resolve(trimmed);
-      if (fs.existsSync(resolved)) {
-        projectRoot = resolved;
-      } else {
-        console.log(`Path does not exist: ${resolved}`);
-      }
-    }
-  }
-
-  // Ensure agent config
   let config: ProjectConfig;
-  try {
-    config = await ConfigLoader.load(projectRoot);
-  } catch {
-    config = { ...DEFAULT_CONFIG };
-  }
-
   const configPath = path.join(projectRoot, '.module-agent.json');
   const hasConfig = fs.existsSync(configPath);
 
-  if (!hasConfig) {
-    console.log('\nAgent configuration:');
-    const cmd = await reader.readLine(`  Agent command [${config.agents.default.command}]: `);
+  if (hasConfig) {
+    try {
+      config = await ConfigLoader.load(projectRoot);
+      log.info(`Setup: loaded config from ${configPath}`);
+    } catch {
+      config = { ...DEFAULT_CONFIG };
+    }
+  } else {
+    config = { ...DEFAULT_CONFIG };
+  }
+
+  // ── Interactive setup — GUI-aligned field order ──
+
+  if (!hasConfig || !isConfigComplete(config)) {
+    console.log('\n=== ModuleAgent Setup ===\n');
+
+    // 1. 模块目录 — where module.md files live
+    if (!hasExplicitProject) {
+      const modDir = await reader.readLine(`  模块目录 [${projectRoot}]: `);
+      if (modDir.trim()) {
+        const resolved = path.resolve(modDir.trim());
+        if (fs.existsSync(resolved)) {
+          projectRoot = resolved;
+        } else {
+          console.log(`  路径不存在: ${resolved}，使用默认`);
+        }
+      }
+    }
+    console.log(`  模块目录: ${projectRoot}`);
+
+    // Ensure module.md exists (silent auto-gen when project is resolved)
+    if (!fs.existsSync(path.join(projectRoot, 'module.md'))) {
+      try {
+        const content = await ModuleGenerator.generate({ dirPath: projectRoot });
+        fs.writeFileSync(path.join(projectRoot, 'module.md'), content, 'utf-8');
+        console.log(`  已自动生成 module.md`);
+        log.info(`Setup: auto-generated module.md (${content.length} chars)`);
+      } catch (err) {
+        console.log(`  生成 module.md 失败: ${(err as Error).message}`);
+        log.error(`Setup: module.md generation failed: ${(err as Error).message}`);
+      }
+    }
+
+    // 2. 工作目录 — where agent workspaces are created
+    const wsDefault = config.workspace.path || '.module-agent/workspaces';
+    const wsPath = await reader.readLine(`  工作目录 [${wsDefault}]: `);
+    if (wsPath.trim()) {
+      config.workspace.path = wsPath.trim();
+    }
+
+    // 3. Agent 命令
+    const cmd = await reader.readLine(`  Agent 命令 [${config.agents.default.command}]: `);
     if (cmd.trim()) config.agents.default.command = cmd.trim();
 
+    // 4. Agent 参数
     const currentArgs = (config.agents.default.args || []).join(' ');
-    const argsStr = await reader.readLine(`  Agent args [${currentArgs}]: `);
+    const argsStr = await reader.readLine(`  Agent 参数 [${currentArgs}]: `);
     if (argsStr.trim()) {
       config.agents.default.args = argsStr.trim().split(/\s+/);
     }
 
+    // 5. 代码来源类型
+    const srcType = await reader.readLine(`  代码来源类型 (local/git) [${config.codeSource.type || 'local'}]: `);
+    if (srcType.trim() === 'git') {
+      config.codeSource.type = 'git';
+    } else if (srcType.trim() === 'local') {
+      config.codeSource.type = 'local';
+    }
+
+    // 6. Source-specific fields
+    if (config.codeSource.type === 'git') {
+      const gitUrl = await reader.readLine(`  Git 仓库地址 [${config.codeSource.url || ''}]: `);
+      if (gitUrl.trim()) config.codeSource.url = gitUrl.trim();
+      const gitBranch = await reader.readLine(`  Git 分支 [${config.codeSource.branch || 'main'}]: `);
+      if (gitBranch.trim()) config.codeSource.branch = gitBranch.trim();
+    } else {
+      const localPath = await reader.readLine(`  本地代码路径 [${config.codeSource.path || projectRoot}]: `);
+      if (localPath.trim()) config.codeSource.path = path.resolve(localPath.trim());
+    }
+
+    // Save config
     try {
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
-      console.log(`Saved: ${configPath}`);
+      console.log(`\n  配置已保存: ${configPath}`);
       log.info(`Setup: saved config to ${configPath}`);
     } catch (err) {
-      console.log(`Warning: could not save config: ${(err as Error).message}`);
+      console.log(`\n  保存配置失败: ${(err as Error).message}`);
       log.warn(`Setup: could not save config: ${(err as Error).message}`);
     }
   }
 
-  console.log(`\n  Project: ${projectRoot}`);
-  console.log(`  Agent:   ${config.agents.default.command} ${(config.agents.default.args || []).join(' ')}`);
+  // ── Summary ──
+
+  const csInfo = config.codeSource.type === 'git'
+    ? `git @ ${config.codeSource.url || '?'} (${config.codeSource.branch || 'main'})`
+    : `local @ ${config.codeSource.path || projectRoot}`;
+
+  console.log('');
+  console.log(`  模块目录:      ${projectRoot}`);
+  console.log(`  工作目录:      ${config.workspace.path}`);
+  console.log(`  Agent:        ${config.agents.default.command} ${(config.agents.default.args || []).join(' ')}`);
+  console.log(`  代码来源:      ${csInfo}`);
+  console.log('');
 
   saveLastProject(projectRoot);
 
   const bufferedLines = reader.drain();
-  // Don't close readline — close() restores TTY settings and may disrupt raw mode
-  // reader.drain() already removed our 'line' listener
 
-  console.log('');
   return { projectRoot, config, bufferedLines };
 }

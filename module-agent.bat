@@ -47,18 +47,23 @@ if not exist "node_modules\" (
     if errorlevel 1 exit /b 1
 )
 
-echo Building ModuleAgent CLI...
-call npm run build:cli --silent
-if errorlevel 1 exit /b 1
+where bun >nul 2>nul
+if errorlevel 1 (
+    echo Error: Bun is required for TUI mode. Install it from https://bun.sh
+    exit /b 1
+)
+
+REM Set UTF-8 encoding for proper ANSI/VT rendering
+chcp 65001 >nul 2>nul
 
 if "%PROJECT%"=="" (
     echo Starting TUI - auto-detecting project...
     echo.
-    node "%ROOT%\dist\cli.cjs" tui
+    bun run --cwd "%ROOT%\src\tui" "%ROOT%\src\cli\tui-entry.ts" --project "%ROOT%"
 ) else (
     echo Starting TUI - project: %PROJECT%...
     echo.
-    node "%ROOT%\dist\cli.cjs" tui --project "%PROJECT%"
+    bun run --cwd "%ROOT%\src\tui" "%ROOT%\src\cli\tui-entry.ts" --project "%PROJECT%"
 )
 goto :eof
 

@@ -48,17 +48,19 @@ tui() {
         npm install --silent || exit 1
     fi
 
-    echo "Building ModuleAgent CLI..."
-    npm run build:cli --silent || exit 1
+    if ! command -v bun &> /dev/null; then
+        echo "Error: Bun is required for TUI mode. Install it from https://bun.sh"
+        exit 1
+    fi
 
     if [ -z "$PROJECT" ]; then
         echo "Starting TUI - auto-detecting project..."
         echo
-        node "$ROOT/dist/cli.cjs" tui
+        bun run --cwd "$ROOT/src/tui" "$ROOT/src/cli/tui-entry.ts"
     else
         echo "Starting TUI - project: $PROJECT..."
         echo
-        node "$ROOT/dist/cli.cjs" tui --project "$PROJECT"
+        bun run --cwd "$ROOT/src/tui" "$ROOT/src/cli/tui-entry.ts" --project "$PROJECT"
     fi
 }
 

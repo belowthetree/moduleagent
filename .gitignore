@@ -16,3 +16,4 @@ src/**/*.js.map
 logs/
 release/
 example/
+.module-agent/

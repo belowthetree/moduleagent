@@ -4,7 +4,6 @@ import { CliError } from './utils/output.js';
 import { listModules } from './commands/list.js';
 import { getModule } from './commands/get.js';
 import { serve } from './commands/serve.js';
-import { tui } from './commands/tui.js';
 import { defaultLogger, LogLevel } from '../core/Logger.js';
 
 defaultLogger.configure('logs', LogLevel.INFO);
@@ -15,7 +14,7 @@ Commands:
   list              List all modules in the project
   get <name>        Show detailed information for a module
   serve             Run in persistent stdio NDJSON mode
-  tui               Interactive terminal UI (chat + module tree)
+  tui               Interactive terminal UI (chat + module tree) — requires Bun
 
 Options:
   --project <path>  Path to project root (auto-detected from cwd if omitted)
@@ -72,9 +71,43 @@ async function main() {
         await serve({ projectRoot: resolveProjectRoot(projectFlag) });
         break;
 
-      case 'tui':
-        await tui({ projectRoot: resolveProjectRoot(projectFlag) });
+      case 'tui': {
+        // In Bun, globalThis.Bun exists. In Node, it doesn't.
+        const isBun = typeof (globalThis as any).Bun !== 'undefined';
+        
+        if (!isBun) {
+          // Check if bun CLI is available
+          const { execSync } = await import('child_process');
+          try {
+            execSync('bun --version', { stdio: 'ignore' });
+            // Bun CLI exists — spawn it
+            const { spawn } = await import('child_process');
+            const child = spawn('bun', ['run', '--cwd', 'src/tui', '../cli/tui-entry.ts', ...process.argv.slice(2)], {
+              stdio: 'inherit',
+              shell: true,
+            });
+            // Wait for child to exit
+            await new Promise<void>((resolve) => child.on('exit', () => resolve()));
+            process.exit(0);
+          } catch {
+            process.stderr.write(
+              'TUI 需要 Bun 运行时。请安装 Bun:\n' +
+              '  https://bun.sh\n\n' +
+              '安装后运行: module-agent tui [--project <path>]\n'
+            );
+            process.exit(1);
+          }
+        } else {
+          // Running under Bun — switch cwd to pick up src/tui/tsconfig.json
+          process.chdir('src/tui');
+          
+          const { startTui } = await import('../tui/renderer.js');
+          const { resolveProjectRoot } = await import('../tui/config.js');
+          const root = resolveProjectRoot(projectFlag);
+          await startTui(root);
+        }
         break;
+      }
 
       default:
         defaultLogger.warn(`Unknown command: ${command}`);

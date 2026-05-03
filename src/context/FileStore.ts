@@ -1,7 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
-import { createHash } from 'crypto';
 import type { ChatMsg, ContextStore } from './ContextManager.js';
 import { defaultLogger as log } from '../core/Logger.js';
 
@@ -9,8 +7,7 @@ export class FileStore implements ContextStore {
   private baseDir: string;
 
   constructor(projectRoot: string) {
-    const hash = createHash('sha256').update(projectRoot).digest('hex').slice(0, 12);
-    this.baseDir = path.join(os.homedir(), '.module-agent', 'contexts', hash);
+    this.baseDir = path.join(projectRoot, '.module-agent', 'contexts');
     log.debug(`FileStore baseDir: ${this.baseDir}`);
   }
 

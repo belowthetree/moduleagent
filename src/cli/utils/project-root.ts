@@ -1,15 +1,17 @@
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { CliError } from './output.js';
 
-const STATE_DIR = path.join(os.homedir(), '.module-agent');
-const STATE_FILE = path.join(STATE_DIR, 'state.json');
+function stateFile(projectRoot: string): string {
+  const dir = path.join(projectRoot, '.module-agent');
+  return path.join(dir, 'state.json');
+}
 
-function loadState(): { lastProject?: string } {
+function loadState(projectRoot: string): { lastProject?: string } {
   try {
-    if (fs.existsSync(STATE_FILE)) {
-      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+    const sf = stateFile(projectRoot);
+    if (fs.existsSync(sf)) {
+      return JSON.parse(fs.readFileSync(sf, 'utf-8'));
     }
   } catch {}
   return {};
@@ -17,11 +19,28 @@ function loadState(): { lastProject?: string } {
 
 export function saveLastProject(projectPath: string): void {
   try {
-    if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
-    const state = loadState();
+    const sf = stateFile(projectPath);
+    const dir = path.dirname(sf);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const state = loadState(projectPath);
     state.lastProject = projectPath;
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+    fs.writeFileSync(sf, JSON.stringify(state, null, 2), 'utf-8');
   } catch {}
+}
+
+function findSavedProject(): string | null {
+  // Search upward from cwd for .module-agent/state.json containing lastProject
+  let dir = path.resolve(process.cwd());
+  while (true) {
+    const state = loadState(dir);
+    if (state.lastProject && fs.existsSync(state.lastProject)) {
+      return state.lastProject;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
 }
 
 export function resolveProjectRoot(cliProject?: string): string {
@@ -34,13 +53,11 @@ export function resolveProjectRoot(cliProject?: string): string {
     return resolved;
   }
 
-  // Check saved last project path first
-  const state = loadState();
-  if (state.lastProject && fs.existsSync(state.lastProject)) {
-    return state.lastProject;
-  }
+  // Check saved last project path from any ancestor .module-agent/state.json
+  const saved = findSavedProject();
+  if (saved) return saved;
 
-  // Fallback: search upward from cwd
+  // Fallback: search upward from cwd for project markers
   let dir = path.resolve(process.cwd());
   while (true) {
     if (
