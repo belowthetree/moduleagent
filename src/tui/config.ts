@@ -13,6 +13,7 @@ export function resolveProjectRoot(cwd?: string): string {
       existsSync(path.join(dir, '.module-agent.json')) ||
       existsSync(path.join(dir, 'module.md'))
     ) {
+      console.log(`[config] 项目根目录: ${dir}`);
       return dir;
     }
     const parent = path.dirname(dir);
@@ -20,7 +21,9 @@ export function resolveProjectRoot(cwd?: string): string {
     dir = parent;
   }
 
-  return path.resolve(cwd ?? process.cwd());
+  const fallback = path.resolve(cwd ?? process.cwd());
+  console.log(`[config] 未找到项目标记文件，使用当前目录: ${fallback}`);
+  return fallback;
 }
 
 export async function validateModuleAgentJson(projectRoot: string): Promise<boolean> {
@@ -57,5 +60,7 @@ export async function writeModuleAgentJson(
   ProjectConfigSchema.parse(merged);
 
   const configPath = path.join(projectRoot, '.module-agent.json');
+  console.log(`[config] 写入配置文件: ${configPath}`);
+  console.log('[config] 写入配置:', JSON.stringify(merged, null, 2));
   await fs.writeFile(configPath, JSON.stringify(merged, null, 2) + '\n', 'utf-8');
 }

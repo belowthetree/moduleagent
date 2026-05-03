@@ -54,5 +54,9 @@
     "electron-builder": "^26.8.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
+  },
+  "optionalDependencies": {
+    "@opentui/core-linux-x64": "0.2.2",
+    "@opentui/core-win32-x64": "0.2.2"
   }
 }

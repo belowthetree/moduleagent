@@ -56,6 +56,14 @@ if errorlevel 1 (
 REM Set UTF-8 encoding for proper ANSI/VT rendering
 chcp 65001 >nul 2>nul
 
+REM @opentui/core uses OS-filtered optionalDependencies. On shared
+REM WSL/Windows node_modules, install the missing platform package.
+for /f "tokens=*" %%i in ('bun -e "process.stdout.write('@opentui/core-' + process.platform + '-' + process.arch)"') do set "PLATFORM_PKG=%%i"
+if not exist "%ROOT%\node_modules\!PLATFORM_PKG!\" (
+    echo Installing !PLATFORM_PKG! for current platform...
+    bun add !PLATFORM_PKG!@0.2.2 --optional
+)
+
 if "%PROJECT%"=="" (
     echo Starting TUI - auto-detecting project...
     echo.

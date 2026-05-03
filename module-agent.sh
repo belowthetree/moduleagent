@@ -53,6 +53,15 @@ tui() {
         exit 1
     fi
 
+    # @opentui/core uses dynamic import for OS-filtered optionalDependencies.
+    # On shared WSL/Windows node_modules, the other platform's pkg is absent.
+    local platform_pkg
+    platform_pkg="@opentui/core-$(bun -e "process.stdout.write(process.platform + '-' + process.arch)")"
+    if [ ! -d "$ROOT/node_modules/$platform_pkg" ]; then
+        echo "Installing $platform_pkg for current platform..."
+        bun add "$platform_pkg@0.2.2" --optional
+    fi
+
     if [ -z "$PROJECT" ]; then
         echo "Starting TUI - auto-detecting project..."
         echo

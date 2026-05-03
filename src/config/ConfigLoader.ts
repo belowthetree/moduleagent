@@ -8,9 +8,11 @@ export class ConfigLoader {
     const configPath = path.join(projectRoot, '.module-agent.json');
 
     if (!await fs.pathExists(configPath)) {
+      console.log(`[config] 配置文件不存在: ${configPath}，使用默认配置`);
       return { ...DEFAULT_CONFIG };
     }
 
+    console.log(`[config] 配置文件路径: ${configPath}`);
     const raw = await fs.readJson(configPath);
     const result = ProjectConfigSchema.safeParse(raw);
 
@@ -20,6 +22,7 @@ export class ConfigLoader {
       return { ...DEFAULT_CONFIG };
     }
 
+    console.log('[config] 配置详情:', JSON.stringify(result.data, null, 2));
     return result.data;
   }
 
