@@ -204,18 +204,18 @@
 - ‚úÖ Type-check passes (JSX errors are environment-level, not code bugs)
 - ‚ö†Ô∏è Launch quirk: tsconfig override required when running from project root
 
-# Plan Compliance Audit (F1) °™ Re-Run 2026-05-03 23:52
+# Plan Compliance Audit (F1) ÔøΩÔøΩ Re-Run 2026-05-03 23:52
 
 ## Prior Violations: Fixed ?
 
 ### Violation 1: AgentManager.ts mode-related code
 - **Check**: grep for modeState|setMode|setAllModes|getAvailableModes in src/agents/AgentManager.ts
-- **Result**: 0 matches °™ CLEAN
+- **Result**: 0 matches ÔøΩÔøΩ CLEAN
 - **Evidence**: grep returned no matches; git diff head -- src/agents/ returns no diff
 
 ### Violation 2: electron/main.ts mcpDataDir()
 - **Check**: grep for mcpDataDir in electron/main.ts
-- **Result**: 0 matches °™ CLEAN
+- **Result**: 0 matches ÔøΩÔøΩ CLEAN
 - **Evidence**: os.tmpdir() used on lines 212 and 327 instead
 - **Diff verified**: Only cosmetic import reordering + actual fix (mcp-graph.json, module-agent-git-cache)
 
@@ -229,9 +229,9 @@
 | 2 | Slash "/" command palette | src/tui/components/CommandPalette.tsx:67 | <Show when={tuiState.showCommands()}> triggered by InputBox slash detection |
 | 3 | Status bar (status + working dir) | src/tui/components/StatusBar.tsx:22,26 | gent: {tuiState.agentStatus()} | {tuiState.workingDir()} |
 | 4 | Setup wizard | src/tui/components/SetupWizard.tsx | 5-step wizard (agent cmd, project, workspace, code source, confirm) |
-| 5 | Ctrl+C graceful exit | src/tui/renderer.tsx:17-29 | Custom exitOnCtrlC: false, streaming°˙cancel, idle°˙destroy+exit |
+| 5 | Ctrl+C graceful exit | src/tui/renderer.tsx:17-29 | Custom exitOnCtrlC: false, streamingÔøΩÔøΩcancel, idleÔøΩÔøΩdestroy+exit |
 | 6 | Agent switching via /list | src/tui/commands.ts:37-60,102-116 | /list shows modules, /mode <name> calls setCurrentAgent |
-| 7 | InputBox message sending | src/tui/components/InputBox.tsx:15-20 | Enter°˙onSend(text)°˙__tuiSendMessage |
+| 7 | InputBox message sending | src/tui/components/InputBox.tsx:15-20 | EnterÔøΩÔøΩonSend(text)ÔøΩÔøΩ__tuiSendMessage |
 | 8 | CLI tui command integration | src/cli/index.ts:71-108 | Bun detection, spawn('bun',...) fallback, startTui direct launch |
 | 9 | Type definitions + state | src/tui/types.ts + src/tui/state.ts | AgentStatus, ChatMessage, TuiState, Solid createSignal |
 | 10 | Config helper module | src/tui/config.ts | alidateModuleAgentJson, writeModuleAgentJson, esolveProjectRoot |
@@ -243,9 +243,9 @@
 | # | Guardrail | Check Method | Result |
 |---|-----------|-------------|--------|
 | 1 | Module tree visualization | grep 	ree|renderSvg|layoutNode in src/tui/ | 0 matches |
-| 2 | Context persistence / session save/load | grep localStorage|ctx_|saveContext|persist in src/tui/ | 0 matches (only comment in SetupWizard °™ wizard state, not context) |
+| 2 | Context persistence / session save/load | grep localStorage|ctx_|saveContext|persist in src/tui/ | 0 matches (only comment in SetupWizard ÔøΩÔøΩ wizard state, not context) |
 | 3 | File browser | grep ile.?browser|file.?picker|file.?dialog in src/tui/ | 0 matches |
-| 4 | Cross-module MCP communication | grep cross.module|crossModule|øÁƒ£øÈ in src/tui/ | 0 matches |
+| 4 | Cross-module MCP communication | grep cross.module|crossModule|ÔøΩÔøΩƒ£ÔøΩÔøΩ in src/tui/ | 0 matches |
 | 5 | Mouse interaction | grep onMouse|mouse in src/tui/ | 0 matches |
 | 6 | Color theme detection | grep color.theme|isDark|prefers-color-scheme in src/tui/ | 0 matches |
 | 7 | Modified AgentManager/AgentLauncher/AgentRouter | git diff HEAD -- src/agents/ | NO diff |
@@ -263,16 +263,40 @@
 - 	sconfig.json, unfig.toml
 
 ### CLI Entry Point
-- src/cli/tui-entry.ts °™ parses --project, imports startTui, handles errors
+- src/cli/tui-entry.ts ÔøΩÔøΩ parses --project, imports startTui, handles errors
 
 ### Deleted Old Code (Expected)
-- src/cli/commands/tui.ts °™ old ANSI TUI deleted (519 lines), replaced by new src/tui/ architecture
+- src/cli/commands/tui.ts ÔøΩÔøΩ old ANSI TUI deleted (519 lines), replaced by new src/tui/ architecture
 
 ### Package.json
-- Added: @opentui/core, @opentui/solid, @opentui/keymap (v0.2.2) °™ expected
+- Added: @opentui/core, @opentui/solid, @opentui/keymap (v0.2.2) ÔøΩÔøΩ expected
 
 ---
 
 ## VERDICT: APPROVE ?
 
 **Must Have: 10/10 | Must NOT Have: 9/9 | Prior Violations: 2/2 FIXED**
+
+## CJK Cursor Position Fix ‚Äî OPENTUI_FORCE_WCWIDTH (2026-05-04)
+
+### Root cause
+OpenTUI's native Zig core has two width calculation methods:
+- `"unicode"` (default): Most Unicode characters = 1 column. Chinese = 1 column (wrong for terminals).
+- `"wcwidth"` (POSIX): CJK characters = 2 columns (matches terminal rendering).
+
+When typing Chinese, cursor drifts left because terminal renders `‰Ω†Â•Ω` as 4 columns but OpenTUI calculates it as 2 columns.
+
+### Fix
+Set `OPENTUI_FORCE_WCWIDTH=true` env var BEFORE `@opentui/core` loads (the native Zig module reads `widthMethod` on init). Covered 3 paths:
+
+1. **`src/cli/tui-entry.ts`**: Static import replaced with `process.env.OPENTUI_FORCE_WCWIDTH = 'true'` at module scope + `await import('../tui/renderer.js')` inside `main()`. Static `import` hoists above `process.env` assignment ‚Äî must use dynamic import to guarantee ordering.
+
+2. **`src/cli/index.ts` ‚Äî Bun path**: `process.env.OPENTUI_FORCE_WCWIDTH = 'true'` set before `await import('../tui/renderer.js')`.
+
+3. **`src/cli/index.ts` ‚Äî Non-Bun spawn path**: `env: { ...process.env, OPENTUI_FORCE_WCWIDTH: 'true' }` passed to child process spawn options.
+
+### Critical constraint
+The env var MUST be set before `@opentui/core` is first imported. The Zig native module reads `widthMethod` on module initialization and never re-reads it. Dynamic `await import()` is required because static `import` declarations are hoisted and execute before any module-level code (including `process.env` assignments).
+
+### Verification
+- `npx tsc --noEmit`: zero new errors (all pre-existing JSX type errors in TUI components unchanged)

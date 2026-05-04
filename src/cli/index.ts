@@ -91,6 +91,7 @@ async function main() {
             const child = spawn('bun', ['run', '--cwd', 'src/tui', '../cli/tui-entry.ts', ...process.argv.slice(2)], {
               stdio: 'inherit',
               shell: true,
+              env: { ...process.env, OPENTUI_FORCE_WCWIDTH: 'true' },
             });
             // Wait for child to exit
             await new Promise<void>((resolve) => child.on('exit', () => resolve()));
@@ -106,6 +107,9 @@ async function main() {
         } else {
           // Running under Bun — switch cwd to pick up src/tui/tsconfig.json
           process.chdir('src/tui');
+
+          // Set BEFORE @opentui/core loads — wcwidth corrects CJK cursor position
+          process.env.OPENTUI_FORCE_WCWIDTH = 'true';
           
           const { startTui } = await import('../tui/renderer.js');
           const { resolveProjectRoot } = await import('../tui/config.js');

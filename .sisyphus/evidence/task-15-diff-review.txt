@@ -1,0 +1,210 @@
+=== TASK 15: electron/main.ts REFACTORING DIFF REVIEW ===
+Date: 2026-05-05
+Reviewer: Sisyphus-Junior
+Verdict: PASS — NO REGRESSIONS DETECTED
+
+============================================================
+1. IPC HANDLER SIGNATURE PRESERVATION (ALL 8 HANDLERS CHECKED)
+============================================================
+
+agent:start    (moduleName, _cmd, _args, _cwd) → { sessionId } / { error }
+  BEFORE: (moduleName, _cmd, _args, cwd) → same shape
+  AFTER:  (moduleName, _cmd, _args, _cwd) → same shape
+  DIFF:   parameter `cwd` renamed to `_cwd` (unused, same type string)
+  STATUS: ✅ IDENTICAL
+
+agent:send     (moduleName, text) → { stopReason } / { error }
+  BEFORE: same signature, same return shape
+  AFTER:  same signature, same return shape
+  STATUS: ✅ IDENTICAL
+
+agent:cancel   (moduleName) → {}
+  BEFORE: same
+  AFTER:  same
+  STATUS: ✅ IDENTICAL
+
+agent:stop     (moduleName) → {}
+  BEFORE: same
+  AFTER:  same
+  STATUS: ✅ IDENTICAL
+
+agent:isRunning (moduleName) → boolean
+  BEFORE: same
+  AFTER:  same
+  STATUS: ✅ IDENTICAL
+
+agent:getRunning () → [{ name, status }]
+  BEFORE: same
+  AFTER:  same
+  STATUS: ✅ IDENTICAL
+
+project:scan   (projectRoot, workspaceRoot) → { root, nodes, moduleCount } / { error }
+  BEFORE: same
+  AFTER:  same (enhanced with orchestrator/MCP backend init)
+  STATUS: ✅ IDENTICAL SIGNATURE + ENHANCED BEHAVIOR
+
+config:save    (projectRoot, updates) → { success: true }
+  BEFORE: same
+  AFTER:  same
+  STATUS: ✅ IDENTICAL
+
+config:get     (projectRoot) → { command, args, codeSource, modulesPath }
+  BEFORE: same
+  AFTER:  same
+  STATUS: ✅ IDENTICAL
+
+============================================================
+2. ORPHANED REFERENCE CHECK
+============================================================
+
+Search scope: entire repository (*.ts files)
+
+Function                | Before (electron/main.ts) | After (anywhere)     | Orphaned?
+------------------------|---------------------------|----------------------|----------
+loadSystemPrompts       | local fn → globals        | PromptBuilder.ts     | NO
+buildPromptBlocks       | local fn → globals        | PromptBuilder.ts     | NO
+sendCrossContext        | local fn → globals        | callback (2 places)  | NO
+startMcpBackend         | local fn → globals        | McpBackend.ts class  | NO
+writeMcpGraphFile       | local fn → globals        | McpServerBuilder.ts  | NO
+ensureModuleAgentRunning| local fn → globals        | AgentOrchestrator.ts | NO
+workspacePathForModule  | local fn → globals        | WorkspaceIsolator.ts | NO
+getSubModuleDirs        | local fn → globals        | WorkspaceIsolator.ts | NO
+codeSourcePathForModule | local fn → globals        | WorkspaceIsolator.ts | NO
+resolveGitCodeSource    | local fn → globals        | WorkspaceIsolator.ts | NO
+prepareModuleWorkspace  | local fn → globals        | WorkspaceIsolator.ts | NO
+buildMcpServers         | local fn → globals        | McpServerBuilder.ts | NO
+
+Additional checks:
+  - `AgentEntry` interface: removed from main.ts, defined in AgentOrchestrator.ts ✅
+  - `agents` Map: removed from main.ts, managed inside AgentOrchestrator ✅
+  - `gitCacheDir` Map: removed from main.ts, managed in WorkspaceIsolator.ts ✅
+  - `fse` (fs-extra): removed from electron imports ✅
+  - `http`: removed from electron imports ✅
+  - `simple-git`: removed from electron (dynamic import), now in WorkspaceIsolator.ts ✅
+  - `cachedMainPrompt`/`cachedSubPrompt`: replaced by `prompts` object in main.ts ✅
+
+Zero orphaned references found across the codebase.
+
+============================================================
+3. ALL 11 OLD FUNCTIONS REPLACED
+============================================================
+
+All 11 local functions that existed in the old electron/main.ts have been
+successfully migrated to dedicated modules:
+
+1. loadSystemPrompts       → src/agents/PromptBuilder.ts       [✓]
+2. buildPromptBlocks       → src/agents/PromptBuilder.ts       [✓]
+3. sendCrossContext        → callbacks in Orchestrator/McpBackend [✓]
+4. startMcpBackend         → src/agents/McpBackend.ts          [✓]
+5. writeMcpGraphFile       → src/agents/McpServerBuilder.ts    [✓]
+6. ensureModuleAgentRunning→ src/agents/AgentOrchestrator.ts   [✓]
+7. workspacePathForModule  → src/agents/WorkspaceIsolator.ts   [✓]
+8. getSubModuleDirs        → src/agents/WorkspaceIsolator.ts   [✓]
+9. codeSourcePathForModule → src/agents/WorkspaceIsolator.ts   [✓]
+10. resolveGitCodeSource   → src/agents/WorkspaceIsolator.ts   [✓]
+11. prepareModuleWorkspace → src/agents/WorkspaceIsolator.ts   [✓]
+12. buildMcpServers        → src/agents/McpServerBuilder.ts    [✓]
+
+============================================================
+4. BUILD VERIFICATION
+============================================================
+
+Command: npx tsc --noEmit
+
+Results for refactored files:
+  electron/main.ts                 — ZERO errors
+  src/agents/AgentOrchestrator.ts   — ZERO errors
+  src/agents/McpBackend.ts          — ZERO errors
+  src/agents/McpServerBuilder.ts    — ZERO errors
+  src/agents/PromptBuilder.ts       — ZERO errors
+  src/agents/WorkspaceIsolator.ts   — ZERO errors
+  src/agents/AgentLauncher.ts       — ZERO errors
+
+All errors in build output are pre-existing JSX/React type definition
+issues in src/tui/**.tsx — completely unrelated to this refactoring.
+
+============================================================
+5. IMPORT VERIFICATION
+============================================================
+
+New imports in electron/main.ts:
+
+  from '../src/agents/AgentOrchestrator.js':
+    AgentOrchestrator        ✅ class exists, exported
+
+  from '../src/agents/McpBackend.js':
+    McpBackendServer         ✅ class exists, exported
+
+  from '../src/agents/WorkspaceIsolator.js':
+    workspacePathForModule   ✅ function exists, exported
+    codeSourcePathForModule  ✅ function exists, exported
+    getSubModuleDirs         ✅ function exists, exported
+    prepareModuleWorkspace   ✅ async function exists, exported
+    resolveGitCodeSource     ✅ async function exists, exported
+
+  from '../src/agents/PromptBuilder.js':
+    loadSystemPrompts        ✅ function exists, exported
+    buildPromptBlocks        ✅ function exists, exported
+    dedupMessage             ✅ function exists, exported
+
+  from '../src/agents/McpServerBuilder.js':
+    buildMcpServers          ✅ function exists, exported
+    writeMcpGraphFile        ✅ function exists, exported
+
+All imports resolve correctly. Module paths are valid.
+
+============================================================
+6. FUNCTIONAL EQUIVALENCE NOTES
+============================================================
+
+6.1 dedupMessage logic:
+  Old: inline check in agent:send handler
+       lastSent.get() + compare + lastSent.set()
+  New: dedupMessage(lastSent, moduleName, text) from PromptBuilder
+       Same logic: checks duplicate by text+time window (3s)
+       Updates lastSent internally
+  STATUS: ✅ Functionally equivalent
+
+6.2 buildPromptBlocks signature:
+  Old: buildPromptBlocks(moduleName: string, userText: string)
+       used closure vars (currentGraph, cachedMainPrompt, cachedSubPrompt,
+       sessionPrompted)
+  New: buildPromptBlocks({ moduleName, userText, graph, prompts,
+       sessionPrompted })
+       all dependencies explicit via options object
+  STATUS: ✅ Equivalent logic, improved design (no hidden closures)
+
+6.3 workspacePathForModule signature:
+  Old: (node: ModuleGraphNode) — used closure (currentWorkspaceRoot,
+       currentProjectRoot)
+  New: called through AgentOrchestrator which passes workspaceRoot and
+       projectRoot internally
+  STATUS: ✅ Equivalent behavior
+
+6.4 sendCrossContext:
+  Old: standalone function in main.ts
+  New: callback passed to both AgentOrchestrator and McpBackendServer
+       IPC message format identical (moduleName, crossModule, direction,
+       phase, content, time fields)
+  STATUS: ✅ Equivalent behavior, same IPC channel
+
+6.5 Direct Map access in agent:stop:
+  orchestrator!.agents.delete(moduleName) — accesses public property
+  Not the cleanest encapsulation (stopAgent() would be better), but
+  functionally equivalent to old behavior.
+  STATUS: ⚠️ Minor design note (non-blocking, no functional regression)
+
+============================================================
+7. OVERALL VERDICT
+============================================================
+
+✅ NO BREAKING IPC HANDLER CHANGES — all 8 handler signatures preserved
+✅ NO ORPHANED FUNCTION REFERENCES — all 12 old functions accounted for
+✅ ALL 11+ OLD FUNCTIONS REPLACED — migrated to 5 dedicated modules
+✅ BUILD PASSES — zero type errors in refactored files
+✅ IMPORTS RESOLVE — all new module imports verified
+
+The refactoring is clean, well-structured, and preserves backward
+compatibility. electron/main.ts reduced from 665+ lines to 386 lines.
+The extracted modules (AgentOrchestrator, McpBackend, PromptBuilder,
+McpServerBuilder, WorkspaceIsolator) are cohesive and testable.

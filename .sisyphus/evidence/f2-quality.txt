@@ -1,0 +1,174 @@
+============================================================
+F2 QUALITY REVIEW — Code Quality Audit
+============================================================
+Date: 2026-05-05
+Reviewer: Sisyphus-Junior (automated)
+
+SUMMARY
+-------
+Build [PASS] | TypeCheck [PRE-EXISTING-ONLY] | Files [23 clean/5 notes] | VERDICT: APPROVE
+
+============================================================
+BUILD VERIFICATION
+============================================================
+npm run build:electron — ALL 5 SUB-BUILDS PASS:
+  build:renderer    — PASS (45.7kb)
+  build:main        — PASS (61.6kb)
+  build:preload     — PASS (2.6kb)
+  build:mcp-server  — PASS (967.6kb)
+  build:cli         — PASS (1.0mb)
+
+============================================================
+TYPECHECK VERIFICATION
+============================================================
+npx tsc --noEmit:
+  All 100+ errors are PRE-EXISTING TUI JSX errors:
+    TS7026: JSX element implicitly has type 'any' (no react/jsx types)
+    TS2875: react/jsx-runtime module not found
+  Files affected: src/tui/App.tsx, src/tui/components/*.tsx, src/tui/renderer.tsx
+  ZERO new errors introduced.
+
+============================================================
+ISSUES FOUND (NON-BLOCKING)
+============================================================
+
+[NOTE] Empty catch blocks (3 occurrences):
+
+  1. src/tui/config.ts:88 — getLastProjectRoot()
+     ```
+     try { ... } catch {}
+     ```
+     Returns '' on failure, but silently swallows all errors (incl. permission errors).
+     Suggested: at minimum add defaultLogger.warn.
+
+  2. src/agents/AgentOrchestrator.ts:183 — stopAll()
+     ```
+     try { entry.launched.process.kill(); } catch { /* ignore */ }
+     ```
+     Kill failure silently swallowed. Consistent with pre-existing patterns
+     in AgentManager.ts:125 and electron/main.ts:296.
+
+  3. src/agents/AgentOrchestrator.ts:274 — _startAgentInternal() cleanup
+     ```
+     try { launched.process.kill(); } catch { /* ignore */ }
+     ```
+     Cleanup in error path — reasonable to swallow, but no logging.
+
+[NOTE] Non-null assertions (2 occurrences):
+
+  4. electron/main.ts:170 — MCP backend callback
+     ```
+     orchestrator!.startAgent({ moduleName: name })
+     ```
+     orchestrator is guaranteed to exist when MCP backend is running,
+     but assertion is a type-safety bypass.
+
+  5. electron/main.ts:297 — agent:stop handler
+     ```
+     orchestrator!.agents.delete(moduleName);
+     ```
+     Direct Map mutation via non-null assertion. The orchestrator.agents
+     field is public (design choice), but a stopAgent() method would be cleaner.
+
+[NOTE] Promise-based empty catch (1 occurrence):
+
+  6. electron/main.ts (~L381) — app window-all-closed
+     ```
+     orchestrator.stopAll().catch(() => {});
+     ```
+     Replaced old for-loop kill pattern. Silent catch on promise rejection.
+
+[INFO] Pre-existing patterns (not new, not counted against):
+  - src/agents/AgentManager.ts:125 — catch {} on kill (pre-existing)
+  - electron/main.ts:286,296 — catch {} on cancel/kill (pre-existing, line shift only)
+  - electron/main.ts:383,384 — catch {} on cleanup (pre-existing, variable rename only)
+  - src/tui/commands.ts:15,206 — (globalThis as any) (pre-existing)
+  - src/cli/index.ts:82 — (globalThis as any).Bun (pre-existing)
+  - src/tui/App.tsx:49 — (globalThis as any).__tuiInitAgent (pre-existing)
+  - src/cli/commands/setup.ts — console.log (CLI entry point, acceptable)
+
+============================================================
+NEW FILES REVIEW (5 files)
+============================================================
+
+  src/agents/PromptBuilder.ts (110 lines)          — CLEAN
+    - loadSystemPrompts: proper error handling with defaultLogger.warn
+    - buildPromptBlocks: clean ContentBlock construction
+    - dedupMessage: clean dedup logic
+    - createSessionPrompted: simple factory
+
+  src/agents/WorkspaceIsolator.ts (258 lines)      — CLEAN
+    - workspacePathForModule: clean path resolution
+    - codeSourcePathForModule: clean with existsSync checks
+    - resolveGitCodeSource: proper git cache + pull/fallback
+    - prepareModuleWorkspace: robust copy with submodule exclusion
+    - getSubModuleDirs: clean submodule path aggregation
+    - Extensive JSDoc is proportional to complexity (path resolution logic)
+
+  src/agents/AgentOrchestrator.ts (335 lines)      — 2 notes (catch blocks)
+    - Clean interface-based dependency injection
+    - Proper dedup via pendingStarts Map
+    - Agent config resolution with fallback chain
+    - Note: public agents Map exposes internals (design concern, not blocker)
+
+  src/agents/McpBackend.ts (228 lines)             — CLEAN
+    - Clean HTTP server wrapping
+    - Proper port binding and error handling
+    - Cross-context message routing
+
+  src/agents/McpServerBuilder.ts (61 lines)        — CLEAN
+    - Clean graph serialization (Map→Object)
+    - MCP server configuration builder
+    - Proper existence checks with warnings
+
+============================================================
+MODIFIED FILES KEY OBSERVATIONS
+============================================================
+
+  src/tui/commands.ts: /tree command
+    - Well-implemented recursive tree rendering
+    - Status indicators (◌ ● ▶ ✗) — Unicode, works on modern terminals
+    - Proper cycle detection via visited Set
+    - Clean formatting with box-drawing characters
+
+  src/tui/components/CommandPalette.tsx: +1 line
+    - Added /tree to command list — clean
+
+  src/tui/components/InputBox.tsx: val.startsWith("/")
+    - Better UX — only show palette for commands, not all input
+
+  src/tui/config.ts: major refactor
+    - New workspace config array format with migration
+    - saveLastProjectRoot/getLastProjectRoot for session persistence
+    - Config migration: single→array format auto-migration
+
+  src/config/ConfigLoader.ts: major refactor
+    - Legacy config auto-migration (write-back)
+    - SafeParse fallback chain: new format → legacy → defaults
+    - getDefaultConfig utility for config entry selection
+
+  electron/main.ts: major refactor (-400 lines)
+    - Extracted: McpBackend, McpServerBuilder, PromptBuilder, WorkspaceIsolator
+    - Now uses AgentOrchestrator for agent lifecycle
+    - Cleaner separation of concerns
+    - 2 non-null assertions (see notes above)
+
+============================================================
+AI SLOP CHECK: NONE FOUND
+============================================================
+  - No excessive JSDoc (documentation is proportional)
+  - No over-abstraction (extraction is well-motivated)
+  - No generic variable names in core logic
+  - No commented-out code
+  - No unused imports (verified across all files)
+  - No @ts-ignore annotations
+  - No debug console.log in library code
+
+============================================================
+VERDICT: APPROVE
+============================================================
+  5 minor notes (empty catches × 3, non-null assertions × 2)
+  None are blockers. All are consistent with existing codebase patterns
+  or are in cleanup/error paths where failure is non-critical.
+
+  Build passes, no new type errors, clean architecture extraction.

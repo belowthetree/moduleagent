@@ -1,0 +1,44 @@
+
+> module-agent@0.1.0 build:electron
+> npm run build:renderer && npm run build:main && npm run build:preload && npm run build:mcp-server && npm run build:cli
+
+
+> module-agent@0.1.0 build:renderer
+> esbuild electron/renderer/renderer.ts --bundle --outfile=electron/renderer/renderer.js --platform=browser --format=iife
+
+
+  electron/renderer/renderer.js  45.7kb
+
+⚡ Done in 47ms
+
+> module-agent@0.1.0 build:main
+> esbuild electron/main.ts --bundle --outfile=electron/main.cjs --platform=node --format=cjs --external:electron --external:fs-extra --external:gray-matter --external:marked --external:simple-git --external:zod --external:path --external:url --external:esbuild --external:@agentclientprotocol/sdk
+
+
+  electron/main.cjs  61.6kb
+
+⚡ Done in 107ms
+
+> module-agent@0.1.0 build:preload
+> esbuild electron/preload.ts --bundle --outfile=electron/preload.cjs --platform=node --format=cjs --external:electron
+
+
+  electron/preload.cjs  2.6kb
+
+⚡ Done in 43ms
+
+> module-agent@0.1.0 build:mcp-server
+> esbuild src/protocol/mcp/server-entry.ts --bundle --outfile=dist/mcp-server.cjs --platform=node --format=cjs
+
+
+  dist/mcp-server.cjs  967.6kb
+
+⚡ Done in 518ms
+
+> module-agent@0.1.0 build:cli
+> esbuild src/cli/index.ts --bundle --outfile=dist/cli.cjs --platform=node --format=cjs --external:@opentui/core --external:@opentui/solid --external:@opentui/keymap
+
+
+  dist/cli.cjs  1.0mb ⚠️
+
+⚡ Done in 885ms

@@ -1,56 +1,76 @@
 {
-  "active_plan": "/mnt/e/Project/ModuleAgent/.sisyphus/plans/tui-tree-command.md",
-  "started_at": "2026-05-04T12:41:06.732Z",
+  "active_plan": "/mnt/e/Project/ModuleAgent/.sisyphus/plans/agent-startup-refactor.md",
+  "started_at": "2026-05-04T16:12:29.718Z",
   "session_ids": [
-    "ses_20d11baf8ffeBl7nW6cRBylqDX",
-    "ses_20cf4000effexGqP8MMy9pHuzU",
-    "ses_20cf3b3e2ffeZEucrMwyJct2gN",
-    "ses_20cf34ef7ffeq50P7w0F3bLF2Y"
+    "ses_20cde5915ffexGk45HZhGFU2X2"
   ],
+  "plan_name": "agent-startup-refactor",
+  "worktree_path": null,
   "session_origins": {
-    "ses_20d11baf8ffeBl7nW6cRBylqDX": "direct",
-    "ses_20cf4000effexGqP8MMy9pHuzU": "appended",
-    "ses_20cf3b3e2ffeZEucrMwyJct2gN": "appended",
-    "ses_20cf34ef7ffeq50P7w0F3bLF2Y": "appended"
+    "ses_20cde5915ffexGk45HZhGFU2X2": "direct"
   },
-  "plan_name": "tui-tree-command",
-  "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Add `getGraph()` method to AgentService",
-      "session_id": "ses_20cfd7ff1ffeU3exnyt7Snd9Jk",
+      "task_title": "**WorkspaceIsolator.ts — path 计算函数**",
+      "session_id": "ses_20c3b963dffelBnXLmXcgXI9fn",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-04T12:43:34.500Z"
+      "updated_at": "2026-05-04T16:16:17.592Z"
     },
-    "todo:2": {
-      "task_key": "todo:2",
-      "task_label": "2",
-      "task_title": "Add `/tree` case to commands.ts with tree formatting",
-      "session_id": "ses_20cfa3600ffeu6Yg2MydbHimaO",
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "**WorkspaceIsolator.ts — git clone + workspace 复制**",
+      "session_id": "ses_20c36f254ffeeo9dn3lDnf1U7B",
       "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-04T12:48:13.683Z"
+      "category": "deep",
+      "updated_at": "2026-05-04T16:24:29.114Z"
     },
-    "todo:3": {
-      "task_key": "todo:3",
-      "task_label": "3",
-      "task_title": "Register `/tree` in CommandPalette and update /help",
-      "session_id": "ses_20cf5c7cdffeeg7N3lGgfu5zJQ",
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "**WorkspaceIsolator.ts — subModuleDirs 解析**",
+      "session_id": "ses_20c310d44ffeQkmwUfa2cAVy8Y",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-04T12:51:23.787Z"
+      "updated_at": "2026-05-04T16:26:25.389Z"
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "**AgentOrchestrator.ts — 统一 agent 启动流程**",
+      "session_id": "ses_20c2f1e50ffej7tzovonjlVRIz",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-04T16:35:38.742Z"
+    },
+    "todo:10": {
+      "task_key": "todo:10",
+      "task_label": "10",
+      "task_title": "**Refactor electron/main.ts — 替换内联函数为共享模块导入**",
+      "session_id": "ses_20c2646feffeE8ZKIlgI6FMJXC",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-04T16:47:17.768Z"
+    },
+    "todo:13": {
+      "task_key": "todo:13",
+      "task_label": "13",
+      "task_title": "**Full Build + Type-Check 验证**",
+      "session_id": "ses_20c1bdf84ffeGWh45X59Wk13xF",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-04T16:51:57.998Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_20cf34ef7ffeq50P7w0F3bLF2Y",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-04T12:55:16.571Z"
+      "session_id": "ses_20c15cd6effeEFNWR0kVBcVYa2",
+      "agent": "oracle",
+      "updated_at": "2026-05-04T16:59:40.857Z"
     }
   }
 }

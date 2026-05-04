@@ -1,9 +1,9 @@
-import fs from 'fs';
 import path from 'path';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { AgentManager, AgentEntry } from './AgentManager.js';
 import type { PromptResponse } from '@agentclientprotocol/sdk';
 import { defaultLogger as log } from '../core/Logger.js';
+import { buildPromptBlocks, loadSystemPrompts } from './PromptBuilder.js';
 
 function resolveConfigDir(): string {
   // __dirname available in CJS builds (esbuild output)
@@ -26,27 +26,13 @@ export class AgentRouter {
   private graph: ModuleGraphType;
   private sessionPrompted = new Set<string>();
   private promptDir: string;
-  private cachedMainPrompt = '';
-  private cachedSubPrompt = '';
+  private prompts: { mainPrompt: string; subPrompt: string };
 
   constructor(manager: AgentManager, graph: ModuleGraphType, promptDir?: string) {
     this.manager = manager;
     this.graph = graph;
     this.promptDir = promptDir || PKG_CONFIG_DIR;
-    this.loadPrompts();
-  }
-
-  private loadPrompts(): void {
-    const mainPath = path.join(this.promptDir, 'mainagentprompt.md');
-    const subPath = path.join(this.promptDir, 'subagentprompt.md');
-    try { this.cachedMainPrompt = fs.readFileSync(mainPath, 'utf-8'); } catch {}
-    try { this.cachedSubPrompt = fs.readFileSync(subPath, 'utf-8'); } catch {}
-    if (this.cachedMainPrompt) log.info(`Router: loaded main agent prompt (${this.cachedMainPrompt.length} chars)`);
-    if (this.cachedSubPrompt) log.info(`Router: loaded sub-agent prompt (${this.cachedSubPrompt.length} chars)`);
-  }
-
-  private getSystemPrompt(moduleName: string): string {
-    return moduleName === this.graph.root ? this.cachedMainPrompt : this.cachedSubPrompt;
+    this.prompts = loadSystemPrompts(process.cwd());
   }
 
   resetSession(sessionId: string): void {
@@ -84,29 +70,15 @@ export class AgentRouter {
     return { targetName, prompt: message };
   }
 
-  async sendToAgent(entry: AgentEntry, prompt: string, options?: { systemPrompt?: string }): Promise<PromptResponse> {
-    const blocks: { type: 'text'; text: string }[] = [];
-    const isFirst = !this.sessionPrompted.has(entry.sessionId!);
+  async sendToAgent(entry: AgentEntry, prompt: string): Promise<PromptResponse> {
+    const blocks = buildPromptBlocks({
+      moduleName: entry.name,
+      userText: prompt,
+      graph: this.graph,
+      prompts: this.prompts,
+      sessionPrompted: this.sessionPrompted,
+    });
 
-    if (isFirst && entry.sessionId) {
-      this.sessionPrompted.add(entry.sessionId);
-      log.info(`Router: first prompt for session ${entry.sessionId.slice(0, 8)} (${entry.name})`);
-
-      const systemPrompt = options?.systemPrompt ?? this.getSystemPrompt(entry.name);
-      if (systemPrompt) {
-        blocks.push({ type: 'text', text: systemPrompt + '\n\n---\n\n' });
-        log.info(`Router: system prompt for ${entry.name}:\n${systemPrompt}`);
-      }
-
-      const node = this.graph.nodes.get(entry.name);
-      if (node?.definition?.body) {
-        const ctxBlock = `# Module: ${entry.name}\n\n${node.definition.body}\n\n---\n\n`;
-        blocks.push({ type: 'text', text: ctxBlock });
-        log.info(`Router: module context for ${entry.name}:\n${ctxBlock}`);
-      }
-    }
-
-    blocks.push({ type: 'text', text: prompt });
     log.info(`Router: sending to ${entry.name} (${prompt.length} chars, ${blocks.length} blocks)`);
     try {
       return await entry.agent.connection.prompt({

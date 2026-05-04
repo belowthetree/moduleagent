@@ -22,11 +22,11 @@ export default function InputBox(props: {
     onCleanup(() => renderer.off("focused_renderable", handler));
   });
 
-  // Auto show/hide command palette whenever input is non-empty
+  // Auto show/hide command palette only when input starts with "/"
   createEffect(() => {
     const val = tuiState.inputValue();
     defaultLogger.info(`[InputBox] createEffect value: ${val}`);
-    if (val.length > 0) {
+    if (val.startsWith("/")) {
       tuiState.setShowCommands(true);
     } else {
       tuiState.setShowCommands(false);

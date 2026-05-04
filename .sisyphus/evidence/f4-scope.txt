@@ -1,0 +1,264 @@
+================================================================================
+SCOPE FIDELITY CHECK — F4 Evidence Report
+================================================================================
+Date: 2026-05-05
+Plan referenced by task: agent-startup-refactor (at .sisyphus/plans/agent-startup-refactor.md)
+Actual recent work: tui-tree-command (at .sisyphus/plans/tui-tree-command.md) + miscellaneous
+Branch: master
+Commits analyzed: HEAD~5 to HEAD (5 recent commits)
+NOTE: Task's expected-file list matches agent-startup-refactor plan, but the 5 new
+      agent files predate the current branch work — they already existed in the
+      codebase. The actual recent commits are tui-tree-command + config/UI/scripts.
+================================================================================
+
+================================================================================
+CHECK 1: EXPECTED FILES (from agent-startup-refactor plan deliverables)
+================================================================================
+
+| # | File                                   | Exists | Exports | Status |
+|---|----------------------------------------|--------|---------|--------|
+| 1 | src/agents/WorkspaceIsolator.ts        | YES    | 5       | PASS   |
+| 2 | src/agents/PromptBuilder.ts            | YES    | 4       | PASS   |
+| 3 | src/agents/McpServerBuilder.ts         | YES    | 2       | PASS   |
+| 4 | src/agents/McpBackend.ts               | YES    | 2       | PASS   |
+| 5 | src/agents/AgentOrchestrator.ts        | YES    | 6       | PASS   |
+| 6 | electron/main.ts                       | YES    | refactored | PASS   |
+| 7 | src/agents/AgentManager.ts             | YES    | updated | PASS   |
+| 8 | src/agents/AgentRouter.ts              | YES    | updated | PASS   |
+| 9 | src/tui/services/AgentService.ts       | YES    | updated | PASS   |
+
+Export details:
+  WorkspaceIsolator.ts: workspacePathForModule, codeSourcePathForModule,
+    resolveGitCodeSource, prepareModuleWorkspace, getSubModuleDirs
+  PromptBuilder.ts: loadSystemPrompts, buildPromptBlocks, dedupMessage,
+    createSessionPrompted
+  McpServerBuilder.ts: writeMcpGraphFile, buildMcpServers
+  McpBackend.ts: McpBackendCallbacks (interface), McpBackendServer (class)
+  AgentOrchestrator.ts: AgentEntry, WorkspaceIsolator, PromptBuilder,
+    McpServerBuilder, AgentOrchestratorOptions, AgentOrchestrator
+
+electron/main.ts imports all 5 shared modules:
+  - AgentOrchestrator
+  - McpBackendServer
+  - WorkspaceIsolator (all 5 functions)
+  - PromptBuilder (3 functions)
+  - McpServerBuilder (2 functions)
+
+Result: 9/9 files exist and are properly structured. PASS.
+
+================================================================================
+CHECK 2: UNEXPECTED FILES (scope creep analysis)
+================================================================================
+
+Total modified files (HEAD~5 vs HEAD): 37 files across 5 commits
+
+=== GUARDRAIL VIOLATIONS (changes to files explicitly forbidden) ===
+
+V1. electron/preload.ts — MODIFIED
+    Plan says: "NO 修改 electron/renderer/ 或 electron/preload.ts"
+    Change: Added optional `modulesPath?: string` parameter to saveAgentConfig
+            and getAgentConfig IPC bridge signatures (4 lines changed)
+    Severity: LOW (backward-compatible parameter addition)
+    Commit: 756e392 "统一配置路径"
+
+V2. electron/renderer/renderer.ts — MODIFIED
+    Plan says: "NO 修改 electron/renderer/ 或 electron/preload.ts"
+    Change: Added modulesPath to interface + passed projectPath as modulesPath
+            in saveSettings() call (6 lines changed)
+    Severity: LOW (backward-compatible)
+    Commit: 756e392 "统一配置路径"
+
+V3. src/cli/commands/serve.ts — MODIFIED
+    Plan says: "NO 修改 src/cli/commands/serve.ts（不涉及 agent 生命周期）"
+    Change: Added ConfigLoader.getDefaultConfig() call (2 lines)
+            Old: const config = await ConfigLoader.load(projectRoot);
+            New: const workspaceConfig = await ConfigLoader.load(projectRoot);
+                 const config = ConfigLoader.getDefaultConfig(workspaceConfig);
+    Severity: LOW (config loading refactor, no agent lifecycle change)
+    Commit: HEAD~1
+
+=== UNRELATED CODE CHANGES (not in any plan's deliverables) ===
+
+U4.  build-release.bat — NEW FILE (61 lines)
+     Batch build script, not mentioned in any plan
+     Commit: e96db82 "完善启动脚本"
+
+U5.  module-agent.bat — NEW FILE (8 lines)
+     Windows launcher script, not mentioned in any plan
+     Commit: HEAD~5 range
+
+U6.  module-agent.sh — NEW FILE (9 lines)
+     Linux/Mac launcher script, not mentioned in any plan
+     Commit: HEAD~5 range
+
+U7.  module.md — DELETED (43 lines)
+     The repo's sample module.md (root module definition with 8 submodules)
+     Deleted as part of cleanup
+     Commit: 55ec7e4 "去掉示例"
+
+U8.  src/core/PathUtils.ts — NEW FILE (22 lines)
+     Utility function normalizeCodeSourcePath() extracted here
+     Referenced in AGENTS.md gotchas, useful for cross-platform
+     Severity: LOW (utility extraction, benign)
+     Commit: HEAD~5 range
+
+U9.  src/cli/commands/get.ts — MODIFIED (3 lines)
+     Minor config-related change
+     Commit: HEAD~1
+
+U10. src/cli/commands/list.ts — MODIFIED (3 lines)
+     Minor config-related change
+     Commit: HEAD~1
+
+U11. src/cli/commands/setup.ts — MODIFIED (11-16 lines)
+     Config flow updated for new schema
+     Commit: HEAD~1 / earlier
+
+U12. src/cli/index.ts — MODIFIED (4-10 lines)
+     Added new CLI entries or config handling
+     Commit: HEAD~1 / earlier
+
+U13. src/cli/tui-entry.ts — MODIFIED (10 lines)
+     Config path resolution changes
+     Commit: HEAD~1 / earlier
+
+U14. src/tui/App.tsx — MODIFIED (4 lines)
+     Minor import or prop change
+     Commit: HEAD~1
+
+U15. src/tui/components/InputBox.tsx — MODIFIED (4-62 lines)
+     Input box focus/UX fixes — NOT in any plan
+     Commit: 42c52d0 "修复输入框焦点丢失问题"
+
+U16. src/tui/components/SetupWizard.tsx — MODIFIED (119-146 lines)
+     Major setup wizard UI changes — NOT in any plan
+     Commit: Multiple
+
+U17. src/tui/config.ts — MODIFIED (91-95 lines)
+     Config module refactored — NOT in tui-tree-command scope
+     Commit: Multiple
+
+U18. src/tui/renderer.tsx — MODIFIED (16-37 lines)
+     More changes than just AgentService integration
+     Commit: Multiple
+
+=== CONFIG/SCHEMA CHANGES (related to modulesPath feature) ===
+
+C19. src/config/ConfigLoader.ts — MODIFIED (58-60 lines)
+     Added getDefaultConfig() logic
+
+C20. src/config/defaults.ts — MODIFIED (20-22 lines)
+     Changed ProjectConfig → ConfigEntry, added modulesPath
+
+C21. src/config/schema.ts — MODIFIED (16-17 lines)
+     Added modulesPath field to Zod schema
+
+=== DOCS/META (acceptable noise) ===
+
+D22. AGENTS.md — MODIFIED (20 lines)
+     Added Windows path gotcha, Config fields table, PathUtils entry
+     Useful documentation but beyond plan scope
+
+D23. .gitignore — MODIFIED (4 lines)
+D24. .module-agent.json — MODIFIED (39 lines, sample config updated)
+D25. .sisyphus/boulder.json — MODIFIED (80-82 lines)
+D26. .sisyphus/notepads/tui-interface/learnings.md — MODIFIED (44 lines)
+D27. .sisyphus/notepads/tui-tree-command/learnings.md — NEW (90 lines)
+D28. .sisyphus/plans/tui-tree-command.md — NEW (441 lines, plan file itself)
+D29. bun.lock — MODIFIED (4 lines)
+D30. package-lock.json — MODIFIED (986 lines)
+D31. package.json — MODIFIED (6 lines)
+
+=== TUI-TREE-COMMAND PLAN DELIVERABLES (not in agent-startup-refactor, but planned) ===
+
+T32. src/tui/commands.ts — MODIFIED (68-77 lines)
+     Added /tree command + /help entry. Matches tui-tree-command plan T2.
+
+T33. src/tui/components/CommandPalette.tsx — MODIFIED (1-10 lines)
+     Registered /tree in COMMANDS array. Matches tui-tree-command plan T3.
+
+================================================================================
+CHECK 3: DELETED CODE AUDIT
+================================================================================
+
+electron/main.ts deletions (HEAD~1):
+  [DELETED] loadSystemPrompts() function  → replaced by import from PromptBuilder
+  [DELETED] buildPromptBlocks() function  → replaced by import from PromptBuilder
+  [DELETED] sendCrossContext() function   → replaced by McpBackend callbacks
+  [DELETED] startMcpBackend() function    → replaced by McpBackendServer class
+  [DELETED] AgentEntry interface          → moved to AgentOrchestrator
+  [DELETED] agents Map                    → moved to AgentOrchestrator
+  [DELETED] mcpBackendServer variable     → replaced by McpBackendServer instance
+  [DELETED] cachedMainPrompt variable     → replaced by loadSystemPrompts result
+  [DELETED] cachedSubPrompt variable      → replaced by loadSystemPrompts result
+  [DELETED] import fse from 'fs-extra'    → no longer needed in main.ts
+  [DELETED] import http from 'node:http'  → no longer needed in main.ts
+  [DELETED] AgentLauncher import          → moved to AgentOrchestrator
+  [DELETED] ContentBlock type import      → moved to PromptBuilder
+  [DELETED] McpServer type import         → moved to McpServerBuilder
+
+AgentRouter.ts deletions (HEAD~1):
+  [DELETED] import fs from 'fs'           → no longer needed
+  [DELETED] cachedMainPrompt field        → replaced by prompts object
+  [DELETED] cachedSubPrompt field         → replaced by prompts object
+  [DELETED] loadPrompts() method          → replaced by loadSystemPrompts()
+  [DELETED] getSystemPrompt() method      → logic inlined in buildPromptBlocks
+  [REWRITTEN] sendToAgent()               → uses buildPromptBlocks from PromptBuilder
+  [CHANGED] sessionPrompted key           → sessionId → moduleName (entry.name)
+
+All deletions are INTENTIONAL refactoring — no accidental deletions detected.
+Deleted functions have been replaced by shared module equivalents.
+
+================================================================================
+TASK vs ACTUAL WORK MISMATCH ANALYSIS
+================================================================================
+
+The task's Check 1 expected files list comes from the agent-startup-refactor
+plan (T1-T15). However, the 5 new files (WorkspaceIsolator.ts, PromptBuilder.ts,
+McpServerBuilder.ts, McpBackend.ts, AgentOrchestrator.ts) were NOT added in
+recent commits — they were created earlier and exist as baseline.
+
+The actual recent git commits (last 5) contain:
+  - tui-tree-command plan implementation (commands.ts, CommandPalette.tsx,
+    AgentService.getGraph/isModuleLoaded)
+  - Config refactoring (modulesPath field, ConfigLoader.getDefaultConfig)
+  - UI bug fixes (InputBox focus, SetupWizard refactor)
+  - Build scripts (build-release.bat, module-agent.bat/sh)
+  - Documentation updates (AGENTS.md)
+  - Guardrail violations (electron/preload.ts, electron/renderer/renderer.ts,
+    src/cli/commands/serve.ts — all minor, backward-compatible changes)
+
+The agent-startup-refactor work was completed in earlier commits and the
+resulting files (5 new modules) are present and correctly structured. The
+current branch's HEAD~1 commit is primarily tui-tree-command + config changes.
+
+================================================================================
+FINAL VERDICT
+================================================================================
+
+FORMAL CHECK (against task's expected deliverables from agent-startup-refactor):
+
+  Expected files:     9/9 present and correctly structured
+  Electron refactor:  PASS (imports all 5 shared modules, inline functions removed)
+  AgentRouter refactor: PASS (uses PromptBuilder, loadPrompts/getSystemPrompt deleted)
+  AgentManager update: PASS (subModuleDirs param, 5-arg launcher.launch)
+  AgentService update: PASS (subModuleDirs, getGraph, isModuleLoaded)
+  Deleted code:       PASS (11 functions removed, all properly replaced)
+
+SCOPE CONTAMINATION:
+
+  Guardrail violations: 3 (electron/preload.ts:35-38, electron/renderer/renderer.ts:11-13+191,
+                           src/cli/commands/serve.ts:114-115)
+  Unrelated code files: 15 (build scripts, UI fixes, config refactor, PathUtils)
+  Meta/doc files:       10 (plans, notepads, lock files, AGENTS.md, .gitignore)
+  Plan deliverables:    2  (tui-tree-command: commands.ts, CommandPalette.tsx)
+
+  Tasks [9/9 compliant] | Contamination [DIRTY/18 issues] | Unaccounted [15 files]
+  VERDICT: REJECT (scope creep — 3 guardrail violations + 15 unaccounted files)
+
+NOTE: The actual implementation quality appears good — deletions are clean,
+refactoring follows the plan, and new modules are properly structured. The
+REJECT is due to scope contamination from unrelated changes mixed in the same
+branch, not due to implementation defects. If the branch was intended to
+include config refactoring alongside the agent refactor, the plan should
+have been updated.

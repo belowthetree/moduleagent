@@ -6,6 +6,7 @@ import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { defaultLogger } from '../../core/Logger.js';
 import { normalizeCodeSourcePath } from '../../core/PathUtils.js';
+import { getSubModuleDirs, workspacePathForModule } from '../../agents/WorkspaceIsolator.js';
 import type { ModuleDescriptor, ModuleGraph as ModuleGraphType } from '../../types/module.js';
 import type { ConfigEntry } from '../../config/defaults.js';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
@@ -134,10 +135,17 @@ export class AgentService {
     const node = this.graph.nodes.get(name);
     if (!node) throw new Error(`Module "${name}" not found in graph`);
 
+    const subDirs = getSubModuleDirs(
+      node,
+      this.graph,
+      (n) => workspacePathForModule(n, null, this.projectRoot),
+    );
+
     const entry = await this.agentManager.startModuleAgent(
       name,
       node.absolutePath,
       this.onSessionUpdate ?? undefined,
+      subDirs,
     );
     this.entries.set(name, entry);
   }

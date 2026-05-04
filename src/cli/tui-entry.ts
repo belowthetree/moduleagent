@@ -1,5 +1,6 @@
 // TUI entry point — must be run with Bun
-import { startTui } from '../tui/renderer.js';
+// Set BEFORE @opentui/core loads — wcwidth corrects CJK cursor position
+process.env.OPENTUI_FORCE_WCWIDTH = 'true';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -19,6 +20,7 @@ async function main() {
   }
 
   try {
+    const { startTui } = await import('../tui/renderer.js');
     await startTui(projectRoot);
   } catch (err) {
     console.error('TUI failed to start:', (err as Error).message);
