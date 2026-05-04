@@ -10,6 +10,7 @@ interface CommandItem {
 
 const COMMANDS: CommandItem[] = [
   { name: "/list", description: "列出所有模块" },
+  { name: "/tree", description: "显示模块树形结构及状态" },
   { name: "/get", description: "查看模块详情" },
   { name: "/mode", description: "切换 agent 模式" },
   { name: "/setup", description: "重新配置项目" },

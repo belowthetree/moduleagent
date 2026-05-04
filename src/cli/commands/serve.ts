@@ -111,7 +111,8 @@ function serializeList(graph: ModuleGraphType) {
 }
 
 async function scanProject(projectRoot: string) {
-  const config = await ConfigLoader.load(projectRoot);
+  const workspaceConfig = await ConfigLoader.load(projectRoot);
+  const config = ConfigLoader.getDefaultConfig(workspaceConfig);
   const descriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
   const graph = new ModuleGraph().build(descriptors, projectRoot);
   return { graph, descriptors };

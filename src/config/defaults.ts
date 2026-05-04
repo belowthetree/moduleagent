@@ -24,7 +24,17 @@ export interface ProjectConfig {
   modulesPath?: string;
 }
 
-export const DEFAULT_CONFIG: ProjectConfig = {
+export interface ConfigEntry extends ProjectConfig {
+  name: string;
+}
+
+export interface WorkspaceConfig {
+  configs: ConfigEntry[];
+  defaultConfig: string;
+}
+
+export const DEFAULT_CONFIG_ENTRY: ConfigEntry = {
+  name: 'default',
   agents: {
     default: {
       command: 'opencode',
@@ -41,3 +51,11 @@ export const DEFAULT_CONFIG: ProjectConfig = {
   },
   modulesPath: '',
 };
+
+export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {
+  configs: [DEFAULT_CONFIG_ENTRY],
+  defaultConfig: 'default',
+};
+
+// Keep backward compat: legacy code that expects the single-entry format
+export const DEFAULT_CONFIG: ProjectConfig = DEFAULT_CONFIG_ENTRY;

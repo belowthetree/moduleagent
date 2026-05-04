@@ -42,12 +42,10 @@ export default function App() {
   };
 
   const handleSetupComplete = () => {
-    const data = tuiState.setupData();
-    const projectRoot = data.projectRoot || process.cwd();
+    const projectRoot = tuiState.workingDir() || process.cwd();
     tuiState.setWorkingDir(projectRoot);
     tuiState.setScreen('chat');
     addSystemMessage('正在初始化 agent...');
-    // Signal init (wired in Task 13)
     (globalThis as any).__tuiInitAgent?.(projectRoot);
   };
 

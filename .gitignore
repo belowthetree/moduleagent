@@ -17,3 +17,5 @@ logs/
 release/
 example/
 .module-agent/
+release/
+.module-agent.json

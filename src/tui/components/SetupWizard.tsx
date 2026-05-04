@@ -1,8 +1,7 @@
-import { createSignal, createEffect, createMemo } from "solid-js";
+import { createSignal, createMemo } from "solid-js";
 import { useKeyboard } from "@opentui/solid";
 import { tuiState } from "../state.js";
 import {
-  validateModuleAgentJson,
   writeModuleAgentJson,
   getDefaultConfig,
 } from "../config.js";
@@ -16,69 +15,36 @@ export default function SetupWizard(props: SetupWizardProps) {
   const defaultConfig = getDefaultConfig();
   const existing = tuiState.setupData();
 
-  // ── local editing state ────────────────────────────────────────────
-  const [command, setCommand] = createSignal(
-    existing.command || defaultConfig.agents.default.command,
-  );
-  const [args, setArgs] = createSignal(
-    existing.args ||
-      (defaultConfig.agents.default.args ?? []).join(" "),
-  );
-  const [projectRoot, setProjectRoot] = createSignal(
-    existing.projectRoot || process.cwd(),
-  );
-  const [workspacePath, setWorkspacePath] = createSignal(
-    existing.workspacePath || defaultConfig.workspace.path,
-  );
-  const [modulesPath, setModulesPath] = createSignal(
-    existing.modulesPath || "",
-  );
+  // Existing/default values for fallback and placeholders
+  const fallbackCommand = existing.command || defaultConfig.agents.default.command;
+  const fallbackArgs = existing.args || (defaultConfig.agents.default.args ?? []).join(" ");
+  const fallbackWorkspacePath = existing.workspacePath || defaultConfig.workspace.path;
+  const fallbackModulesPath = existing.modulesPath || "";
+  const fallbackCodeSourcePath = existing.codeSourcePath || "";
+  const fallbackCodeSourceUrl = existing.codeSourceUrl || "";
+  const fallbackCodeSourceBranch = existing.codeSourceBranch || "main";
+
+  // ── local editing state (start empty, user input is explicit) ─────
+  const [command, setCommand] = createSignal("");
+  const [args, setArgs] = createSignal("");
+  const [workspacePath, setWorkspacePath] = createSignal("");
+  const [modulesPath, setModulesPath] = createSignal("");
   const [codeSourceType, setCodeSourceType] = createSignal<string>(
     existing.codeSourceType || "local",
   );
-  const [codeSourcePath, setCodeSourcePath] = createSignal(
-    existing.codeSourcePath || "",
-  );
-  const [codeSourceUrl, setCodeSourceUrl] = createSignal(
-    existing.codeSourceUrl || "",
-  );
-  const [codeSourceBranch, setCodeSourceBranch] = createSignal(
-    existing.codeSourceBranch || "main",
-  );
-
-  // ── validation ──────────────────────────────────────────────────────
-  const [projectValid, setProjectValid] = createSignal<boolean | null>(null);
-  const [validating, setValidating] = createSignal(false);
-
-  createEffect(() => {
-    if (tuiState.setupStep() !== 1) return;
-    const root = projectRoot();
-    if (!root) {
-      setProjectValid(null);
-      setValidating(false);
-      return;
-    }
-    setValidating(true);
-    validateModuleAgentJson(root)
-      .then((ok) => {
-        setProjectValid(ok);
-        setValidating(false);
-      })
-      .catch(() => {
-        setProjectValid(false);
-        setValidating(false);
-      });
-  });
+  const [codeSourcePath, setCodeSourcePath] = createSignal("");
+  const [codeSourceUrl, setCodeSourceUrl] = createSignal("");
+  const [codeSourceBranch, setCodeSourceBranch] = createSignal("");
 
   // ── keyboard navigation ─────────────────────────────────────────────
   useKeyboard((key: { name: string }) => {
     const step = tuiState.setupStep();
 
     if (key.name === "return") {
-      if (step < 5) {
+      if (step < 4) {
         saveStepData(step);
         tuiState.setSetupStep(step + 1);
-      } else if (step === 5) {
+      } else if (step === 4) {
         handleComplete();
       }
     } else if (key.name === "escape") {
@@ -88,7 +54,7 @@ export default function SetupWizard(props: SetupWizardProps) {
         saveStepData(step);
         tuiState.setSetupStep(step - 1);
       }
-    } else if (key.name === "tab" && step === 4) {
+    } else if (key.name === "tab" && step === 3) {
       setCodeSourceType((prev) => (prev === "local" ? "git" : "local"));
     }
   });
@@ -98,23 +64,20 @@ export default function SetupWizard(props: SetupWizardProps) {
     const data = { ...tuiState.setupData() };
     switch (step) {
       case 0:
-        data.command = command();
-        data.args = args();
+        data.command = command() || fallbackCommand;
+        data.args = args() || fallbackArgs;
         break;
       case 1:
-        data.projectRoot = projectRoot();
+        data.modulesPath = modulesPath() || fallbackModulesPath;
         break;
       case 2:
-        data.modulesPath = modulesPath();
+        data.workspacePath = workspacePath() || fallbackWorkspacePath;
         break;
       case 3:
-        data.workspacePath = workspacePath();
-        break;
-      case 4:
-        data.codeSourceType = codeSourceType();
-        data.codeSourcePath = codeSourcePath();
-        data.codeSourceUrl = codeSourceUrl();
-        data.codeSourceBranch = codeSourceBranch();
+        data.codeSourceType = codeSourceType() || "local";
+        data.codeSourcePath = codeSourcePath() || fallbackCodeSourcePath;
+        data.codeSourceUrl = codeSourceUrl() || fallbackCodeSourceUrl;
+        data.codeSourceBranch = codeSourceBranch() || fallbackCodeSourceBranch;
         break;
     }
     tuiState.setSetupData(data);
@@ -150,7 +113,7 @@ export default function SetupWizard(props: SetupWizardProps) {
       modulesPath: data.modulesPath || "",
     };
 
-    const root = data.projectRoot || process.cwd();
+    const root = tuiState.workingDir() || process.cwd();
     await writeModuleAgentJson(root, merged);
     props.onComplete();
   }
@@ -165,9 +128,9 @@ export default function SetupWizard(props: SetupWizardProps) {
     lines.push(
       `Agent 命令: ${data.command || defaultConfig.agents.default.command} ${data.args || (defaultConfig.agents.default.args ?? []).join(" ")}`,
     );
-    lines.push(`项目目录: ${data.projectRoot || process.cwd()}`);
     lines.push(`模块文件夹: ${data.modulesPath || "(未指定)"}`);
     lines.push(`工作区: ${data.workspacePath || defaultConfig.workspace.path}`);
+    lines.push(`配置保存目录: ${tuiState.workingDir() || process.cwd()}`);
 
     if ((data.codeSourceType || "local") === "local") {
       lines.push(
@@ -189,68 +152,54 @@ export default function SetupWizard(props: SetupWizardProps) {
       {step() === 0 && (
         <>
           <text>Agent 配置</text>
+          <text dim>当前: {fallbackCommand} {fallbackArgs}</text>
           <text>命令:</text>
           <input
             focused={true}
             value={command()}
+            placeholder={fallbackCommand}
             onInput={(v: string) => setCommand(v)}
           />
           <text>参数 (空格分隔):</text>
           <input
             value={args()}
+            placeholder={fallbackArgs}
             onInput={(v: string) => setArgs(v)}
           />
         </>
       )}
 
-      {/* ── Step 1: 项目目录 ────────────────────────────────────────── */}
+      {/* ── Step 1: 模块文件夹 (module.md 所在路径) ────────────────── */}
       {step() === 1 && (
-        <>
-          <text>项目目录</text>
-          <input
-            focused={true}
-            value={projectRoot()}
-            onInput={(v: string) => setProjectRoot(v)}
-          />
-          {validating() && <text>检查中…</text>}
-          {!validating() && projectValid() === true && (
-            <text fg="#00FF00">✅ 已找到 .module-agent.json</text>
-          )}
-          {!validating() && projectValid() === false && (
-            <text fg="#FFFF00">
-              ⚠️ 未找到 .module-agent.json
-            </text>
-          )}
-        </>
-      )}
-
-      {/* ── Step 2: 模块文件夹 (module.md 所在路径) ────────────────── */}
-      {step() === 2 && (
         <>
           <text>模块文件夹</text>
           <text dim>module.md 文件所在的目录。留空则仅扫描项目目录。</text>
+          <text dim>当前: {fallbackModulesPath || "(未配置)"}</text>
           <input
             focused={true}
             value={modulesPath()}
+            placeholder={fallbackModulesPath || "留空则仅扫描项目目录"}
             onInput={(v: string) => setModulesPath(v)}
           />
         </>
       )}
 
-      {/* ── Step 3: 工作区目录 ──────────────────────────────────────── */}
-      {step() === 3 && (
+      {/* ── Step 2: 工作区目录 ──────────────────────────────────────── */}
+      {step() === 2 && (
         <>
           <text>工作区目录</text>
+          <text dim>当前: {fallbackWorkspacePath}</text>
           <input
             focused={true}
             value={workspacePath()}
+            placeholder={fallbackWorkspacePath}
             onInput={(v: string) => setWorkspacePath(v)}
           />
         </>
       )}
 
-      {/* ── Step 4: 代码来源 ───────────────────────────────────────── */}
-      {step() === 4 && (
+      {/* ── Step 3: 代码来源 ───────────────────────────────────────── */}
+      {step() === 3 && (
         <>
           <text>代码来源 (Tab 切换)</text>
           <text
@@ -269,25 +218,30 @@ export default function SetupWizard(props: SetupWizardProps) {
           </text>
           {codeSourceType() === "local" && (
             <>
+              <text dim>当前: {fallbackCodeSourcePath || "(未配置)"}</text>
               <text>路径:</text>
               <input
                 focused={true}
                 value={codeSourcePath()}
+                placeholder={fallbackCodeSourcePath}
                 onInput={(v: string) => setCodeSourcePath(v)}
               />
             </>
           )}
           {codeSourceType() === "git" && (
             <>
+              <text dim>当前: {fallbackCodeSourceUrl || "(未配置)"} @ {fallbackCodeSourceBranch}</text>
               <text>URL:</text>
               <input
                 focused={true}
                 value={codeSourceUrl()}
+                placeholder={fallbackCodeSourceUrl}
                 onInput={(v: string) => setCodeSourceUrl(v)}
               />
               <text>分支:</text>
               <input
                 value={codeSourceBranch()}
+                placeholder={fallbackCodeSourceBranch}
                 onInput={(v: string) => setCodeSourceBranch(v)}
               />
             </>
@@ -295,8 +249,8 @@ export default function SetupWizard(props: SetupWizardProps) {
         </>
       )}
 
-      {/* ── Step 5: 确认设置 ───────────────────────────────────────── */}
-      {step() === 5 && (
+      {/* ── Step 4: 确认设置 ───────────────────────────────────────── */}
+      {step() === 4 && (
         <>
           <text>确认设置</text>
           <text>{summaryText()}</text>

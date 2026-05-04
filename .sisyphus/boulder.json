@@ -1,76 +1,56 @@
 {
-  "active_plan": "E:\\Project\\ModuleAgent\\.sisyphus\\plans\\tui-interface.md",
-  "started_at": "2026-05-03T14:38:09.092Z",
+  "active_plan": "/mnt/e/Project/ModuleAgent/.sisyphus/plans/tui-tree-command.md",
+  "started_at": "2026-05-04T12:41:06.732Z",
   "session_ids": [
-    "ses_211de6bebffew1CYUuZ9N1t09g"
+    "ses_20d11baf8ffeBl7nW6cRBylqDX",
+    "ses_20cf4000effexGqP8MMy9pHuzU",
+    "ses_20cf3b3e2ffeZEucrMwyJct2gN",
+    "ses_20cf34ef7ffeq50P7w0F3bLF2Y"
   ],
   "session_origins": {
-    "ses_211de6bebffew1CYUuZ9N1t09g": "direct"
+    "ses_20d11baf8ffeBl7nW6cRBylqDX": "direct",
+    "ses_20cf4000effexGqP8MMy9pHuzU": "appended",
+    "ses_20cf3b3e2ffeZEucrMwyJct2gN": "appended",
+    "ses_20cf34ef7ffeq50P7w0F3bLF2Y": "appended"
   },
-  "plan_name": "tui-interface",
+  "plan_name": "tui-tree-command",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "**OpenTUI Windows Feasibility Spike**",
-      "session_id": "ses_211b80c5effeZj6X2w5AIBxZ7d",
+      "task_title": "Add `getGraph()` method to AgentService",
+      "session_id": "ses_20cfd7ff1ffeU3exnyt7Snd9Jk",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-03T14:46:08.592Z"
+      "updated_at": "2026-05-04T12:43:34.500Z"
     },
     "todo:2": {
       "task_key": "todo:2",
       "task_label": "2",
-      "task_title": "**TUI Directory Scaffolding + Dependencies**",
-      "session_id": "ses_211b050a6ffen2xA8kl8hO1DTr",
+      "task_title": "Add `/tree` case to commands.ts with tree formatting",
+      "session_id": "ses_20cfa3600ffeu6Yg2MydbHimaO",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-03T14:50:07.797Z"
+      "updated_at": "2026-05-04T12:48:13.683Z"
     },
-    "todo:6": {
-      "task_key": "todo:6",
-      "task_label": "6",
-      "task_title": "**Main App Layout + Renderer Init**",
-      "session_id": "ses_2119504a3ffeqwxzFC5lzHLTwr",
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "Register `/tree` in CommandPalette and update /help",
+      "session_id": "ses_20cf5c7cdffeeg7N3lGgfu5zJQ",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-03T15:18:42.526Z"
-    },
-    "todo:12": {
-      "task_key": "todo:12",
-      "task_label": "12",
-      "task_title": "**Wire App Layout + All Components**",
-      "session_id": "ses_21192fc4affesTlwcxzbFNmb5V",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-03T15:22:53.968Z"
-    },
-    "todo:13": {
-      "task_key": "todo:13",
-      "task_label": "13",
-      "task_title": "**Wire Agent Lifecycle + Streaming Pipeline**",
-      "session_id": "ses_2118fa094ffez5I976rtN10vWE",
-      "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-03T15:30:11.898Z"
-    },
-    "todo:15": {
-      "task_key": "todo:15",
-      "task_label": "15",
-      "task_title": "**Update CLI tui Command + Entry Point**",
-      "session_id": "ses_211889410ffeWPT63yLgnnj5oi",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-03T15:35:58.411Z"
+      "updated_at": "2026-05-04T12:51:23.787Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_2117a948bffeCWqfrNdGui6F0b",
-      "agent": "oracle",
-      "updated_at": "2026-05-03T15:53:17.418Z"
+      "session_id": "ses_20cf34ef7ffeq50P7w0F3bLF2Y",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-04T12:55:16.571Z"
     }
   }
 }

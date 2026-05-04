@@ -9,7 +9,8 @@ export interface GetOptions {
 }
 
 export async function getModule(options: GetOptions): Promise<void> {
-  const config = await ConfigLoader.load(options.projectRoot);
+  const workspaceConfig = await ConfigLoader.load(options.projectRoot);
+  const config = ConfigLoader.getDefaultConfig(workspaceConfig);
   const descriptors = await ModuleScanner.scan({
     projectRoot: options.projectRoot,
     extraExclude: config.exclude,

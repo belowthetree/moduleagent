@@ -85,7 +85,8 @@ export async function runSetup(
 
   if (hasConfig) {
     try {
-      config = await ConfigLoader.load(projectRoot);
+      const workspaceConfig = await ConfigLoader.load(projectRoot);
+      config = ConfigLoader.getDefaultConfig(workspaceConfig);
       log.info(`Setup: loaded config from ${configPath}`);
     } catch {
       config = { ...DEFAULT_CONFIG };
@@ -167,9 +168,13 @@ export async function runSetup(
       if (localPath.trim()) config.codeSource.path = path.resolve(localPath.trim());
     }
 
-    // Save config
+    // Save config in new array format
     try {
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+      const workspaceConfig: { configs: (typeof config & { name: string })[]; defaultConfig: string } = {
+        configs: [{ name: 'default', ...config }],
+        defaultConfig: 'default',
+      };
+      fs.writeFileSync(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
       console.log(`\n  配置已保存: ${configPath}`);
       log.info(`Setup: saved config to ${configPath}`);
     } catch (err) {

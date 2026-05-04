@@ -88,6 +88,11 @@ export async function startTui(projectRoot: string) {
   (globalThis as any).__tuiInitAgent = async (root: string) => {
     try {
       await agentService.init(root);
+
+      // Persist project root so restart can find the correct config
+      const { saveLastProjectRoot } = await import('./config.js');
+      await saveLastProjectRoot(root);
+
       tuiState.setAgentStatus('idle');
       const msg: ChatMessage = {
         id: `init-${Date.now()}`,
@@ -140,20 +145,21 @@ export async function startTui(projectRoot: string) {
     executeCommand(cmd);
   };
 
-  // ── Auto-init if project root has valid config ──
+  // ── Auto-init or show setup ──
   import('./config.js').then(async ({ validateModuleAgentJson }) => {
     if (await validateModuleAgentJson(projectRoot)) {
       await (globalThis as any).__tuiInitAgent(projectRoot);
 
-      // Warn if modulesPath is not configured (prefer new field, fallback to codeSource.path)
+      // Warn if modulesPath is not configured
       const { ConfigLoader } = await import('../config/ConfigLoader.js');
-      const config = await ConfigLoader.load(projectRoot);
+      const workspaceConfig = await ConfigLoader.load(projectRoot);
+      const config = ConfigLoader.getDefaultConfig(workspaceConfig);
       const hasModulesPath = config.modulesPath || (config.codeSource.type === 'local' && config.codeSource.path);
       if (!hasModulesPath) {
         const msg: ChatMessage = {
           id: `sys-${Date.now()}`,
           role: 'system',
-          content: '⚠️ 未配置模块文件夹 (modulesPath)，仅扫描了当前项目。\n输入 /setup 可配置模块文件夹路径。',
+          content: '输入 /setup 可配置模块文件夹路径。',
           time: new Date().toLocaleTimeString(),
         };
         tuiState.setMessages([...tuiState.messages(), msg]);
@@ -162,7 +168,7 @@ export async function startTui(projectRoot: string) {
       const msg: ChatMessage = {
         id: `sys-${Date.now()}`,
         role: 'system',
-        content: '⚠️ 未找到 .module-agent.json，请先完成配置。\n输入 /setup 可随时重新配置。',
+        content: '未找到配置文件，请先完成配置。',
         time: new Date().toLocaleTimeString(),
       };
       tuiState.setMessages([msg]);

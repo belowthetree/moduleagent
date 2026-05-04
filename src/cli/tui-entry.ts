@@ -13,9 +13,9 @@ async function main() {
   }
 
   if (!projectRoot) {
-    // Use resolveProjectRoot from config helper
-    const { resolveProjectRoot } = await import('../tui/config.js');
-    projectRoot = resolveProjectRoot();
+    // Prefer the last saved project root, fall back to upward search
+    const { getLastProjectRoot, resolveProjectRoot } = await import('../tui/config.js');
+    projectRoot = await getLastProjectRoot() || resolveProjectRoot();
   }
 
   try {

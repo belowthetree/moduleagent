@@ -228,7 +228,8 @@ async function ensureModuleAgentRunning(moduleName: string): Promise<boolean> {
   let cmd = 'opencode';
   let args = ['acp'];
   try {
-    const config = await ConfigLoader.load(currentProjectRoot);
+    const workspaceConfig = await ConfigLoader.load(currentProjectRoot);
+    const config = ConfigLoader.getDefaultConfig(workspaceConfig);
     cmd = config.agents.default.command;
     args = config.agents.default.args || [];
   } catch {}
@@ -494,7 +495,8 @@ function registerIpcHandlers() {
 
   ipcMain.handle('project:scan', async (_event, projectRoot: string, workspaceRoot: string) => {
     try {
-      const config = await ConfigLoader.loadOrCreate(projectRoot);
+      const workspaceConfig = await ConfigLoader.loadOrCreate(projectRoot);
+      const config = ConfigLoader.getDefaultConfig(workspaceConfig);
       const descriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
 
       // Also scan modulesPath (or fallback to codeSource.path) for additional modules
@@ -563,7 +565,8 @@ function registerIpcHandlers() {
       let cmd = _cmd || 'opencode';
       let args = _args?.length ? _args : ['acp'];
       try {
-        const projectConfig = await ConfigLoader.load(currentProjectRoot);
+        const workspaceConfig = await ConfigLoader.load(currentProjectRoot);
+        const projectConfig = ConfigLoader.getDefaultConfig(workspaceConfig);
         cmd = projectConfig.agents.default.command;
         args = projectConfig.agents.default.args || [];
       } catch {}
@@ -682,24 +685,26 @@ function registerIpcHandlers() {
   // ── Config IPC ──
   ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }; modulesPath?: string }) => {
     const configPath = path.join(projectRoot, '.module-agent.json');
-    let config: ProjectConfig;
+    let workspaceConfig;
     try {
-      config = await ConfigLoader.load(projectRoot);
+      workspaceConfig = await ConfigLoader.load(projectRoot);
     } catch {
-      config = { ...DEFAULT_CONFIG };
+      workspaceConfig = { configs: [{ name: 'default', ...DEFAULT_CONFIG }], defaultConfig: 'default' };
     }
+    const config = ConfigLoader.getDefaultConfig(workspaceConfig);
     if (updates.command) config.agents.default.command = updates.command;
     if (updates.args) config.agents.default.args = updates.args;
     if (updates.codeSource) config.codeSource = updates.codeSource;
     if (updates.modulesPath !== undefined) config.modulesPath = updates.modulesPath;
-    await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    await fs.promises.writeFile(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
     defaultLogger.info(`config:save wrote to ${configPath}`);
     return { success: true };
   });
 
   ipcMain.handle('config:get', async (_event, projectRoot: string) => {
     try {
-      const config = await ConfigLoader.load(projectRoot);
+      const workspaceConfig = await ConfigLoader.load(projectRoot);
+      const config = ConfigLoader.getDefaultConfig(workspaceConfig);
       return { command: config.agents.default.command, args: config.agents.default.args || [], codeSource: config.codeSource, modulesPath: config.modulesPath };
     } catch {
       return { command: DEFAULT_CONFIG.agents.default.command, args: DEFAULT_CONFIG.agents.default.args || [], codeSource: DEFAULT_CONFIG.codeSource, modulesPath: DEFAULT_CONFIG.modulesPath };

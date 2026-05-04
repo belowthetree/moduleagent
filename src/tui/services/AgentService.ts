@@ -7,14 +7,14 @@ import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { defaultLogger } from '../../core/Logger.js';
 import { normalizeCodeSourcePath } from '../../core/PathUtils.js';
 import type { ModuleDescriptor, ModuleGraph as ModuleGraphType } from '../../types/module.js';
-import type { ProjectConfig } from '../../config/defaults.js';
+import type { ConfigEntry } from '../../config/defaults.js';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { StreamHandler } from './StreamHandler.js';
 import type { ChatMessage, AgentStatus } from '../types.js';
 
 export class AgentService {
   private projectRoot = '';
-  private config: ProjectConfig | null = null;
+  private config: ConfigEntry | null = null;
   private graph: ModuleGraphType | null = null;
   private agentManager: AgentManager | null = null;
   private agentRouter: AgentRouter | null = null;
@@ -40,7 +40,8 @@ export class AgentService {
     this.projectRoot = projectRoot;
     this.setStatus('loading');
 
-    this.config = await ConfigLoader.load(projectRoot);
+    const workspaceConfig = await ConfigLoader.load(projectRoot);
+    this.config = ConfigLoader.getDefaultConfig(workspaceConfig);
 
     const descriptors: ModuleDescriptor[] = [];
 
@@ -100,6 +101,14 @@ export class AgentService {
 
   getAgentStatus(): AgentStatus {
     return this.status;
+  }
+
+  getGraph(): ModuleGraphType | null {
+    return this.graph;
+  }
+
+  isModuleLoaded(name: string): boolean {
+    return this.entries.has(name);
   }
 
   listAgents(): string[] {
