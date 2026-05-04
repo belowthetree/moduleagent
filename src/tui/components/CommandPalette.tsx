@@ -23,10 +23,8 @@ export default function CommandPalette() {
 
   const filterText = createMemo(() => {
     const value = tuiState.inputValue();
-    if (value.startsWith("/")) {
-      return value.slice(1);
-    }
-    return "";
+    // Strip leading "/" if present, otherwise use raw value
+    return value.startsWith("/") ? value.slice(1) : value;
   });
 
   const filteredCommands = createMemo(() => {
