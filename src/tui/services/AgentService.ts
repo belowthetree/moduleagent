@@ -84,7 +84,7 @@ export class AgentService {
     defaultLogger.info(`ModuleScanner: total ${descriptors.length} modules`);
     this.graph = new ModuleGraph().build(descriptors, projectRoot);
 
-    this.agentManager = new AgentManager(this.config, this.graph, []);
+    this.agentManager = new AgentManager(this.config, this.graph, [], defaultLogger);
     this.agentRouter = new AgentRouter(this.agentManager, this.graph);
     this.currentAgent = this.graph.root;
 
@@ -120,11 +120,12 @@ export class AgentService {
   async startMainAgent(): Promise<void> {
     if (!this.agentManager) throw new Error('AgentService not initialized — call init() first');
 
+    defaultLogger.info(`TUI: starting main agent`);
     const entry = await this.agentManager.startMainAgent(
       this.projectRoot,
       this.onSessionUpdate ?? undefined,
     );
-    this.entries.set('main', entry);
+    this.entries.set(this.graph!.root, entry);
   }
 
   async startModuleAgent(name: string): Promise<void> {
@@ -135,6 +136,7 @@ export class AgentService {
     const node = this.graph.nodes.get(name);
     if (!node) throw new Error(`Module "${name}" not found in graph`);
 
+    defaultLogger.info(`TUI: starting module agent "${name}"`);
     const subDirs = getSubModuleDirs(
       node,
       this.graph,
@@ -153,31 +155,36 @@ export class AgentService {
   async sendMessage(text: string): Promise<void> {
     if (!this.agentRouter) throw new Error('AgentService not initialized — call init() first');
 
-    const name = this.currentAgent;
-    let entry = this.entries.get(name);
-    if (!entry) {
-      if (name === 'main' || (this.graph && name === this.graph.root)) {
-        await this.startMainAgent();
-      } else {
-        await this.startModuleAgent(name);
-      }
-      entry = this.entries.get(name);
-      if (!entry) throw new Error(`Failed to start agent "${name}"`);
-    }
-
-    this.onMessage({
-      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      role: 'user',
-      content: text,
-      time: new Date().toLocaleTimeString(),
-    });
-
-    this.setStatus('streaming');
-
     try {
+      const name = this.currentAgent;
+      let entry = this.entries.get(name);
+      defaultLogger.info(`TUI send: agent="${name}" chars=${text.length} existing=${!!entry}`);
+      if (!entry) {
+        defaultLogger.info(`TUI send: starting ${name} agent first`);
+        if (name === 'main' || (this.graph && name === this.graph.root)) {
+          await this.startMainAgent();
+        } else {
+          await this.startModuleAgent(name);
+        }
+        entry = this.entries.get(name);
+        if (!entry) throw new Error(`Failed to start agent "${name}"`);
+      }
+
+      this.onMessage({
+        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role: 'user',
+        content: text,
+        time: new Date().toLocaleTimeString(),
+      });
+
+      this.setStatus('streaming');
+
       await this.agentRouter.sendToAgent(entry, text);
+      defaultLogger.info(`TUI send: ${name} OK`);
       this.streamHandler?.onComplete();
+      this.setStatus('idle');
     } catch (err) {
+      defaultLogger.error(`TUI send: ${this.currentAgent} FAILED | ${(err as Error).message}`);
       this.setStatus('error');
       const message = `Error: ${(err as Error).message}`;
       this.streamHandler?.onError(message);
@@ -187,13 +194,11 @@ export class AgentService {
         content: message,
         time: new Date().toLocaleTimeString(),
       });
-      return;
     }
-
-    this.setStatus('idle');
   }
 
   async cancel(): Promise<void> {
+    defaultLogger.info(`TUI: cancel agent "${this.currentAgent}"`);
     const entry = this.entries.get(this.currentAgent);
     if (!entry || !this.agentRouter) return;
 
@@ -212,7 +217,9 @@ export class AgentService {
       throw new Error(`Module "${name}" not found in graph`);
     }
 
+    const oldAgent = this.currentAgent;
     this.currentAgent = name;
+    defaultLogger.info(`TUI: switch agent "${oldAgent}" → "${name}"`);
 
     const entry = this.entries.get(name);
     if (!entry) {
@@ -225,6 +232,7 @@ export class AgentService {
   }
 
   async dispose(): Promise<void> {
+    defaultLogger.info(`TUI: disposing agent service`);
     if (this.agentManager) {
       await this.agentManager.stopAll();
     }

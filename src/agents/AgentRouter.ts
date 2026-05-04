@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { AgentManager, AgentEntry } from './AgentManager.js';
@@ -5,12 +6,51 @@ import type { PromptResponse } from '@agentclientprotocol/sdk';
 import { defaultLogger as log } from '../core/Logger.js';
 import { buildPromptBlocks, loadSystemPrompts } from './PromptBuilder.js';
 
-function resolveConfigDir(): string {
-  // __dirname available in CJS builds (esbuild output)
-  if (typeof __dirname !== 'undefined') {
-    return path.resolve(__dirname, '..', 'config');
+/**
+ * Walk up the directory tree from `startDir` until `package.json` is found.
+ * Returns the repo root directory, or null if not found within 10 levels.
+ */
+function findPackageRoot(startDir: string): string | null {
+  let dir = startDir;
+  for (let i = 0; i < 10; i++) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // filesystem root
+    dir = parent;
   }
-  // ESM dev mode — resolve from cwd (project root)
+  return null;
+}
+
+/**
+ * Resolve the config directory (<repo-root>/config/) regardless of whether
+ * the code runs from source (ESM via import.meta.url) or from a bundled
+ * esbuild output (CJS via __dirname).
+ */
+function resolveConfigDir(): string {
+  let moduleDir: string | null = null;
+
+  // ESM: use import.meta.url (accurate under source and tsx)
+  if (typeof import.meta !== 'undefined' && import.meta.url) {
+    try {
+      moduleDir = path.dirname(new URL(import.meta.url).pathname);
+    } catch { /* fall through */ }
+  }
+
+  // CJS: __dirname available in esbuild output (dist/) or direct CJS loaders
+  if (!moduleDir && typeof __dirname !== 'undefined') {
+    moduleDir = __dirname;
+  }
+
+  if (moduleDir) {
+    const root = findPackageRoot(moduleDir);
+    if (root) {
+      return path.join(root, 'config');
+    }
+  }
+
+  // Last resort: cwd + config (may be wrong but better than crashing)
   return path.resolve(process.cwd(), 'config');
 }
 
@@ -32,7 +72,7 @@ export class AgentRouter {
     this.manager = manager;
     this.graph = graph;
     this.promptDir = promptDir || PKG_CONFIG_DIR;
-    this.prompts = loadSystemPrompts(process.cwd());
+    this.prompts = loadSystemPrompts(path.dirname(this.promptDir));
   }
 
   resetSession(sessionId: string): void {

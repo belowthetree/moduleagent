@@ -68,10 +68,34 @@ export class Logger {
     } catch {}
   }
 
-  debug(message: string) { if (this.level <= LogLevel.DEBUG) this.write('DEBUG', message); }
-  info(message: string, detail?: string) { if (this.level <= LogLevel.INFO) this.write('INFO', detail ? `${message} (${detail})` : message); }
-  warn(message: string) { if (this.level <= LogLevel.WARN) this.write('WARN', message); }
-  error(message: string) { if (this.level <= LogLevel.ERROR) this.write('ERROR', message); }
+  private writeSync(level: string, message: string): void {
+    try {
+      const file = this.getLogFile();
+      if (this.stream && this.currentDate !== file) {
+        this.stream.end();
+        this.stream = null;
+      }
+      if (!this.stream) {
+        fs.ensureDirSync(this.dir);
+        this.stream = fs.createWriteStream(file, { flags: 'a' });
+        this.currentDate = file;
+      }
+      this.stream.write(this.format(level, message));
+    } catch {
+      try {
+        const file = this.getLogFile();
+        fs.ensureDirSync(this.dir);
+        fs.appendFileSync(file, this.format(level, message));
+      } catch {
+        process.stderr.write(`[LOGGER] ${level}: ${message}\n`);
+      }
+    }
+  }
+
+  debug(message: string) { if (this.level <= LogLevel.DEBUG) this.writeSync('DEBUG', message); }
+  info(message: string, detail?: string) { if (this.level <= LogLevel.INFO) this.writeSync('INFO', detail ? `${message} (${detail})` : message); }
+  warn(message: string) { if (this.level <= LogLevel.WARN) this.writeSync('WARN', message); }
+  error(message: string) { if (this.level <= LogLevel.ERROR) this.writeSync('ERROR', message); }
 
   rpc(dir: 'send' | 'recv', method: string, detail?: string) {
     const arrow = dir === 'send' ? '→' : '←';
