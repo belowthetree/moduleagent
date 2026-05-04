@@ -15,6 +15,7 @@ export async function startTui(projectRoot: string) {
   const renderer = await createCliRenderer({
     exitOnCtrlC: false,  // Custom Ctrl+C handling
     targetFps: 30,
+    autoFocus: false,    // Prevent clicks from stealing focus from the input box
   });
 
   // Ctrl+C handling

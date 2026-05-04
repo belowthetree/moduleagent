@@ -12,6 +12,7 @@ const COMMANDS: CommandItem[] = [
   { name: "/list", description: "列出所有模块" },
   { name: "/get", description: "查看模块详情" },
   { name: "/mode", description: "切换 agent 模式" },
+  { name: "/setup", description: "重新配置项目" },
   { name: "/clear", description: "清空上下文" },
   { name: "/help", description: "显示帮助" },
   { name: "/quit", description: "退出 TUI" },
@@ -50,7 +51,7 @@ export default function CommandPalette() {
     } else if (key.name === "down") {
       setSelectedIndex((prev) => (prev < max ? prev + 1 : 0));
       key.preventDefault();
-    } else if (key.name === "enter" || key.name === "return") {
+    } else if (key.name === "enter" || key.name === "return" || key.name === "tab") {
       if (cmds.length > 0 && cmds[selectedIndex()]) {
         tuiState.setInputValue(cmds[selectedIndex()].name);
         tuiState.setShowCommands(false);
