@@ -70,8 +70,8 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
       return Promise.resolve({ sessionId: 'mock-session-id' });
     },
 
-    sendMessage: (_moduleName: string, _text: string): Promise<{ stopReason?: string; error?: string }> => {
-      return Promise.resolve({ stopReason: 'end_turn' });
+    sendMessage: (_moduleName: string, _text: string, _cwd?: string): Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason: string }; error?: string }> => {
+      return Promise.resolve({ result: { reply: 'mock reply', thinking: '', tools: '', stopReason: 'end_turn' } });
     },
 
     cancelAgent: (_moduleName: string): Promise<{}> => {

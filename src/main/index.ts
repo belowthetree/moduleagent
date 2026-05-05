@@ -30,6 +30,7 @@ import {
   writeMcpGraphFile,
 } from '../agents/McpServerBuilder.js';
 import type { ModuleGraphNode, ModuleGraph as ModuleGraphType } from '../types/module.js';
+import type { ChatMsg } from '../types/preload.js';
 
 defaultLogger.configure('logs', LogLevel.INFO);
 defaultLogger.info('ModuleAgent starting...');
@@ -52,6 +53,7 @@ let mcpGraphFile = '';
 let prompts = { mainPrompt: '', subPrompt: '' };
 let orchestrator: AgentOrchestrator | null = null;
 let stateManager: AgentStateManager | null = null;
+const sendLock = new Map<string, Promise<void>>();
 let mcpBackend: McpBackendServer | null = null;
 
 function createWindow() {
@@ -282,17 +284,34 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('agent:send', async (_event, moduleName: string, text: string) => {
-    const entry = orchestrator?.getAgent(moduleName);
-    if (!entry) return { error: 'agent not started' };
+  ipcMain.handle('agent:send', async (_event, moduleName: string, text: string, _cwd?: string) => {
+    if (!orchestrator) return { error: 'no module graph loaded' };
 
     if (dedupMessage(lastSent, moduleName, text)) {
       return { error: 'duplicate message ignored' };
     }
 
+    // Per-module sending mutex
+    const prevLock = sendLock.get(moduleName);
+    if (prevLock) {
+      try { await prevLock; } catch { /* previous send failed, proceed */ }
+    }
+
+    let resolveLock: () => void;
+    const lockPromise = new Promise<void>(resolve => { resolveLock = resolve; });
+    sendLock.set(moduleName, lockPromise);
+
     try {
+      // Auto-start agent if not running
+      let entry = orchestrator.getAgent(moduleName);
+      if (!entry) {
+        const startResult = await orchestrator.startAgent({ moduleName });
+        entry = startResult;
+      }
+
       agentStatus.set(moduleName, 'streaming');
       mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'streaming' });
+
       const promptBlocks = buildPromptBlocks({
         moduleName,
         userText: text,
@@ -300,19 +319,64 @@ function registerIpcHandlers() {
         prompts,
         sessionPrompted,
       });
+
+      stateManager?.startStream(moduleName);
+
       defaultLogger.session(entry.sessionId, 'prompt', `len=${text.length} blocks=${promptBlocks.length}`);
       const result = await entry.launched.connection.prompt({
         sessionId: entry.sessionId,
         prompt: promptBlocks,
       });
+
+      const acc = stateManager?.finishStream(moduleName);
+
+      // Save context to disk
+      const timeStr = new Date().toLocaleTimeString();
+      const agentCmd = entry.config.command || '';
+      const userMsg: ChatMsg = {
+        id: 'm' + Date.now().toString(36),
+        role: 'user',
+        content: text,
+        thinking: '',
+        tools: '',
+        time: timeStr,
+        status: 'sent',
+        moduleName,
+        agentCmd,
+      };
+      const agentMsg: ChatMsg = {
+        id: 'm' + (Date.now() + 1).toString(36),
+        role: 'agent',
+        content: acc?.reply || '',
+        thinking: acc?.thinking || '',
+        tools: acc?.tools || '',
+        time: timeStr,
+        status: 'completed',
+        moduleName,
+        agentCmd,
+      };
+      await stateManager?.saveContext(moduleName, [userMsg, agentMsg]);
+
       agentStatus.set(moduleName, 'idle');
       mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'idle' });
-      return { stopReason: result.stopReason };
+
+      return {
+        result: {
+          reply: acc?.reply || '',
+          thinking: acc?.thinking || '',
+          tools: acc?.tools || '',
+          stopReason: result.stopReason,
+        },
+      };
     } catch (err) {
       defaultLogger.error(`agent:send failed [${moduleName}]: ${(err as Error).message}`);
+      stateManager?.stopStream(moduleName);
       agentStatus.set(moduleName, 'error');
       mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'error' });
       return { error: (err as Error).message };
+    } finally {
+      resolveLock();
+      sendLock.delete(moduleName);
     }
   });
 
