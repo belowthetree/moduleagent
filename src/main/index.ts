@@ -4,32 +4,32 @@ import fs from 'fs';
 import os from 'os';
 
 import { context as esbuildContext } from 'esbuild';
-import { ModuleScanner } from '../src/core/ModuleScanner.js';
-import { ModuleGraph } from '../src/core/ModuleGraph.js';
-import { ConfigLoader } from '../src/config/ConfigLoader.js';
-import { DEFAULT_CONFIG, type ProjectConfig } from '../src/config/defaults.js';
-import { Logger, LogLevel, defaultLogger } from '../src/core/Logger.js';
-import { normalizeCodeSourcePath } from '../src/core/PathUtils.js';
-import { AgentLauncher } from '../src/agents/AgentLauncher.js';
-import { AgentOrchestrator } from '../src/agents/AgentOrchestrator.js';
-import { McpBackendServer } from '../src/agents/McpBackend.js';
+import { ModuleScanner } from '../core/ModuleScanner.js';
+import { ModuleGraph } from '../core/ModuleGraph.js';
+import { ConfigLoader } from '../config/ConfigLoader.js';
+import { DEFAULT_CONFIG, type ProjectConfig } from '../config/defaults.js';
+import { Logger, LogLevel, defaultLogger } from '../core/Logger.js';
+import { normalizeCodeSourcePath } from '../core/PathUtils.js';
+import { AgentLauncher } from '../agents/AgentLauncher.js';
+import { AgentOrchestrator } from '../agents/AgentOrchestrator.js';
+import { McpBackendServer } from '../agents/McpBackend.js';
 import {
   workspacePathForModule,
   codeSourcePathForModule,
   getSubModuleDirs,
   prepareModuleWorkspace,
   resolveGitCodeSource,
-} from '../src/agents/WorkspaceIsolator.js';
+} from '../agents/WorkspaceIsolator.js';
 import {
   loadSystemPrompts,
   buildPromptBlocks,
   dedupMessage,
-} from '../src/agents/PromptBuilder.js';
+} from '../agents/PromptBuilder.js';
 import {
   buildMcpServers,
   writeMcpGraphFile,
-} from '../src/agents/McpServerBuilder.js';
-import type { ModuleGraphNode, ModuleGraph as ModuleGraphType } from '../src/types/module.js';
+} from '../agents/McpServerBuilder.js';
+import type { ModuleGraphNode, ModuleGraph as ModuleGraphType } from '../types/module.js';
 
 defaultLogger.configure('logs', LogLevel.INFO);
 defaultLogger.info('ModuleAgent starting...');
