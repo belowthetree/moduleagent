@@ -1,0 +1,15 @@
+appId: com.moduleagent.app
+productName: ModuleAgent
+directories:
+  output: release
+files:
+  - 'out/**/*'
+  - 'dist/**/*'
+  - 'src/**/*'
+  - 'node_modules/**/*'
+  - 'package.json'
+  - '!**/.vscode/*'
+  - '!electron.vite.config.*'
+win:
+  target: portable
+  icon: null

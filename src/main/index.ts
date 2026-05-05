@@ -3,7 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
-import { context as esbuildContext } from 'esbuild';
 import { ModuleScanner } from '../core/ModuleScanner.js';
 import { ModuleGraph } from '../core/ModuleGraph.js';
 import { ConfigLoader } from '../config/ConfigLoader.js';
@@ -53,10 +52,6 @@ let prompts = { mainPrompt: '', subPrompt: '' };
 let orchestrator: AgentOrchestrator | null = null;
 let mcpBackend: McpBackendServer | null = null;
 
-function getResourcePath(...segments: string[]): string {
-  return path.join(app.getAppPath(), ...segments);
-}
-
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -65,14 +60,19 @@ function createWindow() {
     minHeight: 700,
     title: 'ModuleAgent',
     webPreferences: {
-      preload: getResourcePath('electron', 'preload.cjs'),
+      preload: path.join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
     },
     show: false,
   });
 
-  mainWindow.loadFile(getResourcePath('electron', 'renderer', 'index.html'));
+  if (process.env.ELECTRON_RENDERER_URL) {
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  }
   mainWindow.once('ready-to-show', () => mainWindow?.show());
 }
 
@@ -347,34 +347,10 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   registerIpcHandlers();
   createWindow();
-  setupDevHotReload();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
-
-async function setupDevHotReload() {
-  const srcDir = getResourcePath('electron', 'renderer');
-  const entryFile = path.join(srcDir, 'renderer.ts');
-  const outFile = path.join(srcDir, 'renderer.js');
-  try {
-    const ctx = await esbuildContext({
-      entryPoints: [entryFile], outfile: outFile,
-      bundle: true, platform: 'browser', format: 'iife',
-    });
-    await ctx.watch();
-    fs.watch(srcDir, { recursive: true }, (_event, filename) => {
-      if (filename && (filename.endsWith('.css') || filename.endsWith('.html'))) debounceReload();
-    });
-    fs.watch(outFile, () => debounceReload());
-  } catch (err) { console.error('[dev] esbuild watch failed:', err); }
-}
-
-let reloadTimer: ReturnType<typeof setTimeout> | null = null;
-function debounceReload() {
-  if (reloadTimer) clearTimeout(reloadTimer);
-  reloadTimer = setTimeout(() => { if (mainWindow) mainWindow.webContents.reload(); }, 200);
-}
 
 app.on('window-all-closed', () => {
   if (orchestrator) {
