@@ -5,9 +5,7 @@ import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import locale from 'element-plus/es/locale/lang/zh-cn'
 import router from './router'
-
-// Placeholder App — actual App.vue created in Task 27
-const App = { template: '<div id="app"></div>' }
+import App from './App.vue'
 
 const app = createApp(App)
 
