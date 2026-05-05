@@ -1,3 +1,4 @@
+chcp 65001 >nul 2>nul
 @echo off
 setlocal enabledelayedexpansion
 
@@ -26,7 +27,7 @@ if not exist "node_modules\" (
     echo Installing dependencies...
     call npm install --silent
 ) else if not exist "node_modules\electron-vite\" (
-    echo New dependencies detected — reinstalling...
+    echo New dependencies detected - reinstalling...
     call npm install --silent
 )
 if errorlevel 1 exit /b 1
@@ -48,7 +49,7 @@ if not exist "node_modules\" (
     echo Installing dependencies...
     call npm install --silent
 ) else if not exist "node_modules\electron-vite\" (
-    echo New dependencies detected — reinstalling...
+    echo New dependencies detected - reinstalling...
     call npm install --silent
 )
 if errorlevel 1 exit /b 1
@@ -86,7 +87,7 @@ if not exist "node_modules\" (
     echo Installing dependencies...
     call npm install --silent
 ) else if not exist "node_modules\electron-vite\" (
-    echo New dependencies detected — reinstalling...
+    echo New dependencies detected - reinstalling...
     call npm install --silent
 )
 if errorlevel 1 exit /b 1
