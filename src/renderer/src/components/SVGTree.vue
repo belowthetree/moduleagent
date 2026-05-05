@@ -69,7 +69,7 @@
           <text
             :x="node.x + NODE_W - 15"
             :y="node.y + NODE_H - 9"
-            fill="#1a1b26"
+            :fill="'var(--el-bg-color-page)'"
             font-size="10"
             font-weight="bold"
             pointer-events="none"
@@ -197,7 +197,7 @@ const svgStyle = computed(() => ({
   height: svgHeight.value + 'px',
   minWidth: svgWidth.value + 'px',
   minHeight: svgHeight.value + 'px',
-  background: '#1a1b26',
+  background: 'var(--el-bg-color-page)',
   transform: `translate(${panX.value}px, ${panY.value}px) scale(${scale.value})`,
   transformOrigin: '0 0',
 }))
