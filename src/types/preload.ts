@@ -80,7 +80,7 @@ export interface ModuleAgentApi {
 
   startAgent(moduleName: string, cmd: string, args: string[], cwd: string): Promise<{ sessionId?: string; error?: string }>;
 
-  sendMessage(moduleName: string, text: string, cwd?: string): Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason: string }; error?: string }>;
+  sendMessage(moduleName: string, text: string, cwd?: string): Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason?: string }; error?: string }>;
 
   cancelAgent(moduleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>;
 
