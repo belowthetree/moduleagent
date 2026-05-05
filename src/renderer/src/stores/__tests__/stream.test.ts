@@ -1,138 +1,72 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAgentStore } from '../agent'
-import { createMockModuleAgentApi, triggerStream } from '../../__mocks__/moduleAgent'
+import { createMockModuleAgentApi } from '../../__mocks__/moduleAgent'
 
-function setup() {
-  const mock = createMockModuleAgentApi()
-  ;(globalThis as any).window.moduleAgent = mock
-  const store = useAgentStore()
-  store.ensureStreamListener()
-  return { mock, store }
-}
-
-describe('stream composable', () => {
+describe('stream composable (simplified IPC flow)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.clear()
   })
 
-  it('agent_message_chunk → reply', () => {
-    const { mock, store } = setup()
+  it('sendMessage: user msg pushed before IPC, agent msg from IPC result', async () => {
+    const mock = createMockModuleAgentApi()
+    ;(globalThis as any).window.moduleAgent = mock
+    const store = useAgentStore()
 
-    triggerStream(mock, {
-      moduleName: 'mod1',
-      update: 'agent_message_chunk',
-      data: { content: { type: 'text', text: 'Hello from agent' } },
-    })
+    await store.sendMessage('mod1', 'Test message', '/cwd')
 
-    const st = store.getStreamState('mod1')
-    expect(st.reply).toBe('Hello from agent')
-    expect(st.sections.reply).toBe(true)
-    expect(st.thinking).toBe('')
-    expect(st.tools).toBe('')
+    const msgs = store.getMsgs('mod1')
+    expect(msgs).toHaveLength(2)
+    expect(msgs[0]!.role).toBe('user')
+    expect(msgs[0]!.content).toBe('Test message')
+    expect(msgs[1]!.role).toBe('agent')
+    expect(msgs[1]!.content).toBe('mock reply')
+    expect(msgs[1]!.status).toBe('completed')
   })
 
-  it('agent_thought_chunk → thinking', () => {
-    const { mock, store } = setup()
+  it('sendMessage: sends user msg before throwing on IPC failure', async () => {
+    const mock = createMockModuleAgentApi()
+    mock.sendMessage = vi.fn().mockRejectedValue(new Error('IPC failed'))
+    ;(globalThis as any).window.moduleAgent = mock
+    const store = useAgentStore()
 
-    triggerStream(mock, {
-      moduleName: 'mod2',
-      update: 'agent_thought_chunk',
-      data: { content: { type: 'text', text: 'Let me think about this...' } },
-    })
+    await store.sendMessage('mod2', 'Will fail', '/cwd')
 
-    const st = store.getStreamState('mod2')
-    expect(st.thinking).toBe('Let me think about this...')
-    expect(st.sections.thinking).toBe(true)
-    expect(st.reply).toBe('')
-    expect(st.tools).toBe('')
-  })
-
-  it('tool_call → tools', () => {
-    const { mock, store } = setup()
-
-    triggerStream(mock, {
-      moduleName: 'mod3',
-      update: 'tool_call',
-      data: { title: 'read_file', toolCallId: 'tc_001', status: 'completed' },
-    })
-
-    const st = store.getStreamState('mod3')
-    expect(st.tools).toContain('read_file (completed)')
-    expect(st.sections.tools).toBe(true)
-    expect(st.reply).toBe('')
-  })
-
-  it('multi-chunk accumulation across types', () => {
-    const { mock, store } = setup()
-
-    triggerStream(mock, {
-      moduleName: 'mod4',
-      update: 'agent_thought_chunk',
-      data: { content: { type: 'text', text: 'Analyzing...' } },
-    })
-    triggerStream(mock, {
-      moduleName: 'mod4',
-      update: 'tool_call',
-      data: { title: 'search', toolCallId: 'tc_s', status: 'running' },
-    })
-    triggerStream(mock, {
-      moduleName: 'mod4',
-      update: 'agent_message_chunk',
-      data: { content: { type: 'text', text: 'Here is the answer.' } },
-    })
-    triggerStream(mock, {
-      moduleName: 'mod4',
-      update: 'agent_message_chunk',
-      data: { content: { type: 'text', text: ' Hope that helps!' } },
-    })
-
-    const st = store.getStreamState('mod4')
-    expect(st.thinking).toBe('Analyzing...')
-    expect(st.tools).toContain('search (running)')
-    expect(st.reply).toBe('Here is the answer. Hope that helps!')
-    expect(st.sections.thinking).toBe(true)
-    expect(st.sections.tools).toBe(true)
-    expect(st.sections.reply).toBe(true)
-  })
-
-  it('finishStream: clears streamState and persists to context', () => {
-    const { mock, store } = setup()
-
-    triggerStream(mock, {
-      moduleName: 'mod5',
-      update: 'agent_message_chunk',
-      data: { content: { type: 'text', text: 'Final answer.' } },
-    })
-
-    expect(store.streamState.get('mod5')).toBeDefined()
-
-    store.finishStream('mod5')
-
-    expect(store.streamState.get('mod5')).toBeUndefined()
-
-    const msgs = store.getMsgs('mod5')
+    // User message should still be in context
+    const msgs = store.getMsgs('mod2')
     expect(msgs).toHaveLength(1)
-    expect(msgs[0]!.role).toBe('agent')
-    expect(msgs[0]!.content).toBe('Final answer.')
-    expect(msgs[0]!.status).toBe('completed')
+    expect(msgs[0]!.role).toBe('user')
+    expect(msgs[0]!.content).toBe('Will fail')
   })
 
-  it('stopStream: resets stream state', () => {
-    const { mock, store } = setup()
+  it('cancelAgent: updates executing message to interrupted', async () => {
+    const mock = createMockModuleAgentApi()
+    mock.cancelAgent = vi.fn().mockResolvedValue({
+      accumulated: { reply: 'Partial...', thinking: '...', tools: '', finished: false, sections: { thinking: true, tools: false, reply: true } }
+    })
+    ;(globalThis as any).window.moduleAgent = mock
+    const store = useAgentStore()
 
-    triggerStream(mock, {
-      moduleName: 'mod6',
-      update: 'agent_message_chunk',
-      data: { content: { type: 'text', text: 'In progress...' } },
+    // Simulate a currently-executing agent message
+    store.getMsgs('mod3').push({
+      id: 'exec-1',
+      role: 'agent',
+      content: '',
+      thinking: '',
+      tools: '',
+      time: '10:00',
+      status: 'executing',
+      moduleName: 'mod3',
+      agentCmd: '',
     })
 
-    expect(store.streamState.get('mod6')).toBeDefined()
+    await store.cancelAgent('mod3')
 
-    store.stopStream('mod6')
-
-    expect(store.streamState.get('mod6')).toBeUndefined()
-    expect(localStorage.getItem('stream_snapshot')).toBeNull()
+    const msgs = store.getMsgs('mod3')
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0]!.status).toBe('interrupted')
+    expect(msgs[0]!.content).toBe('Partial...')
+    expect(msgs[0]!.thinking).toBe('...')
   })
 })

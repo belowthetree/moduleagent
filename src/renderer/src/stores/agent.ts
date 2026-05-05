@@ -2,103 +2,16 @@ import { ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import type { AgentStatus, ChatMsg } from '../../../types/preload'
 
-// FROZEN constants — must match renderer.ts
-const LS_STREAM_SNAPSHOT = 'stream_snapshot'
-const CTX_PREFIX = 'ctx_'
-const STREAM_SAVE_DEBOUNCE = 2000
-
 export const useAgentStore = defineStore('agent', () => {
-  // ── One-time localStorage migration ──
-  // Move old ctx_* and stream_snapshot data from localStorage to main process disk storage
-  async function runMigration(): Promise<void> {
-    try {
-      const keys: string[] = []
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i)
-        if (k === LS_STREAM_SNAPSHOT || k?.startsWith(CTX_PREFIX)) {
-          keys.push(k!)
-        }
-      }
-      if (keys.length === 0) return
-
-      const { needed, streamNeeded } = await window.moduleAgent.migrateCheck(keys)
-      if (!streamNeeded && needed.length === 0) return
-
-      const byModule = new Map<string, ChatMsg[]>()
-      for (const key of needed) {
-        if (!key.startsWith(CTX_PREFIX)) continue
-        const moduleName = key.slice(CTX_PREFIX.length)
-        const raw = localStorage.getItem(key)
-        if (!raw) continue
-        try {
-          byModule.set(moduleName, JSON.parse(raw) as ChatMsg[])
-        } catch { /* skip parse errors */ }
-      }
-
-      if (streamNeeded) {
-        const raw = localStorage.getItem(LS_STREAM_SNAPSHOT)
-        if (raw) {
-          try {
-            const entries = JSON.parse(raw) as { moduleName: string; reply: string; thinking: string; tools: string; finished?: boolean; time: string }[]
-            for (const entry of entries) {
-              if (!entry.reply && !entry.thinking && !entry.tools) continue
-              const msg: ChatMsg = {
-                id: 'mig-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-                role: 'agent',
-                content: entry.reply || '',
-                thinking: entry.thinking || '',
-                tools: entry.tools || '',
-                time: entry.time,
-                status: 'interrupted',
-                moduleName: entry.moduleName,
-                agentCmd: '',
-              }
-              const existing = byModule.get(entry.moduleName) || []
-              existing.push(msg)
-              byModule.set(entry.moduleName, existing)
-            }
-          } catch { /* ignore parse errors */ }
-        }
-      }
-
-      for (const [moduleName, msgs] of byModule) {
-        await window.moduleAgent.migrateData({ moduleName, msgs })
-        localStorage.removeItem(`${CTX_PREFIX}${moduleName}`)
-      }
-      if (streamNeeded) {
-        localStorage.removeItem(LS_STREAM_SNAPSHOT)
-      }
-    } catch (err) {
-      console.error('localStorage migration failed (non-blocking):', err)
-    }
-  }
-  runMigration()
   // ── State ──
   const runningAgents = shallowRef(new Map<string, AgentStatus>())
-  const streamState = ref(new Map<string, {
-    reply: string
-    thinking: string
-    tools: string
-    finished?: boolean
-    sections: { thinking: boolean; tools: boolean; reply: boolean }
-  }>())
   const contextMap = ref(new Map<string, ChatMsg[]>())
   const sendingLock = ref(false)
-  const streamListenerCleanup = ref<(() => void) | null>(null)
   const crossContextCleanup = ref<(() => void) | null>(null)
   const selectedModuleName = ref<string | null>(null)
 
-  // Tracks the msg ID of the currently-streaming agent message per module
-  // so stream chunks update the right card in the context list.
-  const liveMsgId = ref(new Map<string, string>())
-
-  // Config used by agent lifecycle (mirrors renderer.ts globals agentCmd/agentArgs)
-  const agentCmd = ref('opencode')
-  const agentArgs = ref('acp')
-
   // ── Internal cleanup refs (not exposed) ──
   let statusListenerCleanup: (() => void) | null = null
-  let streamSaveTimer: ReturnType<typeof setTimeout> | null = null
 
   // ── Helpers ──
   function now(): string {
@@ -112,295 +25,40 @@ export const useAgentStore = defineStore('agent', () => {
     return contextMap.value.get(name)!
   }
 
-  function getStreamState(moduleName: string) {
-    let st = streamState.value.get(moduleName)
-    if (!st) {
-      st = { reply: '', thinking: '', tools: '', sections: { thinking: false, tools: false, reply: false } }
-      streamState.value.set(moduleName, st)
-    }
-    return st
-  }
-
-  // ── Set config (called by component to sync agentCmd/Args) ──
-  function setAgentConfig(cmd: string, args: string): void {
-    agentCmd.value = cmd
-    agentArgs.value = args
-  }
-
-  // ── Context persistence (localStorage keys: ctx_<moduleName>) ──
-  function saveContext(moduleName: string): void {
-    const msgs = contextMap.value.get(moduleName)
-    if (msgs && msgs.length > 0) {
-      localStorage.setItem(`${CTX_PREFIX}${moduleName}`, JSON.stringify(msgs))
-    }
-  }
-
-  function loadContext(moduleName: string): ChatMsg[] {
-    try {
-      const raw = localStorage.getItem(`${CTX_PREFIX}${moduleName}`)
-      if (raw) return JSON.parse(raw) as ChatMsg[]
-    } catch { /* ignore parse errors */ }
-    return []
-  }
-
-  function restoreContext(moduleName: string): void {
-    // Don't overwrite live in-memory data with stale localStorage
+  // ── Context persistence via IPC ──
+  async function restoreContext(moduleName: string): Promise<void> {
+    // Don't overwrite live in-memory data with stale persisted data
     if (contextMap.value.has(moduleName) && (contextMap.value.get(moduleName)?.length ?? 0) > 0) {
       return
     }
-    const msgs = loadContext(moduleName)
-    if (msgs.length > 0) {
-      for (const msg of msgs) {
-        if (msg.status === 'executing') {
-          msg.status = 'interrupted'
+    try {
+      const msgs = await window.moduleAgent.getContext(moduleName)
+      if (msgs.length > 0) {
+        for (const msg of msgs) {
+          if (msg.status === 'executing') {
+            msg.status = 'interrupted'
+          }
         }
+        contextMap.value.set(moduleName, msgs)
       }
-      contextMap.value.set(moduleName, msgs)
+    } catch {
+      // Silently ignore — context may not exist yet
     }
   }
 
-  function clearContext(moduleName: string): void {
-    stopStream(moduleName)
+  async function clearContext(moduleName: string): Promise<void> {
+    await window.moduleAgent.clearContext(moduleName)
     contextMap.value.set(moduleName, [])
-    liveMsgId.value.delete(moduleName)
-    localStorage.removeItem(`${CTX_PREFIX}${moduleName}`)
   }
 
-  function clearAllContexts(): void {
-    const keys: string[] = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i)
-      if (k?.startsWith(CTX_PREFIX)) keys.push(k)
-    }
-    keys.forEach(k => localStorage.removeItem(k))
+  async function clearAllContexts(): Promise<void> {
+    await window.moduleAgent.clearAllContexts()
     contextMap.value.clear()
-    liveMsgId.value.clear()
-    streamState.value.clear()
-    clearStreamSnapshot()
-    if (streamListenerCleanup.value) {
-      streamListenerCleanup.value()
-      streamListenerCleanup.value = null
-    }
+    selectedModuleName.value = null
     if (crossContextCleanup.value) {
       crossContextCleanup.value()
       crossContextCleanup.value = null
     }
-    selectedModuleName.value = null
-  }
-
-  // ── Stream snapshot persistence (localStorage key: stream_snapshot) ──
-  function saveStreamSnapshot(): void {
-    if (streamState.value.size === 0) return
-    const entries: { moduleName: string; reply: string; thinking: string; tools: string; finished?: boolean; time: string }[] = []
-    for (const [name, st] of streamState.value) {
-      if (st.reply || st.thinking || st.tools) {
-        entries.push({ moduleName: name, reply: st.reply, thinking: st.thinking, tools: st.tools, finished: st.finished, time: now() })
-      }
-    }
-    if (entries.length > 0) {
-      localStorage.setItem(LS_STREAM_SNAPSHOT, JSON.stringify(entries))
-    } else {
-      localStorage.removeItem(LS_STREAM_SNAPSHOT)
-    }
-  }
-
-  function scheduleStreamSave(): void {
-    if (streamSaveTimer) return
-    streamSaveTimer = setTimeout(() => {
-      streamSaveTimer = null
-      saveStreamSnapshot()
-    }, STREAM_SAVE_DEBOUNCE)
-  }
-
-  function clearStreamSnapshot(): void {
-    localStorage.removeItem(LS_STREAM_SNAPSHOT)
-  }
-
-  function restoreStreamSnapshot(moduleName: string): ChatMsg | null {
-    try {
-      const raw = localStorage.getItem(LS_STREAM_SNAPSHOT)
-      if (!raw) return null
-      const entries = JSON.parse(raw) as { moduleName: string; reply: string; thinking: string; tools: string; finished?: boolean; time: string }[]
-      const idx = entries.findIndex(e => e.moduleName === moduleName)
-      if (idx === -1) return null
-      const snap = entries[idx]!
-      if (!snap.reply && !snap.thinking && !snap.tools) return null
-      entries.splice(idx, 1)
-      if (entries.length > 0) {
-        localStorage.setItem(LS_STREAM_SNAPSHOT, JSON.stringify(entries))
-      } else {
-        localStorage.removeItem(LS_STREAM_SNAPSHOT)
-      }
-      const msg: ChatMsg = {
-        id: 's' + Date.now(),
-        role: 'agent',
-        content: snap.reply || '',
-        thinking: snap.thinking || '',
-        tools: snap.tools || '',
-        time: snap.time,
-        status: snap.finished ? 'completed' : 'interrupted',
-        moduleName,
-        agentCmd: agentCmd.value,
-      }
-      getMsgs(moduleName).push(msg)
-      saveContext(moduleName)
-      return msg
-    } catch { return null }
-  }
-
-  // ── Stream lifecycle ──
-  function stopStream(moduleName: string): void {
-    const msgId = liveMsgId.value.get(moduleName)
-    if (msgId) {
-      const msgs = getMsgs(moduleName)
-      const idx = msgs.findIndex(m => m.id === msgId && m.status === 'executing')
-      if (idx !== -1) {
-        msgs[idx]!.status = 'interrupted'
-      }
-      liveMsgId.value.delete(moduleName)
-    }
-    streamState.value.delete(moduleName)
-    if (streamState.value.size === 0) {
-      clearStreamSnapshot()
-      if (streamListenerCleanup.value) {
-        streamListenerCleanup.value()
-        streamListenerCleanup.value = null
-      }
-    }
-  }
-
-  function finishStream(moduleName: string): void {
-    const st = streamState.value.get(moduleName)
-    const content = (st?.reply || '').trim()
-    const thinking = (st?.thinking || '').trim()
-    const tools = (st?.tools || '').trim()
-
-    const msgId = liveMsgId.value.get(moduleName)
-    if (msgId && (content || thinking || tools)) {
-      const msgs = getMsgs(moduleName)
-      let idx = msgs.findIndex(m => m.id === msgId)
-      if (idx === -1) {
-        // msgId was set but msg not found by ID — find last executing agent msg instead
-        idx = msgs.findLastIndex(m => m.role === 'agent' && m.status === 'executing')
-      }
-      if (idx !== -1) {
-        msgs[idx]!.content = content
-        msgs[idx]!.thinking = thinking
-        msgs[idx]!.tools = tools
-        msgs[idx]!.time = now()
-        msgs[idx]!.status = 'completed'
-      } else {
-        // No matching msg found at all — create new completed msg
-        getMsgs(moduleName).push({
-          id: 'm' + Date.now(),
-          role: 'agent',
-          content,
-          thinking,
-          tools,
-          time: now(),
-          status: 'completed',
-          moduleName,
-          agentCmd: agentCmd.value,
-        })
-      }
-    } else if (!msgId && (content || thinking || tools)) {
-      getMsgs(moduleName).push({
-        id: 'm' + Date.now(),
-        role: 'agent',
-        content,
-        thinking,
-        tools,
-        time: now(),
-        status: 'completed',
-        moduleName,
-        agentCmd: agentCmd.value,
-      })
-    }
-    if (msgId && !content && !thinking && !tools) {
-      const msgs = getMsgs(moduleName)
-      let idx = msgs.findIndex(m => m.id === msgId)
-      if (idx === -1) {
-        idx = msgs.findLastIndex(m => m.role === 'agent' && m.status === 'executing')
-      }
-      if (idx !== -1) msgs.splice(idx, 1)
-    }
-
-    liveMsgId.value.delete(moduleName)
-    saveStreamSnapshot()
-    streamState.value.delete(moduleName)
-    saveContext(moduleName)
-  }
-
-  // ── Stream listener ──
-  function ensureStreamListener(): void {
-    if (streamListenerCleanup.value) return
-    streamListenerCleanup.value = window.moduleAgent.onAgentStream(({ moduleName, update, data }) => {
-      const st = getStreamState(moduleName)
-      if (st.finished) return
-
-      if (!liveMsgId.value.has(moduleName)) {
-        const msg: ChatMsg = {
-          id: 'm' + Date.now(),
-          role: 'agent',
-          content: '',
-          thinking: '',
-          tools: '',
-          time: now(),
-          status: 'executing',
-          moduleName,
-          agentCmd: agentCmd.value,
-        }
-        getMsgs(moduleName).push(msg)
-        liveMsgId.value.set(moduleName, msg.id)
-        saveContext(moduleName)
-      }
-
-      const updateLiveMsg = () => {
-        const msgId = liveMsgId.value.get(moduleName)
-        if (!msgId) return
-        const msgs = getMsgs(moduleName)
-        const m = msgs.find(m => m.id === msgId)
-        if (m) {
-          m.content = st.reply
-          m.thinking = st.thinking
-          m.tools = st.tools
-          m.time = now()
-        }
-      }
-
-      if (update === 'agent_message_chunk') {
-        const block = (data as any).content as { type?: string; text?: string } | undefined
-        const text = block?.type === 'text' ? block.text : undefined
-        if (text) {
-          st.reply += text
-          if (!st.sections.reply) st.sections.reply = true
-          updateLiveMsg()
-          scheduleStreamSave()
-        }
-      } else if (update === 'agent_thought_chunk') {
-        const block = (data as any).content as { type?: string; text?: string } | undefined
-        const text = block?.type === 'text' ? block.text : undefined
-        if (text) {
-          st.thinking += text
-          if (!st.sections.thinking) st.sections.thinking = true
-          updateLiveMsg()
-          scheduleStreamSave()
-        }
-      } else if (update === 'tool_call') {
-        const tc = data as any
-        const kindLabel = tc.kind ? `[${tc.kind}]` : ''
-        const name = tc.title || tc.toolCallId || 'unknown'
-        const line = `${kindLabel} ${name} ${tc.status ? `(${tc.status})` : ''}`.trim()
-        st.tools += line + '\n'
-        if (!st.sections.tools) st.sections.tools = true
-        updateLiveMsg()
-        scheduleStreamSave()
-      } else if (update === 'plan') {
-        st.reply += `\n[计划更新]\n`
-        updateLiveMsg()
-        scheduleStreamSave()
-      }
-    })
   }
 
   // ── Selected module sync (set by views when drawer opens/closes) ──
@@ -427,29 +85,23 @@ export const useAgentStore = defineStore('agent', () => {
         crossPhase: phase,
       }
       getMsgs(moduleName).push(msg)
-      saveContext(moduleName)
     })
   }
 
   // ── Agent lifecycle ──
   async function cancelAgent(moduleName: string): Promise<void> {
     const result = await window.moduleAgent.cancelAgent(moduleName).catch(() => undefined)
-    const msgId = liveMsgId.value.get(moduleName)
-    if (msgId) {
-      const msgs = getMsgs(moduleName)
-      const idx = msgs.findIndex(m => m.id === msgId && m.status === 'executing')
-      if (idx !== -1) {
-        const acc = result?.accumulated
-        if (acc) {
-          if (acc.reply) msgs[idx]!.content = acc.reply
-          if (acc.thinking) msgs[idx]!.thinking = acc.thinking
-          if (acc.tools) msgs[idx]!.tools = acc.tools
-        }
-        msgs[idx]!.status = 'interrupted'
-        msgs[idx]!.time = now()
+    const msgs = getMsgs(moduleName)
+    const idx = msgs.findLastIndex(m => m.role === 'agent' && m.status === 'executing')
+    if (idx !== -1) {
+      const acc = result?.accumulated
+      if (acc) {
+        if (acc.reply) msgs[idx]!.content = acc.reply
+        if (acc.thinking) msgs[idx]!.thinking = acc.thinking
+        if (acc.tools) msgs[idx]!.tools = acc.tools
       }
-      liveMsgId.value.delete(moduleName)
-      saveContext(moduleName)
+      msgs[idx]!.status = 'interrupted'
+      msgs[idx]!.time = now()
     }
   }
 
@@ -457,6 +109,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (sendingLock.value) return
     sendingLock.value = true
 
+    // Push user message immediately for instant UI feedback
     getMsgs(moduleName).push({
       id: 'm' + Date.now(),
       role: 'user',
@@ -466,32 +119,29 @@ export const useAgentStore = defineStore('agent', () => {
       time: now(),
       status: 'sent',
       moduleName,
-      agentCmd: agentCmd.value,
+      agentCmd: '',
     })
-    saveContext(moduleName)
 
     try {
-      const args = agentArgs.value ? agentArgs.value.split(/\s+/).filter(Boolean) : []
-      const startResult = await window.moduleAgent.startAgent(moduleName, agentCmd.value, args, cwd)
-      if (startResult.error) {
-        console.error(`启动 Agent 失败: ${startResult.error}`)
-        stopStream(moduleName)
-        return
-      }
-
-      ensureStreamListener()
-      streamState.value.delete(moduleName)
-
-      const sendResult = await window.moduleAgent.sendMessage(moduleName, text)
-      if (sendResult.error) {
-        console.error(`发送失败: ${sendResult.error}`)
-        stopStream(moduleName)
-      } else {
-        finishStream(moduleName)
+      const result = await window.moduleAgent.sendMessage(moduleName, text, cwd)
+      if (result.result) {
+        // Push agent message from consolidated IPC result
+        getMsgs(moduleName).push({
+          id: 'm' + Date.now(),
+          role: 'agent',
+          content: result.result.reply || '',
+          thinking: result.result.thinking || '',
+          tools: result.result.tools || '',
+          time: now(),
+          status: 'completed',
+          moduleName,
+          agentCmd: '',
+        })
+      } else if (result.error) {
+        console.error(`发送失败: ${result.error}`)
       }
     } catch (err) {
       console.error(`通信错误: ${(err as Error).message}`)
-      stopStream(moduleName)
     } finally {
       sendingLock.value = false
     }
@@ -516,35 +166,20 @@ export const useAgentStore = defineStore('agent', () => {
       statusListenerCleanup()
       statusListenerCleanup = null
     }
-    runningAgents.value.clear()
+    runningAgents.value = new Map()
   }
 
   return {
     runningAgents,
-    streamState,
     contextMap,
     sendingLock,
-    streamListenerCleanup,
     crossContextCleanup,
     selectedModuleName,
-    agentCmd,
-    agentArgs,
     now,
     getMsgs,
-    getStreamState,
-    setAgentConfig,
-    saveContext,
-    loadContext,
     restoreContext,
     clearContext,
     clearAllContexts,
-    saveStreamSnapshot,
-    scheduleStreamSave,
-    clearStreamSnapshot,
-    restoreStreamSnapshot,
-    stopStream,
-    finishStream,
-    ensureStreamListener,
     setSelectedModuleName,
     ensureCrossContextListener,
     cancelAgent,

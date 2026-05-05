@@ -7,6 +7,8 @@ import type {
   ScanResult,
   TreeNode,
   CodeSource,
+  ChatMsg,
+  MigrationData,
 } from '../../../types/preload';
 
 interface MockInternals {
@@ -74,8 +76,8 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
       return Promise.resolve({ result: { reply: 'mock reply', thinking: '', tools: '', stopReason: 'end_turn' } });
     },
 
-    cancelAgent: (_moduleName: string): Promise<{}> => {
-      return Promise.resolve({});
+    cancelAgent: (_moduleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }> => {
+      return Promise.resolve({ accumulated: { reply: '', thinking: '', tools: '', finished: true, sections: { thinking: false, tools: false, reply: false } } });
     },
 
     stopAgent: (_moduleName: string): Promise<{}> => {
@@ -142,6 +144,26 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
           internals.crossContextCallbacks.splice(idx, 1);
         }
       };
+    },
+
+    migrateCheck: (_keys: string[]): Promise<{ needed: string[]; streamNeeded: boolean }> => {
+      return Promise.resolve({ needed: [], streamNeeded: false });
+    },
+
+    migrateData: (_payload: MigrationData): Promise<void> => {
+      return Promise.resolve();
+    },
+
+    getContext: (_moduleName: string): Promise<ChatMsg[]> => {
+      return Promise.resolve([]);
+    },
+
+    clearContext: (_moduleName: string): Promise<void> => {
+      return Promise.resolve();
+    },
+
+    clearAllContexts: (): Promise<void> => {
+      return Promise.resolve();
     },
   };
 

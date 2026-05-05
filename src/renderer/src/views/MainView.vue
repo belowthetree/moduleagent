@@ -42,11 +42,6 @@ const projectName = computed(() => {
 
 // ── FAB actions ──
 function goBack(): void {
-  // Clean up stream listener + polling before leaving
-  if (agentStore.streamListenerCleanup) {
-    agentStore.streamListenerCleanup()
-    agentStore.streamListenerCleanup = null
-  }
   agentStore.stopRunningPoll()
   router.push('/setup')
 }
@@ -54,11 +49,6 @@ function goBack(): void {
 async function rescan(): Promise<void> {
   if (!configStore.workspacePath || !configStore.projectPath) return
 
-  // Clean up
-  if (agentStore.streamListenerCleanup) {
-    agentStore.streamListenerCleanup()
-    agentStore.streamListenerCleanup = null
-  }
   agentStore.stopRunningPoll()
   projectStore.treeRoot = null
   projectStore.flattenedNodes = []

@@ -23,16 +23,24 @@ describe('useAgentStore', () => {
     expect(result.error).toBeUndefined()
   })
 
-  it('sendMessage flow: user msg added to contextMap', async () => {
+  it('sendMessage flow: user msg added to contextMap, agent msg from IPC result', async () => {
     const store = useAgentStore()
     await store.sendMessage('module-1', 'Hello world', '/cwd')
 
     const msgs = store.getMsgs('module-1')
-    expect(msgs.length).toBeGreaterThanOrEqual(1)
+    expect(msgs).toHaveLength(2)
+
     const userMsg = msgs.find((m: ChatMsg) => m.role === 'user')
     expect(userMsg).toBeDefined()
     expect(userMsg!.content).toBe('Hello world')
     expect(userMsg!.moduleName).toBe('module-1')
+    expect(userMsg!.status).toBe('sent')
+
+    const agentMsg = msgs.find((m: ChatMsg) => m.role === 'agent')
+    expect(agentMsg).toBeDefined()
+    expect(agentMsg!.content).toBe('mock reply')
+    expect(agentMsg!.moduleName).toBe('module-1')
+    expect(agentMsg!.status).toBe('completed')
   })
 
   it('cancelAgent: calls mock cancelAgent', async () => {
@@ -57,78 +65,6 @@ describe('useAgentStore', () => {
 
     store.stopRunningPoll()
     expect(store.runningAgents.size).toBe(0)
-  })
-
-  it('stream chunk accumulation: 3 message chunks → concatenated reply', () => {
-    const mock = makeMock()
-    const store = useAgentStore()
-    store.ensureStreamListener()
-
-    triggerStream(mock, {
-      moduleName: 'mod-stream',
-      update: 'agent_message_chunk',
-      data: { content: { type: 'text', text: 'Hello' } },
-    })
-    triggerStream(mock, {
-      moduleName: 'mod-stream',
-      update: 'agent_message_chunk',
-      data: { content: { type: 'text', text: ' ' } },
-    })
-    triggerStream(mock, {
-      moduleName: 'mod-stream',
-      update: 'agent_message_chunk',
-      data: { content: { type: 'text', text: 'World' } },
-    })
-
-    const st = store.getStreamState('mod-stream')
-    expect(st.reply).toBe('Hello World')
-  })
-
-  it('saveStreamSnapshot / restoreStreamSnapshot roundtrip', () => {
-    const store = useAgentStore()
-    const st = store.getStreamState('mod-roundtrip')
-    st.reply = 'Snapshot reply content'
-    st.thinking = 'Snapshot thinking'
-    st.tools = 'tool log'
-    st.finished = true
-
-    store.saveStreamSnapshot()
-
-    const raw = localStorage.getItem('stream_snapshot')
-    expect(raw).toBeTruthy()
-    const parsed = JSON.parse(raw!)
-    expect(parsed).toHaveLength(1)
-    expect(parsed[0].moduleName).toBe('mod-roundtrip')
-    expect(parsed[0].reply).toBe('Snapshot reply content')
-
-    const msg = store.restoreStreamSnapshot('mod-roundtrip')
-    expect(msg).not.toBeNull()
-    expect(msg!.content).toBe('Snapshot reply content')
-    expect(msg!.thinking).toBe('Snapshot thinking')
-    expect(msg!.tools).toBe('tool log')
-    expect(msg!.status).toBe('completed')
-  })
-
-  it('saveContext / loadContext roundtrip (localStorage)', () => {
-    const store = useAgentStore()
-    const msgs: ChatMsg[] = [
-      {
-        id: '1', role: 'user', content: 'Q1', thinking: '', tools: '',
-        time: '10:00', status: 'sent', moduleName: 'mod-ctx', agentCmd: 'test',
-      },
-      {
-        id: '2', role: 'agent', content: 'A1', thinking: '...', tools: '',
-        time: '10:01', status: 'completed', moduleName: 'mod-ctx', agentCmd: 'test',
-      },
-    ]
-    store.contextMap.set('mod-ctx', [...msgs])
-    store.saveContext('mod-ctx')
-
-    const loaded = store.loadContext('mod-ctx')
-    expect(loaded).toHaveLength(2)
-    expect(loaded[0]!.id).toBe('1')
-    expect(loaded[0]!.content).toBe('Q1')
-    expect(loaded[1]!.role).toBe('agent')
   })
 
   it('context messages: all 12 msgs available without pagination', () => {
@@ -192,5 +128,65 @@ describe('useAgentStore', () => {
     expect(msgs[0]!.crossDirection).toBe('received')
     expect(msgs[0]!.crossPhase).toBe('request')
     expect(msgs[0]!.content).toBe('Cross-context message from another module')
+  })
+
+  it('restoreContext: loads from IPC when contextMap is empty', async () => {
+    const mock = makeMock()
+    const msgs: ChatMsg[] = [
+      {
+        id: '1', role: 'user', content: 'Q1', thinking: '', tools: '',
+        time: '10:00', status: 'sent', moduleName: 'mod-r', agentCmd: '',
+      },
+    ]
+    mock.getContext = vi.fn().mockResolvedValue(msgs)
+    ;(globalThis as any).window.moduleAgent = mock
+
+    const store = useAgentStore()
+    await store.restoreContext('mod-r')
+
+    expect(mock.getContext).toHaveBeenCalledWith('mod-r')
+    expect(store.getMsgs('mod-r')).toHaveLength(1)
+    expect(store.getMsgs('mod-r')[0]!.content).toBe('Q1')
+  })
+
+  it('restoreContext: skips when contextMap already has data', async () => {
+    const mock = makeMock()
+    mock.getContext = vi.fn().mockResolvedValue([])
+    ;(globalThis as any).window.moduleAgent = mock
+
+    const store = useAgentStore()
+    store.contextMap.set('mod-skip', [{ id: 'x', role: 'user', content: 'existing', thinking: '', tools: '', time: '10:00', status: 'sent', moduleName: 'mod-skip', agentCmd: '' }])
+
+    await store.restoreContext('mod-skip')
+    expect(mock.getContext).not.toHaveBeenCalled()
+  })
+
+  it('clearContext: calls IPC and clears local map', async () => {
+    const mock = makeMock()
+    mock.clearContext = vi.fn().mockResolvedValue(undefined)
+    ;(globalThis as any).window.moduleAgent = mock
+
+    const store = useAgentStore()
+    store.contextMap.set('mod-clr', [{ id: 'x', role: 'user', content: 'test', thinking: '', tools: '', time: '10:00', status: 'sent', moduleName: 'mod-clr', agentCmd: '' }])
+
+    await store.clearContext('mod-clr')
+    expect(mock.clearContext).toHaveBeenCalledWith('mod-clr')
+    expect(store.getMsgs('mod-clr')).toHaveLength(0)
+  })
+
+  it('clearAllContexts: calls IPC and clears all local state', async () => {
+    const mock = makeMock()
+    mock.clearAllContexts = vi.fn().mockResolvedValue(undefined)
+    ;(globalThis as any).window.moduleAgent = mock
+
+    const store = useAgentStore()
+    store.contextMap.set('mod-a', [{ id: '1', role: 'user', content: 'a', thinking: '', tools: '', time: '10:00', status: 'sent', moduleName: 'mod-a', agentCmd: '' }])
+    store.contextMap.set('mod-b', [{ id: '2', role: 'agent', content: 'b', thinking: '', tools: '', time: '10:01', status: 'completed', moduleName: 'mod-b', agentCmd: '' }])
+    store.selectedModuleName = 'mod-a'
+
+    await store.clearAllContexts()
+    expect(mock.clearAllContexts).toHaveBeenCalled()
+    expect(store.contextMap.size).toBe(0)
+    expect(store.selectedModuleName).toBeNull()
   })
 })
