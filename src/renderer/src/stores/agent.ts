@@ -61,11 +61,6 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  // ── Selected module sync (set by views when drawer opens/closes) ──
-  function setSelectedModuleName(name: string | null): void {
-    selectedModuleName.value = name
-  }
-
   // ── Cross-context listener ──
   function ensureCrossContextListener(): void {
     if (crossContextCleanup.value) return
@@ -173,14 +168,11 @@ export const useAgentStore = defineStore('agent', () => {
     runningAgents,
     contextMap,
     sendingLock,
-    crossContextCleanup,
     selectedModuleName,
-    now,
     getMsgs,
     restoreContext,
     clearContext,
     clearAllContexts,
-    setSelectedModuleName,
     ensureCrossContextListener,
     cancelAgent,
     sendMessage,
