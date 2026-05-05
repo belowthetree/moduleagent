@@ -25,8 +25,11 @@ goto :usage
 if not exist "node_modules\" (
     echo Installing dependencies...
     call npm install --silent
-    if errorlevel 1 exit /b 1
+) else if not exist "node_modules\electron-vite\" (
+    echo New dependencies detected — reinstalling...
+    call npm install --silent
 )
+if errorlevel 1 exit /b 1
 
 echo Building and launching ModuleAgent GUI...
 call npm run build:electron --silent
@@ -44,8 +47,11 @@ goto :eof
 if not exist "node_modules\" (
     echo Installing dependencies...
     call npm install --silent
-    if errorlevel 1 exit /b 1
+) else if not exist "node_modules\electron-vite\" (
+    echo New dependencies detected — reinstalling...
+    call npm install --silent
 )
+if errorlevel 1 exit /b 1
 
 where bun >nul 2>nul
 if errorlevel 1 (
@@ -79,8 +85,11 @@ goto :eof
 if not exist "node_modules\" (
     echo Installing dependencies...
     call npm install --silent
-    if errorlevel 1 exit /b 1
+) else if not exist "node_modules\electron-vite\" (
+    echo New dependencies detected — reinstalling...
+    call npm install --silent
 )
+if errorlevel 1 exit /b 1
 
 call npm run build:cli --silent
 if errorlevel 1 exit /b 1

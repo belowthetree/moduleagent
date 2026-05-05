@@ -26,7 +26,7 @@ EOF
 }
 
 gui() {
-    if [ ! -d "node_modules" ]; then
+    if [ ! -d "node_modules" ] || [ ! -d "node_modules/electron-vite" ]; then
         echo "Installing dependencies..."
         npm install --silent || exit 1
     fi
@@ -43,7 +43,7 @@ gui() {
 }
 
 tui() {
-    if [ ! -d "node_modules" ]; then
+    if [ ! -d "node_modules" ] || [ ! -d "node_modules/electron-vite" ]; then
         echo "Installing dependencies..."
         npm install --silent || exit 1
     fi
@@ -74,7 +74,7 @@ tui() {
 }
 
 cli() {
-    if [ ! -d "node_modules" ]; then
+    if [ ! -d "node_modules" ] || [ ! -d "node_modules/electron-vite" ]; then
         echo "Installing dependencies..."
         npm install --silent || exit 1
     fi
