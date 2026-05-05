@@ -1,3 +1,6 @@
+import fs from 'fs/promises';
+import path from 'path';
+
 import type { ChatMsg } from '../types/preload.js';
 
 // ── Types ──
@@ -43,8 +46,7 @@ export class AgentStateManager {
   // ── Context directory ──
 
   async initContextDir(): Promise<void> {
-    // TODO (Task 3): fs.promises.mkdir(this.contextBaseDir, { recursive: true })
-    console.log(`[AgentStateManager] initContextDir: ${this.contextBaseDir}`);
+    await fs.mkdir(this.contextBaseDir, { recursive: true });
   }
 
   // ── Stream lifecycle ──
@@ -130,22 +132,44 @@ export class AgentStateManager {
     this.streamState.delete(moduleName);
   }
 
-  // ── Context persistence (stubs — implemented in Task 3) ──
+  // ── Context persistence ──
 
-  async saveContext(_moduleName: string, _msgs: ChatMsg[]): Promise<void> {
-    // TODO (Task 3): atomic write to <contextBaseDir>/<moduleName>.json
+  async saveContext(moduleName: string, msgs: ChatMsg[]): Promise<void> {
+    try {
+      await this.initContextDir();
+      const json = JSON.stringify(msgs);
+      const tmpPath = path.join(this.contextBaseDir, `${moduleName}.json.tmp`);
+      const finalPath = path.join(this.contextBaseDir, `${moduleName}.json`);
+      await fs.writeFile(tmpPath, json, 'utf-8');
+      await fs.rename(tmpPath, finalPath);
+    } catch {
+    }
   }
 
-  async loadContext(_moduleName: string): Promise<ChatMsg[]> {
-    // TODO (Task 3): read from <contextBaseDir>/<moduleName>.json
-    return [];
+  async loadContext(moduleName: string): Promise<ChatMsg[]> {
+    try {
+      const filePath = path.join(this.contextBaseDir, `${moduleName}.json`);
+      const raw = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(raw) as ChatMsg[];
+    } catch {
+      return [];
+    }
   }
 
-  async clearContext(_moduleName: string): Promise<void> {
-    // TODO (Task 3): fs.promises.unlink(...)
+  async clearContext(moduleName: string): Promise<void> {
+    try {
+      const filePath = path.join(this.contextBaseDir, `${moduleName}.json`);
+      await fs.unlink(filePath);
+    } catch {
+    }
   }
 
   async clearAllContexts(): Promise<void> {
-    // TODO (Task 3): remove all files in contextBaseDir
+    try {
+      const entries = await fs.readdir(this.contextBaseDir);
+      const jsonFiles = entries.filter(e => e.endsWith('.json'));
+      await Promise.all(jsonFiles.map(f => fs.unlink(path.join(this.contextBaseDir, f)).catch(() => {})));
+    } catch {
+    }
   }
 }
