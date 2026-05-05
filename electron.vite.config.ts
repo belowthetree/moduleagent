@@ -37,6 +37,9 @@ export default defineConfig({
       isolatedEntries: true,
       rollupOptions: {
         external: ['electron'],
+        output: {
+          format: 'cjs',
+        },
       },
     },
   },

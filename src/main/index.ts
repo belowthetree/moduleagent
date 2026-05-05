@@ -55,7 +55,7 @@ let mcpBackend: McpBackendServer | null = null;
 function createWindow() {
   console.log('[main] Creating window...');
   console.log('[main] __dirname:', __dirname);
-  console.log('[main] preload path:', path.join(__dirname, '../preload/index.mjs'));
+  console.log('[main] preload path:', path.join(__dirname, '../preload/index.cjs'));
   console.log('[main] ELECTRON_RENDERER_URL:', process.env.ELECTRON_RENDERER_URL || '(not set - production mode)');
   console.log('[main] loadFile path:', path.join(__dirname, '../renderer/index.html'));
   console.log('[main] app.getAppPath():', app.getAppPath());
@@ -67,7 +67,7 @@ function createWindow() {
     minHeight: 700,
     title: 'ModuleAgent',
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.mjs'),
+      preload: path.join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
     },
