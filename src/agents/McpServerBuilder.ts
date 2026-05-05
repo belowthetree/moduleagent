@@ -20,16 +20,12 @@ export function writeMcpGraphFile(graph: ModuleGraphType, tempDir?: string): str
 export function buildMcpServers(options: {
   moduleName: string;
   basePath: string;
-  backendPort: number;
+  backendPort?: number;
   graphFile: string;
   nodeBin?: string;
 }): McpServerStdio[] {
   const { moduleName, basePath, backendPort, graphFile, nodeBin = 'node' } = options;
 
-  if (!backendPort) {
-    defaultLogger.warn(`MCP: backend port not ready (port=${backendPort}), skipping mcpServers`);
-    return [];
-  }
   if (!graphFile) {
     defaultLogger.warn('MCP: graph file not written, skipping mcpServers');
     return [];
@@ -41,8 +37,10 @@ export function buildMcpServers(options: {
     return [];
   }
 
-  const backendUrl = `http://127.0.0.1:${backendPort}`;
-  const args = [bundlePath, '--graph-file', graphFile, '--backend-url', backendUrl, '--module-name', moduleName];
+  const args = [bundlePath, '--graph-file', graphFile, '--module-name', moduleName];
+  if (backendPort) {
+    args.push('--backend-url', `http://127.0.0.1:${backendPort}`);
+  }
 
   const servers: McpServerStdio[] = [{
     name: 'module-agent',

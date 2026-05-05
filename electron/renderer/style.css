@@ -289,6 +289,9 @@ body {
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 .stream-area .stream-role {
   font-size: 10px;
@@ -309,6 +312,78 @@ body {
   vertical-align: text-bottom;
 }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* Stream sections */
+.stream-section {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.stream-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid transparent;
+}
+.stream-section-icon { font-size: 12px; line-height: 1; }
+.stream-section-label { text-transform: uppercase; opacity: 0.8; }
+.stream-section-body {
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Thinking section */
+.stream-section-thinking {
+  border-color: rgba(160, 160, 200, 0.2);
+  background: rgba(160, 160, 200, 0.06);
+}
+.stream-section-thinking .stream-section-header {
+  color: var(--text-dim);
+  border-bottom-color: rgba(160, 160, 200, 0.1);
+}
+.stream-section-thinking .stream-section-body {
+  color: var(--text-dim);
+  font-style: italic;
+  opacity: 0.85;
+}
+.stream-section-thinking .stream-thinking {
+  color: var(--text-dim);
+  font-style: italic;
+  opacity: 0.85;
+}
+
+/* Tools section */
+.stream-section-tools {
+  border-color: rgba(240, 160, 0, 0.25);
+  background: rgba(240, 160, 0, 0.06);
+}
+.stream-section-tools .stream-section-header {
+  color: #e0a830;
+  border-bottom-color: rgba(240, 160, 0, 0.12);
+}
+.stream-section-tools .stream-section-body {
+  color: #f0a000;
+}
+
+/* Reply section */
+.stream-section-reply {
+  border-color: rgba(122, 162, 247, 0.2);
+  background: rgba(122, 162, 247, 0.04);
+}
+.stream-section-reply .stream-section-header {
+  color: var(--accent);
+  border-bottom-color: rgba(122, 162, 247, 0.1);
+}
+.stream-section-reply .stream-section-body {
+  color: var(--text);
+}
 
 .stream-area .stream-thinking {
   color: var(--text-dim);

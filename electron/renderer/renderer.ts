@@ -292,9 +292,9 @@ function showStreamStatus(msg: string) {
 function appendStream(text: string) {
   if (!selectedNode || !streamState.has(selectedNode.name)) return;
   if (streamState.get(selectedNode.name)?.finished) return;
-  const el = document.getElementById('stream-content');
-  if (!el) return;
-  el.appendChild(document.createTextNode(text));
+  const body = ensureStreamSection(selectedNode.name, 'reply');
+  if (!body) return;
+  body.appendChild(document.createTextNode(text));
   const area = $id('stream-area');
   if (area) area.scrollTop = area.scrollHeight;
 }
@@ -302,9 +302,9 @@ function appendStream(text: string) {
 function appendThinking(text: string) {
   if (!selectedNode || !streamState.has(selectedNode.name)) return;
   if (streamState.get(selectedNode.name)?.finished) return;
-  const el = document.getElementById('stream-content');
-  if (!el) return;
-  el.insertAdjacentHTML('beforeend', `<span class="stream-thinking">${escapeHtml(text)}</span>`);
+  const body = ensureStreamSection(selectedNode.name, 'thinking');
+  if (!body) return;
+  body.insertAdjacentHTML('beforeend', `<span class="stream-thinking">${escapeHtml(text)}</span>`);
   const area = $id('stream-area');
   if (area) area.scrollTop = area.scrollHeight;
 }
@@ -312,9 +312,9 @@ function appendThinking(text: string) {
 function appendToolCall(line: string) {
   if (!selectedNode || !streamState.has(selectedNode.name)) return;
   if (streamState.get(selectedNode.name)?.finished) return;
-  const el = document.getElementById('stream-content');
-  if (!el) return;
-  el.insertAdjacentHTML('beforeend', `<span class="stream-tool">\n${escapeHtml(line)}\n</span>`);
+  const body = ensureStreamSection(selectedNode.name, 'tools');
+  if (!body) return;
+  body.insertAdjacentHTML('beforeend', `<span class="stream-tool">\n${escapeHtml(line)}\n</span>`);
   const area = $id('stream-area');
   if (area) area.scrollTop = area.scrollHeight;
 }
@@ -438,11 +438,26 @@ function buildDrawerContent(node: TreeNode) {
 
   const isStreaming = streamState.has(name) && !streamState.get(name)?.finished;
   const st = streamState.get(name);
-  const streamPlaceholder = st
-    ? (st.thinking ? `<span class="stream-thinking">${escapeHtml(st.thinking)}</span>` : '')
-      + st.tools.split('\n').filter(Boolean).map(l => `<span class="stream-tool">\n${escapeHtml(l)}\n</span>`).join('')
-      + escapeHtml(st.reply)
-    : '<div class="stream-empty">等待 Agent 响应...</div>';
+  let streamContentHtml = '';
+  if (st) {
+    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (st.thinking) {
+      streamContentHtml += `<div class="stream-section stream-section-thinking"><div class="stream-section-header"><span class="stream-section-icon">💭</span><span class="stream-section-label">思考过程</span></div><div class="stream-section-body"><span class="stream-thinking">${escapeHtml(st.thinking)}</span></div></div>`;
+    }
+    if (st.tools) {
+      const toolLines = st.tools.split('\n').filter(Boolean).map(l => `<span class="stream-tool">\n${escapeHtml(l)}\n</span>`).join('');
+      streamContentHtml += `<div class="stream-section stream-section-tools"><div class="stream-section-header"><span class="stream-section-icon">🔧</span><span class="stream-section-label">工具调用</span></div><div class="stream-section-body">${toolLines}</div></div>`;
+    }
+    if (st.reply) {
+      streamContentHtml += `<div class="stream-section stream-section-reply"><div class="stream-section-header"><span class="stream-section-icon">💬</span><span class="stream-section-label">回复</span></div><div class="stream-section-body">${escapeHtml(st.reply)}</div></div>`;
+    }
+    st.sections = {
+      thinking: !!st.thinking,
+      tools: !!st.tools,
+      reply: !!st.reply,
+    };
+  }
+  const streamPlaceholder = streamContentHtml || '<div class="stream-empty">等待 Agent 响应...</div>';
   const streamClass = isStreaming ? 'stream-active' : (st ? '' : 'stream-empty');
 
   $id('drawer-body').innerHTML = `
@@ -663,12 +678,12 @@ function sendContextMsg(moduleName: string) {
 }
 
 let streamListenerCleanup: (() => void) | null = null;
-const streamState = new Map<string, { reply: string; thinking: string; tools: string; finished?: boolean }>();
+const streamState = new Map<string, { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } }>();
 let streamSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function getStreamState(moduleName: string) {
   let st = streamState.get(moduleName);
-  if (!st) { st = { reply: '', thinking: '', tools: '' }; streamState.set(moduleName, st); }
+  if (!st) { st = { reply: '', thinking: '', tools: '', sections: { thinking: false, tools: false, reply: false } }; streamState.set(moduleName, st); }
   return st;
 }
 

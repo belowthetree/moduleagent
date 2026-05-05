@@ -1,4 +1,6 @@
 import path from 'path';
+import fs from 'fs';
+import os from 'os';
 import { AgentManager, type AgentEntry } from '../../agents/AgentManager.js';
 import { AgentRouter } from '../../agents/AgentRouter.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';
@@ -6,12 +8,24 @@ import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { defaultLogger } from '../../core/Logger.js';
 import { normalizeCodeSourcePath } from '../../core/PathUtils.js';
+import { buildMcpServers, writeMcpGraphFile } from '../../agents/McpServerBuilder.js';
 import { getSubModuleDirs, workspacePathForModule } from '../../agents/WorkspaceIsolator.js';
 import type { ModuleDescriptor, ModuleGraph as ModuleGraphType } from '../../types/module.js';
 import type { ConfigEntry } from '../../config/defaults.js';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { StreamHandler } from './StreamHandler.js';
 import type { ChatMessage, AgentStatus } from '../types.js';
+
+function findRepoRoot(): string {
+  let dir = __dirname || path.resolve(process.argv[1] || process.cwd(), '..');
+  for (let i = 0; i < 10; i++) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return process.cwd();
+}
 
 export class AgentService {
   private projectRoot = '';
@@ -84,7 +98,15 @@ export class AgentService {
     defaultLogger.info(`ModuleScanner: total ${descriptors.length} modules`);
     this.graph = new ModuleGraph().build(descriptors, projectRoot);
 
-    this.agentManager = new AgentManager(this.config, this.graph, [], defaultLogger);
+    const graphFile = writeMcpGraphFile(this.graph, os.tmpdir());
+    const repoRoot = findRepoRoot();
+    const mcpConfig = buildMcpServers({
+      moduleName: this.graph.root,
+      basePath: repoRoot,
+      graphFile,
+    });
+
+    this.agentManager = new AgentManager(this.config, this.graph, mcpConfig, defaultLogger);
     this.agentRouter = new AgentRouter(this.agentManager, this.graph);
     this.currentAgent = this.graph.root;
 
