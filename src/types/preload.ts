@@ -109,6 +109,12 @@ export interface ModuleAgentApi {
     modulesPath?: string;
   }>;
 
+  getContext(moduleName: string): Promise<ChatMsg[]>;
+
+  clearContext(moduleName: string): Promise<void>;
+
+  clearAllContexts(): Promise<void>;
+
   onCrossContext(callback: (data: CrossContextData) => void): () => void;
 }
 

@@ -417,6 +417,19 @@ function registerIpcHandlers() {
     }));
   });
 
+  // ── Context IPC ──
+  ipcMain.handle('context:get', async (_event, moduleName: string) => {
+    return stateManager?.loadContext(moduleName) ?? [];
+  });
+
+  ipcMain.handle('context:clear', async (_event, moduleName: string) => {
+    await stateManager?.clearContext(moduleName);
+  });
+
+  ipcMain.handle('context:clearAll', async () => {
+    await stateManager?.clearAllContexts();
+  });
+
   // ── Config IPC ──
   ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }; modulesPath?: string }) => {
     const configPath = path.join(projectRoot, '.module-agent.json');
