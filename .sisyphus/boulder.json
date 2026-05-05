@@ -1,76 +1,139 @@
 {
-  "active_plan": "/mnt/e/Project/ModuleAgent/.sisyphus/plans/agent-startup-refactor.md",
-  "started_at": "2026-05-04T16:12:29.718Z",
+  "active_plan": "/mnt/e/Project/ModuleAgent/.sisyphus/plans/electron-vue-vite-migration.md",
+  "started_at": "2026-05-05T05:40:46.494Z",
   "session_ids": [
-    "ses_20cde5915ffexGk45HZhGFU2X2"
+    "ses_20998d604ffe5oCsPgMWuW67m1"
   ],
-  "plan_name": "agent-startup-refactor",
-  "worktree_path": null,
   "session_origins": {
-    "ses_20cde5915ffexGk45HZhGFU2X2": "direct"
+    "ses_20998d604ffe5oCsPgMWuW67m1": "direct"
   },
+  "plan_name": "electron-vue-vite-migration",
+  "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "**WorkspaceIsolator.ts — path 计算函数**",
-      "session_id": "ses_20c3b963dffelBnXLmXcgXI9fn",
+      "task_title": "electron-vite 项目脚手架",
+      "session_id": "ses_209574da1ffeLV2oPheVJxWPfA",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-04T16:16:17.592Z"
+      "updated_at": "2026-05-05T05:47:03.560Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "安装依赖",
+      "session_id": "ses_20951d057ffeqTKTE9PefDDLEk",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T05:51:06.105Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "tsconfig 配置",
+      "session_id": "ses_2094e8ec3ffe1QQDSpMNjilgrD",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T06:10:01.088Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Dev CSP 设置",
+      "session_id": "ses_2093cbca2ffeE4WPVgZmctvmeo",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T06:12:26.474Z"
     },
     "todo:5": {
       "task_key": "todo:5",
       "task_label": "5",
-      "task_title": "**WorkspaceIsolator.ts — git clone + workspace 复制**",
-      "session_id": "ses_20c36f254ffeeo9dn3lDnf1U7B",
+      "task_title": "共享类型定义",
+      "session_id": "ses_2093a6f66ffeNZnCvlhdKnlwlr",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-04T16:24:29.114Z"
+      "category": "quick",
+      "updated_at": "2026-05-05T06:19:17.668Z"
     },
     "todo:6": {
       "task_key": "todo:6",
       "task_label": "6",
-      "task_title": "**WorkspaceIsolator.ts — subModuleDirs 解析**",
-      "session_id": "ses_20c310d44ffeQkmwUfa2cAVy8Y",
+      "task_title": "Preload 适配 + sessionId 类型修复",
+      "session_id": "ses_20934b9f9ffexm1HwpRMMlfN6p",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-04T16:26:25.389Z"
+      "updated_at": "2026-05-05T06:26:10.082Z"
     },
-    "todo:8": {
-      "task_key": "todo:8",
-      "task_label": "8",
-      "task_title": "**AgentOrchestrator.ts — 统一 agent 启动流程**",
-      "session_id": "ses_20c2f1e50ffej7tzovonjlVRIz",
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "MockModuleAgentApi",
+      "session_id": "ses_20925e694ffe7yGqjSeW5PgdEx",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-04T16:35:38.742Z"
-    },
-    "todo:10": {
-      "task_key": "todo:10",
-      "task_label": "10",
-      "task_title": "**Refactor electron/main.ts — 替换内联函数为共享模块导入**",
-      "session_id": "ses_20c2646feffeE8ZKIlgI6FMJXC",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-04T16:47:17.768Z"
+      "category": "quick",
+      "updated_at": "2026-05-05T06:41:29.545Z"
     },
     "todo:13": {
       "task_key": "todo:13",
       "task_label": "13",
-      "task_title": "**Full Build + Type-Check 验证**",
-      "session_id": "ses_20c1bdf84ffeGWh45X59Wk13xF",
+      "task_title": "SetupView.vue",
+      "session_id": "ses_209202f53ffehzKfZFxsYmqOlN",
       "agent": "Sisyphus-Junior",
-      "category": "unspecified-high",
-      "updated_at": "2026-05-04T16:51:57.998Z"
+      "category": "visual-engineering",
+      "updated_at": "2026-05-05T06:48:34.592Z"
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "MainView.vue",
+      "session_id": "ses_209143ab9ffesQdc3gajyW3KHq",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-05-05T07:03:55.990Z"
+    },
+    "todo:23": {
+      "task_key": "todo:23",
+      "task_label": "23",
+      "task_title": "Vue Router 配置",
+      "session_id": "ses_2090bdd10ffeiWfCt9e59qftR8",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T07:12:00.714Z"
+    },
+    "todo:28": {
+      "task_key": "todo:28",
+      "task_label": "28",
+      "task_title": "electron.vite.config.ts",
+      "session_id": "ses_20901a23affeslvV8NbYtMWOEg",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T07:27:51.647Z"
+    },
+    "todo:29": {
+      "task_key": "todo:29",
+      "task_label": "29",
+      "task_title": "更新 main.ts（BrowserWindow 双模式 + 移除 hot-reload）",
+      "session_id": "ses_208f62f8effeNdOYO71jSr46Cg",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T07:32:20.942Z"
+    },
+    "todo:34": {
+      "task_key": "todo:34",
+      "task_label": "34",
+      "task_title": "ConfigStore 单元测试",
+      "session_id": "ses_208ee98b5ffebwrCNR76LP1r4S",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-05T07:48:03.775Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_20c15cd6effeEFNWR0kVBcVYa2",
+      "session_id": "ses_208d1d7f7ffeHj1ayl1wFxuRlg",
       "agent": "oracle",
-      "updated_at": "2026-05-04T16:59:40.857Z"
+      "updated_at": "2026-05-05T08:15:31.314Z"
     }
   }
 }

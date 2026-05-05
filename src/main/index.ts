@@ -53,6 +53,13 @@ let orchestrator: AgentOrchestrator | null = null;
 let mcpBackend: McpBackendServer | null = null;
 
 function createWindow() {
+  console.log('[main] Creating window...');
+  console.log('[main] __dirname:', __dirname);
+  console.log('[main] preload path:', path.join(__dirname, '../preload/index.mjs'));
+  console.log('[main] ELECTRON_RENDERER_URL:', process.env.ELECTRON_RENDERER_URL || '(not set - production mode)');
+  console.log('[main] loadFile path:', path.join(__dirname, '../renderer/index.html'));
+  console.log('[main] app.getAppPath():', app.getAppPath());
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -67,10 +74,22 @@ function createWindow() {
     show: false,
   });
 
+  // Always open DevTools for debugging the blank screen
+  mainWindow.webContents.openDevTools();
+
+  mainWindow.webContents.on('did-fail-load', (_event, code, desc, url) => {
+    console.error('[main] FAILED TO LOAD:', code, desc, url);
+  });
+
+  mainWindow.webContents.on('console-message', (_event, level, msg) => {
+    console.log('[renderer console]', msg);
+  });
+
   if (process.env.ELECTRON_RENDERER_URL) {
+    console.log('[main] Loading URL:', process.env.ELECTRON_RENDERER_URL);
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
-    mainWindow.webContents.openDevTools();
   } else {
+    console.log('[main] Loading file:', path.join(__dirname, '../renderer/index.html'));
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
   mainWindow.once('ready-to-show', () => mainWindow?.show());
@@ -344,6 +363,8 @@ function registerIpcHandlers() {
 }
 
 app.whenReady().then(() => {
+  console.log('[main] App ready, __dirname:', __dirname);
+  console.log('[main] app.getAppPath():', app.getAppPath());
   Menu.setApplicationMenu(null);
   registerIpcHandlers();
   createWindow();
