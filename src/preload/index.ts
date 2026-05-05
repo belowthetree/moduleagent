@@ -1,12 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ModuleGraphNode } from '../src/types/module.js';
+import type { ModuleAgentApi, AgentStreamData, CrossContextData, ScanResult, AgentStatus } from '../types/preload.js';
 
-const api = {
+const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke('dialog:selectDir', title) as Promise<string | null>,
 
-  scanProject: (projectRoot: string, workspaceRoot: string) => ipcRenderer.invoke('project:scan', projectRoot, workspaceRoot) as Promise<{
-    root: string; nodes: Record<string, ModuleGraphNode>; moduleCount: number; error?: string;
-  }>,
+  scanProject: (projectRoot: string, workspaceRoot: string) =>
+    ipcRenderer.invoke('project:scan', projectRoot, workspaceRoot) as Promise<ScanResult>,
 
   getTree: () => ipcRenderer.invoke('project:getTree') as Promise<Record<string, unknown> | null>,
 
@@ -23,10 +22,10 @@ const api = {
 
   isAgentRunning: (moduleName: string) => ipcRenderer.invoke('agent:isRunning', moduleName) as Promise<boolean>,
 
-  getRunningAgents: () => ipcRenderer.invoke('agent:getRunning') as Promise<{ name: string; status: 'idle' | 'streaming' | 'error' }[]>,
+  getRunningAgents: () => ipcRenderer.invoke('agent:getRunning') as Promise<{ name: string; status: AgentStatus }[]>,
 
-  onAgentStream: (callback: (data: { moduleName: string; update: string; data: Record<string, unknown> }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { moduleName: string; update: string; data: Record<string, unknown> }) => callback(data);
+  onAgentStream: (callback: (data: AgentStreamData) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: AgentStreamData) => callback(data);
     ipcRenderer.on('agent:stream', handler);
     return () => ipcRenderer.removeListener('agent:stream', handler);
   },
@@ -39,12 +38,12 @@ const api = {
     ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }; modulesPath?: string }>,
 
   // Cross-module context events
-  onCrossContext: (callback: (data: { moduleName: string; crossModule: string; direction: 'sent' | 'received'; phase: 'request' | 'response'; content: string; time: string }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { moduleName: string; crossModule: string; direction: 'sent' | 'received'; phase: 'request' | 'response'; content: string; time: string }) => callback(data);
+  onCrossContext: (callback: (data: CrossContextData) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: CrossContextData) => callback(data);
     ipcRenderer.on('agent:cross-context', handler);
     return () => ipcRenderer.removeListener('agent:cross-context', handler);
   },
 };
 
 contextBridge.exposeInMainWorld('moduleAgent', api);
-export type ModuleAgentApi = typeof api;
+export type { ModuleAgentApi };
