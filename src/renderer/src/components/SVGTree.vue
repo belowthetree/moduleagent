@@ -334,9 +334,8 @@ watch(() => props.root, () => {
 }
 
 .node-rect.active {
-  fill: var(--el-color-primary-light-8);
   stroke: var(--el-color-primary);
-  stroke-width: 2;
+  stroke-width: 3;
 }
 
 /* Agent state on rects — flat, no drop-shadow */

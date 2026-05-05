@@ -13,15 +13,3 @@ import { useTheme } from './composables/useTheme'
 useTheme()
 </script>
 
-<style scoped>
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100vh;
-}
-
-#app {
-  height: 100vh;
-}
-</style>

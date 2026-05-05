@@ -19,7 +19,7 @@ export const useAgentStore = defineStore('agent', () => {
     finished?: boolean
     sections: { thinking: boolean; tools: boolean; reply: boolean }
   }>())
-  const contextMap = shallowRef(new Map<string, ChatMsg[]>())
+  const contextMap = ref(new Map<string, ChatMsg[]>())
   const ctxPage = ref(new Map<string, number>())
   const sendingLock = ref(false)
   const streamListenerCleanup = ref<(() => void) | null>(null)
@@ -83,6 +83,13 @@ export const useAgentStore = defineStore('agent', () => {
       if (raw) return JSON.parse(raw) as ChatMsg[]
     } catch { /* ignore parse errors */ }
     return []
+  }
+
+  function restoreContext(moduleName: string): void {
+    const msgs = loadContext(moduleName)
+    if (msgs.length > 0) {
+      contextMap.value.set(moduleName, msgs)
+    }
   }
 
   function clearContext(moduleName: string): void {
@@ -315,7 +322,7 @@ export const useAgentStore = defineStore('agent', () => {
       const sendResult = await window.moduleAgent.sendMessage(moduleName, text)
       if (sendResult.error) {
         console.error(`发送失败: ${sendResult.error}`)
-      } else if (sendResult.stopReason === 'end_turn') {
+      } else {
         finishStream(moduleName)
       }
     } catch (err) {
@@ -369,6 +376,7 @@ export const useAgentStore = defineStore('agent', () => {
     setAgentConfig,
     saveContext,
     loadContext,
+    restoreContext,
     clearContext,
     clearAllContexts,
     saveStreamSnapshot,

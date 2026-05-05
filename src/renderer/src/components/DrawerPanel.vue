@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { TreeNode } from '../../../types/preload'
 import { useConfigStore } from '../stores/config'
+import { useAgentStore } from '../stores/agent'
 import StreamArea from './StreamArea.vue'
 import ContextCards from './ContextCards.vue'
 import ChatInput from './ChatInput.vue'
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const configStore = useConfigStore()
+const agentStore = useAgentStore()
 
 // ── refs ──
 const drawerRef = ref<HTMLElement | null>(null)
@@ -37,6 +39,13 @@ const agentCwd = computed(() => {
   const base = configStore.workspacePath || configStore.projectPath
   return base + '/' + props.node.path.replace(/^\.\//, '')
 })
+
+// ── send handler ──
+async function handleSendMessage(text: string): Promise<void> {
+  if (!props.node) return
+  const cwd = agentCwd.value
+  await agentStore.sendMessage(props.node.name, text, cwd)
+}
 
 // ── splitter styles ──
 const streamAreaStyle = computed(() => ({
@@ -87,6 +96,13 @@ function onWindowMouseup() {
     localStorage.setItem('splitRatio', String(splitRatio.value))
   }
 }
+
+// ── restore context when node changes ──
+watch(() => props.node?.name, (newName) => {
+  if (newName) {
+    agentStore.restoreContext(newName)
+  }
+}, { immediate: true })
 
 // ── lifecycle ──
 onMounted(() => {
@@ -172,7 +188,7 @@ onUnmounted(() => {
       </div>
 
       <div class="ctx-chat">
-        <ChatInput v-if="node" :module-name="node.name" />
+        <ChatInput v-if="node" :module-name="node.name" @send="handleSendMessage" />
       </div>
     </div>
   </div>
@@ -311,6 +327,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  padding-bottom: 30px;
 }
 
 .stream-area {
@@ -336,8 +353,8 @@ onUnmounted(() => {
 .ctx-bottom {
   display: flex;
   flex-direction: column;
-  min-height: 60px;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .ctx-chat {

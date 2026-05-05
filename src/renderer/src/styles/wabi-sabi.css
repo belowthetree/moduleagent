@@ -4,6 +4,16 @@
    亮色 (和纸/陶土) + 暗色 (墨/煤竹) 双主题
    ============================================================ */
 
+/* ── Global reset: no scrollbars ── */
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
 /* ── 亮色主题：和纸/陶土基调 ── */
 :root {
   /* 背景层级 */

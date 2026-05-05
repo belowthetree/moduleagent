@@ -11,6 +11,7 @@ cd /d "%ROOT%"
 set "MODE=%1"
 set "PROJECT=%2"
 
+if /i "%MODE%"=="dev" goto :dev
 if "%MODE%"=="--help" goto :usage
 if "%MODE%"=="-h" goto :usage
 if "%MODE%"=="tui" goto :tui
@@ -21,6 +22,26 @@ if "%MODE%"=="" goto :gui
 
 echo Unknown option: %MODE%
 goto :usage
+
+:dev
+echo =========================================
+echo   ModuleAgent - Dev Mode ^(HMR + DevTools^)
+echo =========================================
+echo.
+if not exist "node_modules\" (
+    echo Installing dependencies...
+    call npm install --silent
+) else if not exist "node_modules\electron-vite\" (
+    echo New dependencies detected - reinstalling...
+    call npm install --silent
+)
+if errorlevel 1 exit /b 1
+echo Starting electron-vite dev server...
+echo   HMR:   active
+echo   DevTools: auto-open
+echo.
+call npx electron-vite dev
+exit /b !errorlevel!
 
 :gui
 if not exist "node_modules\" (
@@ -117,6 +138,7 @@ echo ModuleAgent Launcher
 echo.
 echo Usage:
 echo   module-agent.bat                    Launch GUI (default)
+echo   module-agent.bat dev                Dev mode (HMR + DevTools)
 echo   module-agent.bat tui [project]      Start TUI mode
 echo   module-agent.bat list [project]     List all modules (JSON)
 echo   module-agent.bat get ^<name^> [project] Get module details (JSON)
