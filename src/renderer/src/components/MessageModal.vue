@@ -132,6 +132,28 @@ function toggleThinking() {
 </template>
 
 <style scoped>
+/* ── Dialog overrides ── */
+:deep(.el-dialog) {
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  animation: none !important;
+}
+
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid var(--el-border-color);
+  padding: 16px 20px 12px;
+}
+
+:deep(.el-dialog__title) {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--el-color-primary);
+}
+
+:deep(.el-dialog__body) {
+  padding: 20px;
+}
+
 /* ── Status Row ── */
 .modal-status-row {
   display: flex;
@@ -148,17 +170,17 @@ function toggleThinking() {
   letter-spacing: 0.5px;
 }
 
-.st-sent { background: #2a3f5f; color: #7aa2f7; }
-.st-pending { background: #3d3520; color: #e0af68; }
-.st-thinking { background: #2a2040; color: #bb9af7; }
-.st-executing { background: #1f3a2f; color: #9ece6a; }
-.st-completed { background: #1a3220; color: #9ece6a; }
-.st-error { background: #3a1520; color: #f7768e; }
-.st-interrupted { background: #3d3520; color: #e0af68; }
+.st-sent { background: var(--el-color-info-light-8); color: var(--el-color-info); }
+.st-pending { background: var(--el-color-warning-light-7); color: var(--el-color-warning); }
+.st-thinking { background: var(--el-color-primary-light-7); color: var(--el-color-primary); }
+.st-executing { background: var(--el-color-success-light-7); color: var(--el-color-success); }
+.st-completed { background: var(--el-color-success-light-8); color: var(--el-color-success); }
+.st-error { background: var(--el-color-danger-light-7); color: var(--el-color-danger); }
+.st-interrupted { background: var(--el-color-warning-light-8); color: var(--el-color-warning); }
 
 .modal-st-label {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-weight: 600;
 }
 
@@ -167,36 +189,41 @@ function toggleThinking() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px 20px;
-  padding-bottom: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .mg-item {
   display: flex;
   justify-content: space-between;
   padding: 5px 0;
-  border-bottom: 1px solid var(--border);
 }
 
 .mg-lbl {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-weight: 600;
 }
 
 .mg-val {
   font-size: 12px;
-  color: var(--text);
+  color: var(--el-text-color-primary);
 }
 
 /* ── Sections ── */
 .modal-section {
-  margin-bottom: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.modal-section:last-child {
+  border-bottom: none;
 }
 
 .modal-section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 4px;
@@ -205,25 +232,24 @@ function toggleThinking() {
 .content-text {
   font-size: 13px;
   line-height: 1.7;
-  color: var(--text);
+  color: var(--el-text-color-primary);
   white-space: pre-wrap;
   word-break: break-word;
   margin-top: 6px;
   padding: 14px;
-  background: var(--bg);
   border-radius: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--el-border-color);
 }
 
 .thinking-text {
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-style: italic;
-  border-color: rgba(160, 160, 200, 0.15);
+  border-color: var(--el-border-color-lighter);
 }
 
 .tools-text {
-  color: #f0a000;
-  border-color: rgba(240, 160, 0, 0.15);
+  color: var(--el-color-warning);
+  border-color: var(--el-color-warning-light-8);
 }
 
 /* ── Thinking Toggle ── */
@@ -233,7 +259,7 @@ function toggleThinking() {
 }
 
 .modal-thinking-toggle:hover {
-  color: var(--accent);
+  color: var(--el-color-primary);
 }
 
 .ctx-thinking-arrow {
@@ -243,21 +269,5 @@ function toggleThinking() {
 
 .modal-thinking-content {
   margin-top: 6px;
-}
-
-/* ── el-dialog overrides ── */
-:deep(.el-dialog__header) {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-:deep(.el-dialog__title) {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--accent2);
-}
-
-:deep(.el-dialog__body) {
-  padding: 20px;
 }
 </style>

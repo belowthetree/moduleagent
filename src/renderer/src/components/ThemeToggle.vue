@@ -6,16 +6,9 @@ const theme = useTheme()
 </script>
 
 <template>
-  <el-tooltip :content="theme.isDark.value ? 'Switch to light' : 'Switch to dark'">
-    <el-button circle :icon="theme.isDark.value ? Sunny : Moon" @click="theme.toggleTheme" />
+  <el-tooltip :content="theme.isDark.value ? 'Switch to light' : 'Switch to dark'" placement="bottom">
+    <el-button text @click="theme.toggleTheme">
+      <el-icon><Sunny v-if="theme.isDark.value" /><Moon v-else /></el-icon>
+    </el-button>
   </el-tooltip>
 </template>
-
-<style scoped>
-.el-button {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 50;
-}
-</style>

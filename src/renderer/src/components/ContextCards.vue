@@ -208,7 +208,7 @@ function onClear() {
 .ctx-top-controls .section-title {
   font-size: 11px;
   font-weight: 700;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
@@ -216,53 +216,53 @@ function onClear() {
 .ctx-top-controls .btn-sm {
   padding: 3px 10px;
   font-size: 11px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--el-border-color);
   border-radius: 5px;
   background: transparent;
-  color: var(--error);
+  color: var(--el-color-danger);
   cursor: pointer;
 }
 
 .ctx-top-controls .btn-sm:hover {
-  background: var(--error);
+  background: var(--el-color-danger);
   color: #fff;
-  border-color: var(--error);
+  border-color: var(--el-color-danger);
 }
 
 /* ── Empty state ── */
 .ctx-empty {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   padding: 16px;
   text-align: center;
-  background: var(--node-bg);
+  background: var(--el-fill-color-blank);
   border-radius: 8px;
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--el-border-color-lighter);
 }
 
 /* ── Card list ── */
 .ctx-card-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
   margin-bottom: 12px;
 }
 
 /* ── Card ── */
 .ctx-card {
-  padding: 10px 12px;
-  background: var(--node-bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s;
   user-select: text;
   -webkit-user-select: text;
 }
 
+.ctx-card:last-child {
+  border-bottom: none;
+}
+
 .ctx-card:hover {
-  border-color: var(--accent);
-  background: var(--node-hover);
+  background: var(--el-fill-color-light);
 }
 
 .ctx-card-top {
@@ -273,22 +273,20 @@ function onClear() {
 }
 
 .ctx-card .ctx-role {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
 }
 
 .ctx-card .ctx-role.user {
-  color: var(--success);
+  color: var(--el-color-success);
 }
 
 .ctx-card .ctx-role.agent {
-  color: var(--accent);
+  color: var(--el-color-primary);
 }
 
 .ctx-card .ctx-role.cross {
-  color: var(--warning);
+  color: var(--el-color-warning);
 }
 
 /* ── Status badges ── */
@@ -300,18 +298,18 @@ function onClear() {
   letter-spacing: 0.5px;
 }
 
-.st-sent { background: #2a3f5f; color: #7aa2f7; }
-.st-pending { background: #3d3520; color: #e0af68; }
-.st-thinking { background: #2a2040; color: #bb9af7; }
-.st-executing { background: #1f3a2f; color: #9ece6a; }
-.st-completed { background: #1a3220; color: #9ece6a; }
-.st-error { background: #3a1520; color: #f7768e; }
-.st-interrupted { background: #3d3520; color: #e0af68; }
+.st-sent        { background: var(--el-color-info-light-8);    color: var(--el-color-info); }
+.st-pending     { background: var(--el-color-warning-light-7); color: var(--el-color-warning); }
+.st-thinking    { background: var(--el-color-primary-light-7); color: var(--el-color-primary); }
+.st-executing   { background: var(--el-color-success-light-7); color: var(--el-color-success); }
+.st-completed   { background: var(--el-color-success-light-8); color: var(--el-color-success); }
+.st-error       { background: var(--el-color-danger-light-7);  color: var(--el-color-danger); }
+.st-interrupted { background: var(--el-color-warning-light-8); color: var(--el-color-warning); }
 
 /* ── Content preview ── */
 .ctx-card .ctx-preview {
   font-size: 12px;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -322,7 +320,7 @@ function onClear() {
 }
 
 .ctx-empty-preview {
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-style: italic;
   opacity: 0.5;
 }
@@ -330,7 +328,7 @@ function onClear() {
 /* ── Time ── */
 .ctx-card .ctx-time {
   font-size: 10px;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   opacity: 0.5;
   margin-top: 4px;
 }
@@ -347,16 +345,16 @@ function onClear() {
 }
 
 .ctx-thinking-toggle:hover {
-  color: var(--text);
+  color: var(--el-text-color-primary);
 }
 
 .ctx-thinking-arrow {
   font-size: 9px;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
 }
 
 .ctx-thinking-preview {
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-style: italic;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -366,12 +364,12 @@ function onClear() {
 
 .ctx-thinking-content {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-style: italic;
   line-height: 1.4;
   margin-bottom: 4px;
   padding: 6px 8px;
-  background: rgba(160, 160, 200, 0.06);
+  background: var(--el-fill-color-light);
   border-radius: 4px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -386,7 +384,7 @@ function onClear() {
 }
 
 .ctx-tools-count {
-  color: #f0a000;
+  color: var(--el-color-warning);
   vertical-align: middle;
 }
 
@@ -401,13 +399,13 @@ function onClear() {
 }
 
 .tag-thinking {
-  background: rgba(160, 160, 200, 0.2);
-  color: var(--text-dim);
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
 }
 
 .tag-tools {
-  background: rgba(240, 160, 0, 0.2);
-  color: #f0a000;
+  background: var(--el-color-warning-light-8);
+  color: var(--el-color-warning);
 }
 
 /* ── Pagination ── */
@@ -423,10 +421,10 @@ function onClear() {
 .paginator .pg-btn {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--el-border-color);
   border-radius: 5px;
-  background: var(--node-bg);
-  color: var(--text);
+  background: var(--el-fill-color-blank);
+  color: var(--el-text-color-primary);
   font-size: 12px;
   cursor: pointer;
   display: flex;
@@ -436,13 +434,14 @@ function onClear() {
 }
 
 .paginator .pg-btn:hover {
-  border-color: var(--accent);
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
 }
 
 .paginator .pg-btn.active {
-  background: var(--accent);
-  color: var(--bg);
-  border-color: var(--accent);
+  background: var(--el-color-primary);
+  color: #fff;
+  border-color: var(--el-color-primary);
   font-weight: 700;
 }
 
@@ -453,7 +452,7 @@ function onClear() {
 
 .paginator .pg-info {
   font-size: 11px;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   padding: 0 4px;
 }
 </style>

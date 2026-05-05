@@ -173,8 +173,20 @@ function onCancel(): void {
 </template>
 
 <style scoped>
+/* ── Dialog Header ── */
+:deep(.el-dialog__header) {
+  border-bottom: 1px solid var(--el-border-color);
+  padding-bottom: 12px;
+}
+
+/* ── Error ── */
 .settings-error {
   margin-bottom: 16px;
+}
+
+/* ── Settings Form ── */
+.settings-form {
+  border-radius: 10px;
 }
 
 .settings-form :deep(.el-form-item) {
@@ -184,8 +196,10 @@ function onCancel(): void {
 .settings-form :deep(.el-form-item__label) {
   font-weight: 600;
   color: var(--el-text-color-primary);
+  margin-bottom: 6px;
 }
 
+/* ── Field Hint ── */
 .field-hint {
   margin: 0 0 4px 0;
   font-size: 12px;
@@ -193,10 +207,22 @@ function onCancel(): void {
   line-height: 1.4;
 }
 
+/* ── Full Width ── */
 .full-width {
   width: 100%;
 }
 
+/* ── Input / Select Wrapper (flat, no glow) ── */
+:deep(.el-input__wrapper) {
+  box-shadow: none !important;
+}
+
+:deep(.el-input__wrapper.is-focus) {
+  border-color: var(--el-color-primary);
+  box-shadow: none !important;
+}
+
+/* ── Footer ── */
 .settings-footer {
   display: flex;
   justify-content: flex-end;

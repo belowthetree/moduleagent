@@ -173,6 +173,8 @@ onMounted(() => {
 .setup-card {
   width: 100%;
   max-width: 520px;
+  border-radius: 10px;
+  box-shadow: var(--el-box-shadow-light);
 }
 
 .setup-header {
@@ -205,6 +207,7 @@ onMounted(() => {
 .setup-form :deep(.el-form-item__label) {
   font-weight: 600;
   color: var(--el-text-color-primary);
+  margin-bottom: 8px;
 }
 
 .field-hint {
@@ -224,5 +227,19 @@ onMounted(() => {
 
 .btn-start {
   width: 100%;
+}
+
+/* ── Wabi-sabi: flat inputs, no focus glow ── */
+.setup-form :deep(.el-input__wrapper) {
+  box-shadow: none !important;
+}
+
+.setup-form :deep(.el-input__wrapper.is-focus) {
+  border-color: var(--el-color-primary);
+  box-shadow: none !important;
+}
+
+.setup-form :deep(.el-select .el-input__wrapper) {
+  box-shadow: none !important;
 }
 </style>

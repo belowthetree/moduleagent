@@ -26,6 +26,14 @@ const statusText = computed(() => {
   return `已渲染 ${count} 个节点`
 })
 
+const statusClass = computed(() => {
+  if (scanning.value) return 'pending'
+  for (const status of agentStore.runningAgents.values()) {
+    if (status === 'streaming') return 'streaming'
+  }
+  return 'idle'
+})
+
 const projectName = computed(() => {
   const p = configStore.projectPath
   if (!p) return ''
@@ -107,156 +115,133 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="main-screen">
-    <!-- FAB button group -->
-    <el-button
-      class="fab fab-back"
-      title="返回"
-      @click="goBack"
-    >
-      ←
-    </el-button>
-    <el-button
-      class="fab fab-rescan"
-      title="重新扫描"
-      @click="rescan"
-    >
-      🔄
-    </el-button>
-    <el-button
-      class="fab fab-clear-all"
-      title="清空所有上下文"
-      @click="clearAll"
-    >
-      🗑
-    </el-button>
-    <el-button
-      class="fab fab-settings"
-      title="设置"
-      @click="showSettings = true"
-    >
-      ⚙
-    </el-button>
+  <div class="main-view">
+    <!-- ── 工具栏 ── -->
+    <header class="toolbar">
+      <div class="toolbar-left">
+        <el-button text @click="goBack">← 返回</el-button>
+        <el-button text @click="rescan">↻ 扫描</el-button>
+        <el-button text @click="clearAll">清空</el-button>
+      </div>
+      <div class="toolbar-right">
+        <el-button text @click="showSettings = true">⚙ 设置</el-button>
+        <ThemeToggle />
+      </div>
+    </header>
 
-    <ThemeToggle />
+    <!-- ── 主内容区 ── -->
+    <div class="main-content">
+      <div class="tree-area">
+        <SVGTree
+          :root="projectStore.treeRoot"
+          :selected-node="projectStore.selectedNode"
+          :running-agents="agentStore.runningAgents"
+          @select="onSelectNode"
+        />
+      </div>
 
-    <!-- SVG Tree panel -->
-    <SVGTree
-      :root="projectStore.treeRoot"
-      :selected-node="projectStore.selectedNode"
-      :running-agents="agentStore.runningAgents"
-      @select="onSelectNode"
-    />
+      <DrawerPanel
+        v-if="projectStore.selectedNode"
+        :node="projectStore.selectedNode"
+        :visible="true"
+        @close="onCloseDrawer"
+      />
+    </div>
 
-    <!-- Drawer panel (shown when a node is selected) -->
-    <DrawerPanel
-      v-if="projectStore.selectedNode"
-      :node="projectStore.selectedNode"
-      :visible="true"
-      @close="onCloseDrawer"
-    />
+    <!-- ── 状态栏 ── -->
+    <footer class="status-bar">
+      <span class="status-dot" :class="statusClass"></span>
+      <span class="status-text">{{ statusText }}</span>
+      <span class="status-path">{{ projectName }}</span>
+    </footer>
 
-    <!-- Settings dialog -->
+    <!-- Settings dialog (modal) -->
     <SettingsDialog
       v-if="showSettings"
       :visible="showSettings"
       @close="showSettings = false"
     />
-
-    <!-- Status bar -->
-    <div class="status-bar">
-      <span class="dot" :class="{ scanning }" />
-      <span class="status-text">{{ statusText }}</span>
-      <span class="spacer" />
-      <span class="status-path">{{ projectName }}</span>
-    </div>
   </div>
 </template>
 
 <style scoped>
-.main-screen {
+.main-view {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  background: var(--el-bg-color-page);
 }
 
-.fab {
-  position: fixed;
-  z-index: 50;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+/* ── 工具栏 ── */
+.toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  padding: 0;
-  min-width: 0;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 12px;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color);
+  flex-shrink: 0;
 }
 
-.fab-back {
-  top: 10px;
-  left: 12px;
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.fab-rescan {
-  top: 10px;
-  left: 56px;
+/* ── 主内容区 ── */
+.main-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
 }
 
-.fab-clear-all {
-  top: 10px;
-  right: 56px;
-  font-size: 14px;
+.tree-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  padding: 16px;
 }
 
-.fab-settings {
-  top: 10px;
-  right: 12px;
-  font-size: 18px;
-}
-
+/* ── 状态栏 ── */
 .status-bar {
   display: flex;
   align-items: center;
-  padding: 5px 16px;
-  background: var(--el-bg-color-page);
-  border-top: 1px solid var(--el-border-color-light);
-  font-size: 11px;
+  height: 32px;
+  padding: 0 16px;
+  background: var(--el-bg-color);
+  border-top: 1px solid var(--el-border-color);
+  font-size: 12px;
   color: var(--el-text-color-secondary);
   gap: 8px;
   flex-shrink: 0;
 }
 
-.dot {
-  width: 7px;
-  height: 7px;
+.status-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--el-color-success);
+  flex-shrink: 0;
 }
 
-.dot.scanning {
-  background: var(--el-color-warning);
-  animation: pulse-dot 0.8s ease-in-out infinite;
+.status-dot.idle { background: var(--el-text-color-placeholder); }
+.status-dot.pending { background: var(--el-color-warning); }
+.status-dot.streaming { background: var(--el-color-primary); }
+.status-dot.error { background: var(--el-color-danger); }
+.status-dot.interrupted { background: var(--el-color-warning); }
+
+.status-text {
+  flex-shrink: 0;
 }
 
-@keyframes pulse-dot {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-}
-
-.spacer {
-  flex: 1;
-}
-</style>
-
-<!-- Global overrides for child component root elements -->
-<style>
-.tree-panel {
-  z-index: 1;
+.status-path {
+  margin-left: auto;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

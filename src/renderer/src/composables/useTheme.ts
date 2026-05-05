@@ -2,7 +2,8 @@ import { ref, watch } from 'vue'
 
 const THEME_KEY = 'theme'
 
-const isDark = ref<boolean>(localStorage.getItem(THEME_KEY) === 'dark')
+// Default to dark theme on first load (wabi-sabi dark aesthetic)
+const isDark = ref<boolean>(localStorage.getItem(THEME_KEY) !== 'light')
 
 function applyTheme(): void {
   if (isDark.value) {

@@ -302,8 +302,11 @@ watch(() => props.root, () => {
 </script>
 
 <style scoped>
-/* ── SVG tree styling (exact migration from style.css:475-502) ── */
+/* ── SVG Tree — Wabi-sabi Flat Redesign ── */
+
 .tree-panel {
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   position: relative;
   background: var(--el-bg-color-page);
@@ -311,62 +314,48 @@ watch(() => props.root, () => {
 
 .tree-svg {
   display: block;
+  width: 100%;
+  height: 100%;
 }
 
+/* ── Node rectangles ── */
 .node-rect {
-  fill: var(--el-fill-color-blank);
-  stroke: var(--el-border-color);
+  fill: var(--el-fill-color);
+  stroke: var(--el-border-color-dark);
   stroke-width: 1.5;
   rx: 8;
   cursor: pointer;
+  transition: all 0.15s;
 }
+
 .node-rect:hover {
-  fill: var(--el-fill-color-light);
   stroke: var(--el-color-primary);
+  stroke-width: 1.5;
 }
+
 .node-rect.active {
-  fill: var(--el-color-primary-light-5);
-  stroke: var(--el-color-primary-light-3);
+  fill: var(--el-color-primary-light-8);
+  stroke: var(--el-color-primary);
   stroke-width: 2;
 }
+
+/* Agent state on rects — flat, no drop-shadow */
 .node-rect.agent-idle {
   stroke: var(--el-color-primary);
   stroke-width: 2;
-  filter: drop-shadow(0 0 4px rgba(122, 162, 247, 0.3));
 }
+
 .node-rect.agent-streaming {
   stroke: var(--el-color-success);
   stroke-width: 2;
-  filter: drop-shadow(0 0 8px rgba(158, 206, 106, 0.5));
 }
+
 .node-rect.agent-error {
   stroke: var(--el-color-danger);
   stroke-width: 2;
-  filter: drop-shadow(0 0 4px rgba(247, 118, 142, 0.4));
 }
 
-.node-status-dot {
-}
-.dot-idle {
-  fill: var(--el-color-primary);
-}
-.dot-streaming {
-  fill: var(--el-color-success);
-  animation: pulse-dot 0.8s ease-in-out infinite;
-}
-.dot-error {
-  fill: var(--el-color-danger);
-}
-
-@keyframes pulse-dot {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
-}
-
+/* ── Node text ── */
 .node-text {
   font-size: 12px;
   font-weight: 600;
@@ -382,18 +371,46 @@ watch(() => props.root, () => {
   font-family: inherit;
 }
 
+/* ── Edge lines ── */
 .edge-line {
-  stroke: var(--el-border-color);
-  stroke-width: 1.5;
   fill: none;
-  opacity: 0.6;
+  stroke: var(--el-border-color);
+  stroke-width: 1;
 }
 
+/* ── Agent status dots — no drop-shadow, subtle stroke ── */
+.node-status-dot {
+  stroke-width: 1;
+}
+
+.dot-idle {
+  fill: var(--el-fill-color);
+  stroke: var(--el-text-color-placeholder);
+}
+
+.dot-streaming {
+  fill: var(--el-color-success-light-8);
+  stroke: var(--el-color-success);
+  animation: pulse-dot 0.8s ease-in-out infinite;
+}
+
+.dot-error {
+  fill: var(--el-color-danger-light-8);
+  stroke: var(--el-color-danger);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── Expand/collapse button ── */
 .expand-btn {
-  fill: var(--el-color-primary);
+  fill: var(--el-text-color-secondary);
   cursor: pointer;
 }
+
 .expand-btn:hover {
-  fill: var(--el-color-primary-light-3);
+  fill: var(--el-color-primary);
 }
 </style>

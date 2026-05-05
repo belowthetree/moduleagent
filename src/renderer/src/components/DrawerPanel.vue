@@ -203,13 +203,12 @@ onUnmounted(() => {
   right: calc(-1 * var(--drawer-width));
   width: var(--drawer-width);
   height: 100%;
-  background: var(--surface);
-  border-left: 1px solid var(--border);
+  background: var(--el-fill-color);
+  border-left: 1px solid var(--el-border-color);
   z-index: 100;
   display: flex;
   flex-direction: column;
   transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.5);
 }
 
 .drawer.open {
@@ -219,51 +218,52 @@ onUnmounted(() => {
 .drawer-resize-handle {
   position: absolute;
   top: 0;
-  left: -4px;
-  width: 8px;
+  left: -2px;
+  width: 2px;
   height: 100%;
   cursor: col-resize;
   z-index: 10;
+  background: var(--el-border-color);
 }
 
 .drawer-resize-handle:hover,
 .drawer-resize-handle.dragging {
-  background: var(--accent);
-  opacity: 0.4;
+  background: var(--el-color-primary);
 }
 
 .drawer-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--el-border-color);
 }
 
 .drawer-title {
   font-size: 16px;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--el-color-primary);
 }
 
 .btn-close {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--el-border-color);
   border-radius: 6px;
-  background: var(--node-bg);
-  color: var(--text-dim);
+  background: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
   font-size: 14px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .btn-close:hover {
-  background: var(--error);
-  color: #fff;
-  border-color: var(--error);
+  background: var(--el-color-danger);
+  color: var(--el-color-white);
+  border-color: var(--el-color-danger);
 }
 
 .drawer-body {
@@ -271,11 +271,12 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding: 12px 16px;
 }
 
 .info-compact {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--el-border-color);
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
@@ -288,22 +289,21 @@ onUnmounted(() => {
 }
 
 .ic-label {
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-weight: 600;
 }
 
 .ic-value {
-  color: var(--text);
+  color: var(--el-text-color-primary);
 }
 
 .desc {
   font-size: 12px;
-  color: var(--text-dim);
-  margin-bottom: 10px;
+  color: var(--el-text-color-secondary);
   line-height: 1.5;
   user-select: text;
   -webkit-user-select: text;
-  padding: 10px 20px 0;
+  padding: 12px 0 0;
 }
 
 .split-zone {
@@ -315,23 +315,22 @@ onUnmounted(() => {
 
 .stream-area {
   overflow-y: auto;
-  padding: 12px 20px;
+  padding: 12px 0;
   min-height: 60px;
 }
 
 .splitter {
-  height: 6px;
+  height: 2px;
   flex-shrink: 0;
   cursor: row-resize;
-  background: var(--border);
-  margin: 0 20px;
-  border-radius: 3px;
+  background: var(--el-border-color);
+  margin: 8px 0;
   transition: background 0.15s;
 }
 
 .splitter:hover,
 .splitter.dragging {
-  background: var(--accent);
+  background: var(--el-color-primary);
 }
 
 .ctx-bottom {
@@ -344,8 +343,8 @@ onUnmounted(() => {
 .ctx-chat {
   display: flex;
   gap: 6px;
-  padding: 10px 20px;
-  border-top: 1px solid var(--border);
+  padding: 12px 0 0;
+  border-top: 1px solid var(--el-border-color);
   flex-shrink: 0;
 }
 </style>

@@ -52,11 +52,47 @@ function sendMessage() {
 <style scoped>
 .chat-input {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   width: 100%;
+  padding: 8px 16px;
+  background: var(--el-bg-color);
 }
 
-.chat-input .el-input {
+.chat-input :deep(.el-input) {
   flex: 1;
+}
+
+.chat-input :deep(.el-input__wrapper) {
+  border-radius: 8px;
+  box-shadow: none !important;
+  transition: border-color 0.15s;
+}
+
+.chat-input :deep(.el-input__wrapper:hover) {
+  border-color: var(--el-border-color-dark);
+}
+
+.chat-input :deep(.el-input__wrapper.is-focus) {
+  border-color: var(--el-color-primary);
+  box-shadow: none !important;
+}
+
+.chat-input :deep(.el-button) {
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--el-color-primary);
+}
+
+.chat-input :deep(.el-button:hover) {
+  background: var(--el-fill-color-light);
+  color: var(--el-color-primary-light-3);
+}
+
+.chat-input :deep(.el-button.is-disabled) {
+  background: none;
+  border: none;
+  color: var(--el-text-color-placeholder);
 }
 </style>

@@ -134,14 +134,15 @@ watch(() => streamState.value, (st) => {
 /* ── Stream area container ── */
 .stream-area {
   overflow-y: auto;
-  padding: 12px 20px;
+  padding: 12px 16px;
   min-height: 60px;
   height: 100%;
+  background: var(--el-fill-color-lighter);
 }
 
 /* ── Empty state ── */
 .stream-empty {
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-size: 12px;
   font-style: italic;
   padding: 20px 0;
@@ -152,12 +153,12 @@ watch(() => streamState.value, (st) => {
 .stream-content {
   font-size: 13px;
   line-height: 1.7;
-  color: var(--text);
+  color: var(--el-text-color-primary);
   white-space: pre-wrap;
   word-break: break-word;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
   user-select: text;
   -webkit-user-select: text;
 }
@@ -168,9 +169,9 @@ watch(() => streamState.value, (st) => {
   display: inline-block;
   width: 8px;
   height: 15px;
-  background: var(--accent);
+  background: var(--el-color-primary);
   margin-left: 2px;
-  animation: blink 0.8s infinite;
+  animation: blink 1s infinite;
   vertical-align: text-bottom;
 }
 
@@ -179,22 +180,27 @@ watch(() => streamState.value, (st) => {
   50% { opacity: 0; }
 }
 
-/* ── Stream sections ── */
+.stream-cursor {
+  animation: blink 1s infinite;
+}
+
+/* ── Stream sections (unified neutral) ── */
 .stream-section {
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  overflow: hidden;
+  margin-bottom: 12px;
+  border-left: 2px solid var(--el-border-color);
+  padding: 8px 12px;
+  background: var(--el-color-primary-light-9);
 }
 
 .stream-section-header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 4px 0 6px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.3px;
-  border-bottom: 1px solid transparent;
+  color: var(--el-text-color-secondary);
 }
 
 .stream-section-icon {
@@ -208,32 +214,17 @@ watch(() => streamState.value, (st) => {
 }
 
 .stream-section-body {
-  padding: 10px 14px;
+  padding: 4px 0;
   font-size: 13px;
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+  color: var(--el-text-color-primary);
 }
 
-/* ── Thinking section ── */
-.stream-section-thinking {
-  border-color: rgba(160, 160, 200, 0.2);
-  background: rgba(160, 160, 200, 0.06);
-}
-
-.stream-section-thinking .stream-section-header {
-  color: var(--text-dim);
-  border-bottom-color: rgba(160, 160, 200, 0.1);
-}
-
-.stream-section-thinking .stream-section-body {
-  color: var(--text-dim);
-  font-style: italic;
-  opacity: 0.85;
-}
-
+/* ── Thinking inline (during streaming) ── */
 .stream-thinking {
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-style: italic;
   opacity: 0.85;
 }
@@ -259,57 +250,28 @@ watch(() => streamState.value, (st) => {
 }
 
 .tag-thinking {
-  background: rgba(160, 160, 200, 0.2);
-  color: var(--text-dim);
+  background: var(--el-color-primary-light-7);
+  color: var(--el-text-color-secondary);
 }
 
 .thinking-arrow {
   font-size: 10px;
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   line-height: 1;
 }
 
 .thinking-content {
-  color: var(--text-dim);
+  color: var(--el-text-color-secondary);
   font-style: italic;
   opacity: 0.85;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-/* ── Tools section ── */
-.stream-section-tools {
-  border-color: rgba(240, 160, 0, 0.25);
-  background: rgba(240, 160, 0, 0.06);
-}
-
-.stream-section-tools .stream-section-header {
-  color: #e0a830;
-  border-bottom-color: rgba(240, 160, 0, 0.12);
-}
-
-.stream-section-tools .stream-section-body {
-  color: #f0a000;
-}
-
+/* ── Tools inline ── */
 .stream-tool {
-  color: #f0a000;
   font-weight: 600;
-}
-
-/* ── Reply section ── */
-.stream-section-reply {
-  border-color: rgba(122, 162, 247, 0.2);
-  background: rgba(122, 162, 247, 0.04);
-}
-
-.stream-section-reply .stream-section-header {
-  color: var(--accent);
-  border-bottom-color: rgba(122, 162, 247, 0.1);
-}
-
-.stream-section-reply .stream-section-body {
-  color: var(--text);
+  color: var(--el-text-color-primary);
 }
 
 /* ── Cancel button ── */
@@ -318,9 +280,9 @@ watch(() => streamState.value, (st) => {
   width: 100%;
   padding: 8px;
   margin: 8px 0;
-  background: rgba(240, 80, 60, 0.12);
-  color: #f0503c;
-  border: 1px solid rgba(240, 80, 60, 0.3);
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+  border: 1px solid var(--el-color-danger-light-7);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
@@ -329,6 +291,6 @@ watch(() => streamState.value, (st) => {
 }
 
 .btn-cancel-stream:hover {
-  background: rgba(240, 80, 60, 0.22);
+  background: var(--el-color-danger-light-8);
 }
 </style>
