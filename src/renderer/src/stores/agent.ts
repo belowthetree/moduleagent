@@ -8,6 +8,71 @@ const CTX_PREFIX = 'ctx_'
 const STREAM_SAVE_DEBOUNCE = 2000
 
 export const useAgentStore = defineStore('agent', () => {
+  // ── One-time localStorage migration ──
+  // Move old ctx_* and stream_snapshot data from localStorage to main process disk storage
+  async function runMigration(): Promise<void> {
+    try {
+      const keys: string[] = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k === LS_STREAM_SNAPSHOT || k?.startsWith(CTX_PREFIX)) {
+          keys.push(k!)
+        }
+      }
+      if (keys.length === 0) return
+
+      const { needed, streamNeeded } = await window.moduleAgent.migrateCheck(keys)
+      if (!streamNeeded && needed.length === 0) return
+
+      const byModule = new Map<string, ChatMsg[]>()
+      for (const key of needed) {
+        if (!key.startsWith(CTX_PREFIX)) continue
+        const moduleName = key.slice(CTX_PREFIX.length)
+        const raw = localStorage.getItem(key)
+        if (!raw) continue
+        try {
+          byModule.set(moduleName, JSON.parse(raw) as ChatMsg[])
+        } catch { /* skip parse errors */ }
+      }
+
+      if (streamNeeded) {
+        const raw = localStorage.getItem(LS_STREAM_SNAPSHOT)
+        if (raw) {
+          try {
+            const entries = JSON.parse(raw) as { moduleName: string; reply: string; thinking: string; tools: string; finished?: boolean; time: string }[]
+            for (const entry of entries) {
+              if (!entry.reply && !entry.thinking && !entry.tools) continue
+              const msg: ChatMsg = {
+                id: 'mig-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+                role: 'agent',
+                content: entry.reply || '',
+                thinking: entry.thinking || '',
+                tools: entry.tools || '',
+                time: entry.time,
+                status: 'interrupted',
+                moduleName: entry.moduleName,
+                agentCmd: '',
+              }
+              const existing = byModule.get(entry.moduleName) || []
+              existing.push(msg)
+              byModule.set(entry.moduleName, existing)
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      }
+
+      for (const [moduleName, msgs] of byModule) {
+        await window.moduleAgent.migrateData({ moduleName, msgs })
+        localStorage.removeItem(`${CTX_PREFIX}${moduleName}`)
+      }
+      if (streamNeeded) {
+        localStorage.removeItem(LS_STREAM_SNAPSHOT)
+      }
+    } catch (err) {
+      console.error('localStorage migration failed (non-blocking):', err)
+    }
+  }
+  runMigration()
   // ── State ──
   const runningAgents = shallowRef(new Map<string, AgentStatus>())
   const streamState = ref(new Map<string, {

@@ -430,6 +430,26 @@ function registerIpcHandlers() {
     await stateManager?.clearAllContexts();
   });
 
+  // ── localStorage Migration IPC ──
+  ipcMain.handle('migrate:check', async (_event, keys: string[]) => {
+    if (!stateManager) return { needed: [], streamNeeded: false };
+    const needed: string[] = [];
+    for (const key of keys) {
+      if (key.startsWith('ctx_')) {
+        const moduleName = key.slice(4);
+        const existing = await stateManager.loadContext(moduleName);
+        if (existing.length === 0) needed.push(key);
+      }
+    }
+    const streamNeeded = keys.includes('stream_snapshot');
+    return { needed, streamNeeded };
+  });
+
+  ipcMain.handle('migrate:data', async (_event, payload: { moduleName: string; msgs: ChatMsg[] }) => {
+    if (!stateManager) return;
+    await stateManager.saveContext(payload.moduleName, payload.msgs);
+  });
+
   // ── Config IPC ──
   ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }; modulesPath?: string }) => {
     const configPath = path.join(projectRoot, '.module-agent.json');

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg } from '../types/preload.js';
+import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData } from '../types/preload.js';
 
 const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke('dialog:selectDir', title) as Promise<string | null>,
@@ -42,6 +42,11 @@ const api: ModuleAgentApi = {
 
   getAgentConfig: (projectRoot: string) =>
     ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }; modulesPath?: string }>,
+
+  // Migration APIs
+  migrateCheck: (keys: string[]) => ipcRenderer.invoke('migrate:check', keys) as Promise<{ needed: string[]; streamNeeded: boolean }>,
+
+  migrateData: (payload: MigrationData) => ipcRenderer.invoke('migrate:data', payload) as Promise<void>,
 
   // Context APIs
   getContext: (moduleName: string) => ipcRenderer.invoke('context:get', moduleName) as Promise<ChatMsg[]>,

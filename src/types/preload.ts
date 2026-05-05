@@ -43,6 +43,11 @@ export interface ChatMsg {
   crossPhase?: 'request' | 'response';
 }
 
+export interface MigrationData {
+  moduleName: string;
+  msgs: ChatMsg[];
+}
+
 export interface AgentStreamData {
   moduleName: string;
   // sessionId is sent by main.ts onSessionUpdate but was missing from preload/renderer callback types
@@ -108,6 +113,10 @@ export interface ModuleAgentApi {
     codeSource?: CodeSource;
     modulesPath?: string;
   }>;
+
+  migrateCheck(keys: string[]): Promise<{ needed: string[]; streamNeeded: boolean }>;
+
+  migrateData(payload: MigrationData): Promise<void>;
 
   getContext(moduleName: string): Promise<ChatMsg[]>;
 
