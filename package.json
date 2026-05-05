@@ -36,24 +36,37 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.20.0",
     "@cfworker/json-schema": "^4.1.1",
+    "@element-plus/icons-vue": "^2.3.2",
     "@modelcontextprotocol/server": "2.0.0-alpha.2",
     "@opentui/core": "^0.2.2",
     "@opentui/keymap": "^0.2.2",
     "@opentui/solid": "^0.2.2",
+    "element-plus": "^2.13.7",
     "fs-extra": "^11.2.0",
     "gray-matter": "^4.0.3",
     "jq": "^1.7.2",
     "marked": "^15.0.4",
+    "pinia": "^3.0.4",
     "simple-git": "^3.27.0",
+    "vue": "^3.5.33",
+    "vue-router": "^5.0.6",
     "zod": "^4.3"
   },
   "devDependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@playwright/test": "^1.59.1",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^20.17.12",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "@vue/test-utils": "^2.4.10",
     "electron": "^41.3.0",
     "electron-builder": "^26.8.1",
+    "electron-vite": "^5.0.0",
+    "jsdom": "^29.1.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.5"
   },
   "optionalDependencies": {
     "@opentui/core-linux-x64": "0.2.2",
