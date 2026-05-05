@@ -1,4 +1,3 @@
-// @legacy — migrated to src/preload/index.ts
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ModuleGraphNode } from '../src/types/module.js';
 

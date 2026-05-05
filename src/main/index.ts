@@ -1,4 +1,3 @@
-// @legacy — migrated to src/main/index.ts
 import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
