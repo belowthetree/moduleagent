@@ -22,7 +22,7 @@
     "composite": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist", "src/main/**/*", "src/preload/**/*", "src/renderer/**/*", "src/types/**/*", "electron/**/*"],
+  "exclude": ["node_modules", "dist", "src/main/**/*", "src/preload/**/*", "src/renderer/**/*", "src/types/**/*"],
   "references": [
     { "path": "./tsconfig.node.json" },
     { "path": "./tsconfig.web.json" }

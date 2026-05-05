@@ -3,7 +3,6 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { TreeNode } from '../../../types/preload'
 import { useConfigStore } from '../stores/config'
 import { useAgentStore } from '../stores/agent'
-import StreamArea from './StreamArea.vue'
 import ContextCards from './ContextCards.vue'
 import ChatInput from './ChatInput.vue'
 
@@ -21,16 +20,11 @@ const agentStore = useAgentStore()
 
 // ── refs ──
 const drawerRef = ref<HTMLElement | null>(null)
-const splitZoneRef = ref<HTMLElement | null>(null)
 
 // ── resize state ──
 const resizeDragging = ref(false)
 let resizeStartX = 0
 let resizeStartWidth = 0
-
-// ── splitter state ──
-const splitRatio = ref(0.4)
-const splitterDragging = ref(false)
 
 // ── agent CWD ──
 const agentCwd = computed(() => {
@@ -47,27 +41,12 @@ async function handleSendMessage(text: string): Promise<void> {
   await agentStore.sendMessage(props.node.name, text, cwd)
 }
 
-// ── splitter styles ──
-const streamAreaStyle = computed(() => ({
-  flex: `0 0 ${(splitRatio.value * 100).toFixed(1)}%`,
-}))
-
-const ctxBottomStyle = computed(() => ({
-  flex: `0 0 ${((1 - splitRatio.value) * 100).toFixed(1)}%`,
-}))
-
 // ── resize handlers ──
 function onResizeMousedown(e: MouseEvent) {
   e.preventDefault()
   resizeDragging.value = true
   resizeStartX = e.clientX
   resizeStartWidth = drawerRef.value?.getBoundingClientRect().width ?? 420
-}
-
-// ── splitter handlers ──
-function onSplitterMousedown(e: MouseEvent) {
-  e.preventDefault()
-  splitterDragging.value = true
 }
 
 // ── window-level mouse events ──
@@ -77,12 +56,6 @@ function onWindowMousemove(e: MouseEvent) {
     const newWidth = Math.min(800, Math.max(280, resizeStartWidth + delta))
     document.documentElement.style.setProperty('--drawer-width', newWidth + 'px')
   }
-  if (splitterDragging.value && splitZoneRef.value) {
-    const rect = splitZoneRef.value.getBoundingClientRect()
-    const y = e.clientY - rect.top
-    const ratio = Math.min(0.75, Math.max(0.15, y / rect.height))
-    splitRatio.value = ratio
-  }
 }
 
 function onWindowMouseup() {
@@ -90,10 +63,6 @@ function onWindowMouseup() {
     resizeDragging.value = false
     const currentWidth = document.documentElement.style.getPropertyValue('--drawer-width')
     localStorage.setItem('drawerWidth', currentWidth || '420')
-  }
-  if (splitterDragging.value) {
-    splitterDragging.value = false
-    localStorage.setItem('splitRatio', String(splitRatio.value))
   }
 }
 
@@ -111,15 +80,6 @@ onMounted(() => {
   if (savedWidth) {
     const w = parseInt(savedWidth, 10) || 420
     document.documentElement.style.setProperty('--drawer-width', w + 'px')
-  }
-
-  // Restore split ratio
-  const savedRatio = localStorage.getItem('splitRatio')
-  if (savedRatio) {
-    const ratio = parseFloat(savedRatio)
-    if (!isNaN(ratio) && ratio >= 0.15 && ratio <= 0.75) {
-      splitRatio.value = ratio
-    }
   }
 
   window.addEventListener('mousemove', onWindowMousemove)
@@ -173,18 +133,8 @@ onUnmounted(() => {
 
       <div class="desc">{{ node?.description || '无描述' }}</div>
 
-      <div ref="splitZoneRef" class="split-zone">
-        <div class="stream-area" :style="streamAreaStyle">
-          <StreamArea v-if="node" :module-name="node.name" />
-        </div>
-        <div
-          class="splitter"
-          :class="{ dragging: splitterDragging }"
-          @mousedown="onSplitterMousedown"
-        />
-        <div class="ctx-bottom" :style="ctxBottomStyle">
-          <ContextCards v-if="node" :module-name="node.name" />
-        </div>
+      <div class="ctx-list-area">
+        <ContextCards v-if="node" :module-name="node.name" />
       </div>
 
       <div class="ctx-chat">
@@ -322,39 +272,11 @@ onUnmounted(() => {
   padding: 12px 0 0;
 }
 
-.split-zone {
+.ctx-list-area {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding-bottom: 30px;
-}
-
-.stream-area {
   overflow-y: auto;
-  padding: 12px 0;
-  min-height: 60px;
-}
-
-.splitter {
-  height: 2px;
-  flex-shrink: 0;
-  cursor: row-resize;
-  background: var(--el-border-color);
-  margin: 8px 0;
-  transition: background 0.15s;
-}
-
-.splitter:hover,
-.splitter.dragging {
-  background: var(--el-color-primary);
-}
-
-.ctx-bottom {
-  display: flex;
-  flex-direction: column;
   min-height: 0;
-  overflow-y: auto;
+  padding-bottom: 12px;
 }
 
 .ctx-chat {

@@ -77,10 +77,6 @@ async function rescan(): Promise<void> {
 
 function clearAll(): void {
   agentStore.clearAllContexts()
-  // Refresh the current drawer pagination if a node is selected
-  if (projectStore.selectedNode) {
-    agentStore.setPage(projectStore.selectedNode.name, 0)
-  }
 }
 
 // ── Tree events ──

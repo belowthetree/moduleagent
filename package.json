@@ -23,7 +23,6 @@
       "output": "release"
     },
     "files": [
-      "electron/**/*",
       "src/**/*",
       "node_modules/**/*",
       "package.json"

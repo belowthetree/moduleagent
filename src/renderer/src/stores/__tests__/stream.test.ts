@@ -59,7 +59,7 @@ describe('stream composable', () => {
     })
 
     const st = store.getStreamState('mod3')
-    expect(st.tools).toContain('[工具调用: read_file | completed]')
+    expect(st.tools).toContain('read_file (completed)')
     expect(st.sections.tools).toBe(true)
     expect(st.reply).toBe('')
   })
@@ -90,7 +90,7 @@ describe('stream composable', () => {
 
     const st = store.getStreamState('mod4')
     expect(st.thinking).toBe('Analyzing...')
-    expect(st.tools).toContain('[工具调用: search | running]')
+    expect(st.tools).toContain('search (running)')
     expect(st.reply).toBe('Here is the answer. Hope that helps!')
     expect(st.sections.thinking).toBe(true)
     expect(st.sections.tools).toBe(true)

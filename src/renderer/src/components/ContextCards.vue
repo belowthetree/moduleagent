@@ -3,8 +3,6 @@ import { computed, ref } from 'vue'
 import type { ChatMsg } from '../../../types/preload'
 import { useAgentStore } from '../stores/agent'
 
-const CTX_PAGE = 5
-
 const props = defineProps<{
   moduleName: string
 }>()
@@ -43,45 +41,10 @@ function roleLabel(role: string): string {
   return ''
 }
 
-function escapeHtml(s: string): string {
-  return s
-}
-
-// ── Pagination ──
+// ── Messages (all, no pagination) ──
 const msgs = computed<ChatMsg[]>(() => agentStore.getMsgs(props.moduleName))
 
-const totalPg = computed(() => Math.max(1, Math.ceil(msgs.value.length / CTX_PAGE)))
-
-const cur = computed(() => {
-  const p = agentStore.getPage(props.moduleName)
-  return p >= totalPg.value ? totalPg.value - 1 : p
-})
-
-const pageMsgs = computed(() => {
-  const start = cur.value * CTX_PAGE
-  return msgs.value.slice(start, start + CTX_PAGE)
-})
-
-const pageNumbers = computed(() => {
-  const nums: number[] = []
-  for (let i = 0; i < totalPg.value; i++) {
-    nums.push(i)
-  }
-  return nums
-})
-
-// ── Pagination actions ──
-function goPage(p: number) {
-  agentStore.setPage(props.moduleName, p)
-}
-
-function prevPage() {
-  goPage(Math.max(0, cur.value - 1))
-}
-
-function nextPage() {
-  goPage(Math.min(totalPg.value - 1, cur.value + 1))
-}
+const isEmpty = computed(() => msgs.value.length === 0)
 
 // ── Thinking toggle ──
 function toggleThinking(id: string) {
@@ -107,6 +70,10 @@ function onCardClick(msg: ChatMsg) {
 function onClear() {
   emit('clear')
 }
+
+function onCancelStream() {
+  agentStore.cancelAgent(props.moduleName)
+}
 </script>
 
 <template>
@@ -117,14 +84,16 @@ function onClear() {
       <button class="btn-sm" @click="onClear">清空</button>
     </div>
 
-    <!-- Card list -->
-    <div v-if="msgs.length === 0" class="ctx-empty">No conversations yet</div>
+    <!-- Empty state -->
+    <div v-if="isEmpty" class="ctx-empty">No conversations yet</div>
 
+    <!-- Message list (newest at bottom) -->
     <div v-else class="ctx-card-list">
       <div
-        v-for="msg in pageMsgs"
+        v-for="msg in msgs"
         :key="msg.id"
         class="ctx-card"
+        :class="{ 'ctx-card-streaming': msg.role === 'agent' && msg.status === 'executing' }"
         @click="onCardClick(msg)"
       >
         <div class="ctx-card-top">
@@ -151,43 +120,85 @@ function onClear() {
           class="ctx-thinking-content"
         >{{ msg.thinking }}</div>
 
-        <!-- Tools summary -->
+        <!-- Tools summary: show actual tool names -->
         <div v-if="msg.tools" class="ctx-tools">
           <span class="ctx-tag tag-tools">工具</span>
-          <span class="ctx-tools-count">{{ (msg.tools.match(/\[工具调用:/g) || []).length }} 个工具调用</span>
+          <span class="ctx-tools-count">{{ msg.tools.split('\n').filter(Boolean).length }} 次调用</span>
+          <div class="ctx-tools-list">
+            <span
+              v-for="(line, idx) in msg.tools.split('\n').filter(Boolean)"
+              :key="idx"
+              class="ctx-tool-line"
+            >{{ line }}</span>
+          </div>
         </div>
 
-        <!-- Content preview -->
+        <!-- Content -->
         <div class="ctx-preview">
-          <template v-if="msg.content">{{ msg.content.slice(0, 100) }}</template>
+          <template v-if="msg.content">{{ msg.content }}<span v-if="msg.role === 'agent' && msg.status === 'executing'" class="ctx-cursor"></span></template>
+          <span v-else-if="msg.role === 'agent' && msg.status === 'executing'" class="ctx-empty-preview">等待中...<span class="ctx-cursor"></span></span>
           <span v-else class="ctx-empty-preview">(无文本回复)</span>
         </div>
 
         <!-- Time -->
         <div class="ctx-time">{{ msg.time }}</div>
-      </div>
-    </div>
 
-    <!-- Paginator -->
-    <div v-if="msgs.length > 0" class="paginator">
-      <button
-        class="pg-btn"
-        :disabled="cur <= 0"
-        @click="prevPage"
-      >◀</button>
-      <button
-        v-for="p in pageNumbers"
-        :key="p"
-        class="pg-btn"
-        :class="{ active: p === cur }"
-        @click="goPage(p)"
-      >{{ p + 1 }}</button>
-      <button
-        class="pg-btn"
-        :disabled="cur >= totalPg - 1"
-        @click="nextPage"
-      >▶</button>
-      <span class="pg-info">{{ msgs.length }} 条</span>
+        <!-- Cancel button for streaming -->
+        <button
+          v-if="msg.role === 'agent' && msg.status === 'executing'"
+          class="btn-cancel-stream"
+          @click.stop="onCancelStream"
+        >取消</button>
+      </div>
+
+      <!-- ── Live streaming card ── -->
+      <div
+        v-if="isStreaming"
+        class="ctx-card ctx-card-streaming"
+      >
+        <div class="ctx-card-top">
+          <span class="ctx-role agent">🤖 Agent</span>
+          <span class="ctx-status st-streaming">流式输出中</span>
+        </div>
+
+        <!-- Live thinking section -->
+        <div
+          v-if="streamState?.sections.thinking"
+          class="ctx-stream-section ctx-stream-thinking"
+        >
+          <span class="ctx-stream-label">💭 思考</span>
+          <div class="ctx-stream-body thinking-text">{{ streamState?.thinking || '' }}</div>
+        </div>
+
+        <!-- Live tools section -->
+        <div
+          v-if="streamState?.sections.tools"
+          class="ctx-stream-section ctx-stream-tools"
+        >
+          <span class="ctx-stream-label">🔧 工具调用</span>
+          <div class="ctx-stream-body tools-text">
+            <span
+              v-for="(line, idx) in (streamState?.tools || '').split('\n').filter(Boolean)"
+              :key="idx"
+              class="stream-tool-line"
+            >{{ line }}</span>
+          </div>
+        </div>
+
+        <!-- Live reply section -->
+        <div
+          v-if="streamState?.sections.reply"
+          class="ctx-stream-section ctx-stream-reply"
+        >
+          <span class="ctx-stream-label">💬 回复</span>
+          <div class="ctx-stream-body">{{ streamState?.reply || '' }}<span class="stream-cursor"></span></div>
+        </div>
+
+        <!-- Cancel button -->
+        <button class="btn-cancel-stream" @click.stop="onCancelStream">
+          取消
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -244,7 +255,6 @@ function onClear() {
 .ctx-card-list {
   display: flex;
   flex-direction: column;
-  margin-bottom: 12px;
 }
 
 /* ── Card ── */
@@ -263,6 +273,15 @@ function onClear() {
 
 .ctx-card:hover {
   background: var(--el-fill-color-light);
+}
+
+.ctx-card-streaming {
+  background: var(--el-color-primary-light-9);
+  border-bottom: 2px solid var(--el-color-primary-light-5);
+}
+
+.ctx-card-streaming:hover {
+  background: var(--el-color-primary-light-9);
 }
 
 .ctx-card-top {
@@ -306,15 +325,13 @@ function onClear() {
 .st-error       { background: var(--el-color-danger-light-7);  color: var(--el-color-danger); }
 .st-interrupted { background: var(--el-color-warning-light-8); color: var(--el-color-warning); }
 
-/* ── Content preview ── */
+/* ── Content ── */
 .ctx-card .ctx-preview {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
   user-select: text;
   -webkit-user-select: text;
 }
@@ -388,6 +405,20 @@ function onClear() {
   vertical-align: middle;
 }
 
+.ctx-tools-list {
+  margin-top: 4px;
+  padding-left: 4px;
+  border-left: 2px solid var(--el-color-warning-light-5);
+}
+
+.ctx-tool-line {
+  display: block;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  padding: 1px 0;
+  font-family: monospace;
+}
+
 .ctx-tag {
   font-size: 8px;
   font-weight: 700;
@@ -408,51 +439,39 @@ function onClear() {
   color: var(--el-color-warning);
 }
 
-/* ── Pagination ── */
-.paginator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 8px 20px 14px;
-  flex-shrink: 0;
+/* ── Blinking cursor for streaming messages ── */
+.ctx-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  background: var(--el-color-primary);
+  margin-left: 2px;
+  animation: blink 1s infinite;
+  vertical-align: text-bottom;
 }
 
-.paginator .pg-btn {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 5px;
-  background: var(--el-fill-color-blank);
-  color: var(--el-text-color-primary);
-  font-size: 12px;
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ── Cancel button ── */
+.btn-cancel-stream {
+  display: block;
+  width: 100%;
+  padding: 6px;
+  margin-top: 8px;
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+  border: 1px solid var(--el-color-danger-light-7);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: all 0.15s;
 }
 
-.paginator .pg-btn:hover {
-  border-color: var(--el-color-primary);
-  color: var(--el-color-primary);
-}
-
-.paginator .pg-btn.active {
-  background: var(--el-color-primary);
-  color: #fff;
-  border-color: var(--el-color-primary);
-  font-weight: 700;
-}
-
-.paginator .pg-btn:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-
-.paginator .pg-info {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  padding: 0 4px;
+.btn-cancel-stream:hover {
+  background: var(--el-color-danger-light-8);
 }
 </style>

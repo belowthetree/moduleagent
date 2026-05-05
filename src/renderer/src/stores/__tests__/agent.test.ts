@@ -132,7 +132,7 @@ describe('useAgentStore', () => {
     expect(loaded[1]!.role).toBe('agent')
   })
 
-  it('context pagination: 12 msgs → pages of size 5', () => {
+  it('context messages: all 12 msgs available without pagination', () => {
     const store = useAgentStore()
     const msgs: ChatMsg[] = Array.from({ length: 12 }, (_, i) => ({
       id: String(i),
@@ -142,25 +142,15 @@ describe('useAgentStore', () => {
       tools: '',
       time: '10:00',
       status: 'sent' as const,
-      moduleName: 'mod-page',
+      moduleName: 'mod-msgs',
       agentCmd: 'test',
     }))
-    store.contextMap.set('mod-page', msgs)
+    store.contextMap.set('mod-msgs', msgs)
 
-    const totalPages = Math.ceil(msgs.length / 5)
-    expect(totalPages).toBe(3)
-
-    store.setPage('mod-page', 0)
-    const page0 = msgs.slice(0, 5)
-    expect(page0).toHaveLength(5)
-
-    store.setPage('mod-page', 1)
-    const page1 = msgs.slice(5, 10)
-    expect(page1).toHaveLength(5)
-
-    store.setPage('mod-page', 2)
-    const page2 = msgs.slice(10)
-    expect(page2).toHaveLength(2)
+    const all = store.getMsgs('mod-msgs')
+    expect(all).toHaveLength(12)
+    expect(all[0]!.content).toBe('msg 0')
+    expect(all[11]!.content).toBe('msg 11')
   })
 
   it('refreshRunningAgents: mock returns list, updates Map', async () => {
