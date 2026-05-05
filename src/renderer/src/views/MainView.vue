@@ -225,3 +225,10 @@ onUnmounted(() => {
   flex: 1;
 }
 </style>
+
+<!-- Global overrides for child component root elements -->
+<style>
+.tree-panel {
+  z-index: 1;
+}
+</style>

@@ -74,8 +74,10 @@ function createWindow() {
     show: false,
   });
 
-  // Always open DevTools for debugging the blank screen
-  mainWindow.webContents.openDevTools();
+  // Open DevTools only in dev mode (ELECTRON_RENDERER_URL is set)
+  if (process.env.ELECTRON_RENDERER_URL) {
+    mainWindow.webContents.openDevTools();
+  }
 
   mainWindow.webContents.on('did-fail-load', (_event, code, desc, url) => {
     console.error('[main] FAILED TO LOAD:', code, desc, url);

@@ -306,6 +306,7 @@ watch(() => props.root, () => {
 .tree-panel {
   overflow: hidden;
   position: relative;
+  background: var(--el-bg-color-page);
 }
 
 .tree-svg {
@@ -313,33 +314,33 @@ watch(() => props.root, () => {
 }
 
 .node-rect {
-  fill: var(--node-bg);
-  stroke: var(--border);
+  fill: var(--el-fill-color-blank);
+  stroke: var(--el-border-color);
   stroke-width: 1.5;
   rx: 8;
   cursor: pointer;
 }
 .node-rect:hover {
-  fill: var(--node-hover);
-  stroke: var(--accent);
+  fill: var(--el-fill-color-light);
+  stroke: var(--el-color-primary);
 }
 .node-rect.active {
-  fill: var(--node-active);
-  stroke: var(--accent2);
+  fill: var(--el-color-primary-light-5);
+  stroke: var(--el-color-primary-light-3);
   stroke-width: 2;
 }
 .node-rect.agent-idle {
-  stroke: var(--accent);
+  stroke: var(--el-color-primary);
   stroke-width: 2;
   filter: drop-shadow(0 0 4px rgba(122, 162, 247, 0.3));
 }
 .node-rect.agent-streaming {
-  stroke: var(--success);
+  stroke: var(--el-color-success);
   stroke-width: 2;
   filter: drop-shadow(0 0 8px rgba(158, 206, 106, 0.5));
 }
 .node-rect.agent-error {
-  stroke: var(--error);
+  stroke: var(--el-color-danger);
   stroke-width: 2;
   filter: drop-shadow(0 0 4px rgba(247, 118, 142, 0.4));
 }
@@ -347,14 +348,14 @@ watch(() => props.root, () => {
 .node-status-dot {
 }
 .dot-idle {
-  fill: var(--accent);
+  fill: var(--el-color-primary);
 }
 .dot-streaming {
-  fill: var(--success);
+  fill: var(--el-color-success);
   animation: pulse-dot 0.8s ease-in-out infinite;
 }
 .dot-error {
-  fill: var(--error);
+  fill: var(--el-color-danger);
 }
 
 @keyframes pulse-dot {
@@ -369,30 +370,30 @@ watch(() => props.root, () => {
 .node-text {
   font-size: 12px;
   font-weight: 600;
-  fill: var(--text);
+  fill: var(--el-text-color-primary);
   pointer-events: none;
   font-family: inherit;
 }
 
 .node-subtext {
   font-size: 10px;
-  fill: var(--text-dim);
+  fill: var(--el-text-color-secondary);
   pointer-events: none;
   font-family: inherit;
 }
 
 .edge-line {
-  stroke: var(--border);
+  stroke: var(--el-border-color);
   stroke-width: 1.5;
   fill: none;
   opacity: 0.6;
 }
 
 .expand-btn {
-  fill: var(--accent);
+  fill: var(--el-color-primary);
   cursor: pointer;
 }
 .expand-btn:hover {
-  fill: var(--accent2);
+  fill: var(--el-color-primary-light-3);
 }
 </style>
