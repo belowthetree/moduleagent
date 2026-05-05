@@ -142,7 +142,7 @@ function registerIpcHandlers() {
       prompts = loadSystemPrompts(app.getAppPath());
       mcpGraphFile = writeMcpGraphFile(graph);
 
-      stateManager = new AgentStateManager(path.join(app.getAppPath(), '.module-agent', 'context'));
+      stateManager = new AgentStateManager(path.join(projectRoot, '.module-agent', 'context'));
 
       orchestrator = new AgentOrchestrator({
         launcher,
@@ -355,7 +355,9 @@ function registerIpcHandlers() {
         moduleName,
         agentCmd,
       };
-      await stateManager?.saveContext(moduleName, [userMsg, agentMsg]);
+      const existingMsgs = await stateManager?.loadContext(moduleName) ?? [];
+      existingMsgs.push(userMsg, agentMsg);
+      await stateManager?.saveContext(moduleName, existingMsgs);
 
       agentStatus.set(moduleName, 'idle');
       mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'idle' });
