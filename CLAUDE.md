@@ -2,76 +2,89 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Build & Run
+## Build & verify
 
 ```bash
-npm install                           # Install dependencies
-npm run build:electron                # Build all (renderer + main + preload + MCP server)
-npm run electron                      # Build and launch Electron app
-npx tsc --noEmit                      # Type-check only
-npm run build:mcp-server              # Build MCP server bundle (dist/mcp-server.cjs) separately
-npm run build:renderer                # Build renderer only
-npm run build:main                    # Build main process only
+npm run dev               # Dev mode with Vite HMR (renderer + main + preload with hot reload)
+npm run build:electron    # Full production build: electron-vite + MCP server + CLI
+npm run electron          # Build then launch Electron app
+npm run typecheck         # Type-check only (no emit)
+npm run test              # Vitest unit/component tests
+npm run test:e2e          # Playwright end-to-end tests
 ```
 
-`npm run dist` packages the app with electron-builder (Windows portable).
+Type-check (`npm run typecheck`) is the primary guardrail. No linter or formatter configured.
 
-## Architecture Overview
+## Architecture: two parallel code paths
 
-ModuleAgent is an **Electron desktop app** that orchestrates external Agent CLI tools (Claude CLI, opencode, CodeBuddy) as child processes, one per module. It scans a project's `module.md` files to build a module tree, then spawns an Agent subprocess for each module, communicating via the **ACP protocol** (`@agentclientprotocol/sdk`). Cross-module communication happens through an **MCP server** that each Agent connects to.
+The codebase has **two parallel implementations** for the same concepts:
 
-### Key layers
+- **Electron path** (primary): `src/main/index.ts` does agent management inline via `AgentOrchestrator`/`McpBackendServer`. Renderer is Vue 3 SFC components with Pinia state management and Element Plus UI library. Used by the real app.
+- **CLI path** (secondary): `src/agents/AgentManager.ts` + `src/agents/AgentRouter.ts` + `src/cli/`. Used by `module-agent serve` / `tui`.
 
-**Electron main process** (`electron/main.ts`) — the central orchestrator. Handles IPC from the renderer, starts/stops Agent subprocesses, manages the MCP backend HTTP server, and coordinates cross-module calls. All Agent lifecycle logic lives here.
+They share `AgentLauncher`, `ModuleScanner`, `ModuleGraph`, and the protocol layer. But agent lifecycle management is duplicated. When changing one path, check if the other needs the same change.
 
-**Renderer** (`electron/renderer/`) — vanilla TypeScript UI (no framework). Renders an SVG module tree, a detail drawer with streaming Agent output, and a setup screen. Communicates with main via `contextBridge` API (`window.moduleAgent`).
+`docs/DEVELOPMENT.md` claims CLI was removed — this is **stale**. `src/cli/` still exists and is actively built via `npm run build:cli`.
 
-**Preload** (`electron/preload.ts`) — exposes a typed API object via `contextBridge.exposeInMainWorld`. Defines all IPC channel signatures.
+### Renderer architecture (Vue 3)
 
-**Core** (`src/core/`) — module discovery and analysis:
-- `ModuleScanner` — recursively walks directories finding `module.md` files, skipping builtin exclusions (node_modules, .git, dist, etc.)
-- `ModuleParser` — parses `module.md` frontmatter (gray-matter) and markdown body (marked)
-- `ModuleGraph` — builds an adjacency-list tree from scanned descriptors; root module (at project root) is required
-- `ModuleGenerator` — auto-generates `module.md` content from directory structure
-- `Logger` — file-based logger writing to `logs/` directory
+- **Views**: `SetupView.vue` (project config), `MainView.vue` (main workspace with module tree + agent chat)
+- **Key components**: `SVGTree.vue` (interactive module dependency graph), `DrawerPanel.vue` (side drawer), `StreamArea.vue` (streaming agent output), `ChatInput.vue` (message input), `ContextCards.vue` (module context cards), `SettingsDialog.vue`, `ThemeToggle.vue`, `MessageModal.vue`
+- **State management**: Pinia stores in `src/renderer/src/stores/` — `configStore`, `projectStore`, `agentStore`
+- **UI library**: Element Plus for dialogs, buttons, forms, notifications
+- **Routing**: Vue Router with setup and main workspace routes
 
-**Agents** (`src/agents/`):
-- `AgentLauncher` — spawns an Agent subprocess, wraps it in an ACP `ClientSideConnection`, auto-approves permissions, wires up FsHandler and TerminalHandler
-- `AgentManager` — maps agent lifecycle; used by the non-Electron code paths (some TUI/CLI usage)
-- `AgentRouter` — routes messages to the right module Agent by keyword match (`@modulename`), file path match, or defaults to main
+## Critical gotchas
 
-**Protocol** (`src/protocol/`):
-- `acp/connection.ts` — `createAgentConnection()`: spawns the Agent process, converts stdio to Web Streams, wraps in `ndJsonStream` + `ClientSideConnection`
-- `acp/handlers/fs.ts` — `FsHandler`: workspace-restricted file read/write; enforces that paths stay within the module's allowed directories (own workspace + submodule dirs)
-- `acp/handlers/terminal.ts` — `TerminalHandler`: manages terminal subprocesses for Agent tool calls
-- `mcp/MCPServer.ts` — MCP server exposing `module_list`, `module_call`, `module_query`, `create_module` tools via stdio transport
-- `mcp/CommunicationBus.ts` — routes cross-module messages; enforces access control (parent/child/sibling only); persists graph to JSON file
+- **Windows path normalization**: Always call `cwd.replace(/\\/g, '/')` before passing cwd to Agent subprocesses. Already done in `AgentLauncher.launch()`.
+- **Windows absolute paths on WSL/Linux**: `path.resolve('E:\\foo\\bar')` on Linux does NOT recognize the drive letter as absolute — it treats the whole thing as relative and prepends `cwd`. Use `normalizeCodeSourcePath()` from `src/core/PathUtils.ts` to convert `E:\foo\bar` → `/mnt/e/foo/bar` when `process.platform !== 'win32'`.
+- **CSP in main process**: Content Security Policy is set in `src/main/index.ts` via `session.defaultSession.webRequest.onHeadersReceived()`, NOT in HTML `<meta>` tags. For dev mode (Vite HMR), the CSP must allow `ws://` and inline scripts for HMR to function.
+- **`@` alias paths**: In renderer (Vue components), `@` resolves to `src/renderer/src/`. In main process, `@` resolves to `src/`. These are configured separately in `electron.vite.config.ts`.
+- **McpServerStdio env format**: Must be `Array<{name: string, value: string}>`, NOT `Record<string, string>`. Zod validation in the SDK rejects record types.
+- **Stream chunk content path**: Content is at `notification.update.content.text`, not `notification.update.text`.
+- **Map serialization**: Module graph uses `Map`. When serializing to JSON (for MCP graph file), convert to object with `Object.fromEntries(map)`. Deserialize with `new Map(Object.entries(obj))`.
+- **MCP server bundle path**: Use `app.getAppPath()` (Electron app root), NOT the user's project root. The bundle lives at `dist/mcp-server.cjs` relative to this repo.
+- **First message per session** injects system prompt (`config/mainagentprompt.md` or `config/subagentprompt.md`) + module context. Subsequent messages skip this. Tracked via `sessionPrompted` Set.
 
-**CLI** (`src/cli/`) — standalone CLI (not the Electron path). Commands: `list`, `get`, `serve` (NDJSON stdio protocol), `tui` (interactive terminal UI).
+## Project config
 
-### Data flow
+`.module-agent.json` at the **user's project root** (not this repo's root) configures agent command, args, exclusions, workspace path, code source, and module discovery path. Schema in `src/config/schema.ts`. Note: the repo's own `.module-agent.json` is a sample for self-hosting.
 
-1. User selects project directory in setup screen → `project:scan` IPC
-2. Main process: `ModuleScanner.scan()` → `ModuleGraph.build()` → writes MCP graph file → starts HTTP backend
-3. User clicks a module → `agent:start` IPC → `AgentLauncher.launch()` spawns Agent subprocess
-4. Agent subprocess connects back to MCP server (configured via `newSession({ mcpServers })`)
-5. User sends message → `agent:send` IPC → `connection.prompt()` with system prompt + module context + user text
-6. Streaming updates flow: `sessionUpdate` → main → `agent:stream` IPC → renderer
+### Config fields
 
-### Critical details
+| Field | Purpose |
+|-------|---------|
+| `agents.default.command` / `args` | Agent executable and arguments |
+| `exclude` | Directory/pattern list to skip during module scanning |
+| `workspace.path` | Where isolated workspace copies are created (Electron path) |
+| `codeSource.type` / `path` | Source code location for workspace isolation (`local` or `git`) |
+| `modulesPath` | **Module folder** — additional directory scanned for `module.md` files. Distinct from `codeSource.path` (which is for source isolation). When empty, falls back to `codeSource.path` for backward compatibility. |
 
-- **Windows paths must be normalized**: `cwd.replace(/\\/g, '/')` before passing to Agent subprocesses — otherwise path resolution fails
-- **MCP server bundle** (`dist/mcp-server.cjs`) path uses `app.getAppPath()`, not user project root
-- **Map serialization**: when writing module graph to JSON for MCP server, `Map` must be converted to plain object; deserialized with `new Map(Object.entries(...))`
-- **`McpServerStdio`** requires both `name` and `env` fields (Zod validation); `env` is `Array<{name, value}>` not `Record<string, string>`
-- **Stream chunk structure**: `agent_thought_chunk` (thinking, gray italic), `agent_message_chunk` (reply text), `tool_call` (orange highlight) — content is nested at `notification.update.content.text`
-- **First message per session** injects system prompt (`config/mainagentprompt.md` or `config/subagentprompt.md`) + module context (module.md body); subsequent messages are user text only
-- **Cross-module calls** flow: Agent A → MCP tool `module_call` → MCP server → HTTP POST → Electron backend → Agent B's `connection.prompt()`
+When changing the schema, update both `src/config/schema.ts` (Zod) and `src/config/defaults.ts` (TypeScript interface + `DEFAULT_CONFIG`). Then ensure all three config consumers are updated:
+- `src/tui/services/AgentService.ts` (TUI path)
+- `electron/main.ts` `config:save` / `config:get` / `project:scan` (Electron path)
+- `src/cli/commands/setup.ts` (CLI interactive setup)
 
-### Configuration
+## Key directories
 
-`.module-agent.json` at project root controls Agent command, args, exclude patterns, workspace path, and code source (git/local). Schema validated by Zod in `src/config/schema.ts`. Defaults in `src/config/defaults.ts` use `opencode acp`.
+| Directory | Purpose |
+|-----------|---------|
+| `src/main/index.ts` | Electron main process — all IPC, agent lifecycle, MCP backend |
+| `src/renderer/src/` | Vue 3 renderer — views, components, Pinia stores, router |
+| `src/preload/index.ts` | `contextBridge` API (`window.moduleAgent`) |
+| `src/core/` | ModuleScanner, ModuleGraph, ModuleParser, Logger, PathUtils |
+| `src/agents/AgentLauncher.ts` | Spawns agent subprocess, wraps in ACP ClientSideConnection |
+| `src/protocol/acp/` | ACP connection + FsHandler + TerminalHandler |
+| `src/protocol/mcp/` | MCP server + CommunicationBus + server-entry.ts |
+| `src/config/` | ConfigLoader, schema (Zod), defaults |
+| `config/` | System prompt markdown files |
+| `dist/mcp-server.cjs` | Self-contained MCP server bundle (spawned by agents) |
 
-### Two code paths
+## Build details
 
-The codebase has parallel implementations for Electron (primary) and CLI (secondary). `AgentManager` and `AgentRouter` in `src/agents/` are used by the CLI/TUI path; the Electron main process has its own inline agent management. The `DEVELOPMENT.md` docs note this as a known issue to consolidate.
+- **Renderer**: `electron-vite` (Vite + Vue plugin) → `out/renderer/`
+- **Main**: `electron-vite` → CJS to `out/main/`, externals: `electron`, `fs-extra`, `gray-matter`, `marked`, `simple-git`, `zod`, `@agentclientprotocol/sdk`, etc.
+- **Preload**: `electron-vite` → CJS to `out/preload/`, external: `electron`
+- **MCP server**: `esbuild` → self-contained CJS bundle (all deps inlined) → `dist/mcp-server.cjs`
+- **CLI**: `esbuild` → CJS bundle → `dist/cli.cjs`
+- Output files in `out/` and `dist/` are gitignored

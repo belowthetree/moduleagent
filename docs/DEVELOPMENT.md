@@ -1,6 +1,6 @@
 # ModuleAgent — 开发文档
 
-> 最后更新: 2026-04-28
+> 最后更新: 2026-05-05
 
 ## 1. 项目概述
 
@@ -12,7 +12,8 @@
 |------|------|------|
 | 运行时 | Electron | GUI 桌面应用 |
 | 语言 | TypeScript 5.7 | 强类型 |
-| 打包 | esbuild | 分别打包 renderer、main、preload |
+| 构建 | electron-vite (Vue 3 renderer) + esbuild (MCP server/CLI) | electron-vite 整合渲染/主进程/预加载构建，esbuild 单独打包 MCP/CLI |
+| UI | Vue 3 + Element Plus + Pinia | SFC 组件 + 状态管理 + UI 库 |
 | ACP 协议 | `@agentclientprotocol/sdk` v0.20 | Zed Industries 官方 SDK |
 | MCP 协议 | `@modelcontextprotocol/sdk` v1.29 | 官方 MCP SDK |
 | 模块解析 | gray-matter + marked | 解析 module.md |
@@ -21,7 +22,7 @@
 
 ### 与旧文档的差异
 
-项目方案和 DESIGN.md 描述的是 CLI + Ink 方案（Phase 1 设计），**实际实现是 Electron GUI 方案**。CLI 相关代码已于早期迭代中移除，改为纯 GUI。
+项目方案和 DESIGN.md 描述的是 CLI + Ink 方案（Phase 1 设计），**实际实现是 Electron GUI 方案（Vue 3）**。CLI 路径（`src/cli/`）作为次级路径保留，仍在 `npm run build:cli` 时构建。
 
 ---
 
@@ -29,21 +30,48 @@
 
 ```
 ModuleAgent/
-├── electron/
-│   ├── main.ts              # Electron 主进程 — Agent IPC、MCP 后端、窗口管理
-│   ├── preload.ts           # contextBridge API
-│   ├── renderer/
-│   │   ├── index.html       # 主页面
-│   │   ├── renderer.ts      # 渲染进程 — 模块树、对话、流式输出
-│   │   └── style.css        # 全部样式
-│   ├── main.cjs             # esbuild 构建产物
-│   ├── preload.cjs
-│   └── renderer.js
 ├── src/
+│   ├── main/
+│   │   └── index.ts                 # Electron 主进程 — Agent IPC、MCP 后端、窗口管理
+│   ├── preload/
+│   │   └── index.ts                 # contextBridge API (d.ts 类型在 src/types/preload.ts)
+│   ├── renderer/
+│   │   ├── index.html               # Vite 入口 HTML
+│   │   └── src/
+│   │       ├── main.ts              # Vue 3 入口 — createApp + router + pinia
+│   │       ├── App.vue              # 根组件
+│   │       ├── router/
+│   │       │   └── index.ts         # Vue Router（setup → main）
+│   │       ├── views/
+│   │       │   ├── SetupView.vue    # 设置页面（首次使用）
+│   │       │   └── MainView.vue     # 主界面（模块树 + Agent 对话）
+│   │       ├── components/
+│   │       │   ├── SVGTree.vue      # 交互式 SVG 模块树
+│   │       │   ├── DrawerPanel.vue  # 模块详情抽屉
+│   │       │   ├── StreamArea.vue   # 流式 Agent 输出
+│   │       │   ├── ContextCards.vue # 对话历史卡片
+│   │       │   ├── ChatInput.vue    # 消息输入框
+│   │       │   ├── SettingsDialog.vue # 设置对话框
+│   │       │   ├── MessageModal.vue # 消息详情弹窗
+│   │       │   └── ThemeToggle.vue  # 主题切换
+│   │       ├── stores/
+│   │       │   ├── agent.ts         # Pinia — Agent 状态、流式、对话上下文
+│   │       │   ├── config.ts        # Pinia — 项目配置
+│   │       │   └── project.ts       # Pinia — 模块树
+│   │       ├── composables/
+│   │       │   ├── useModuleAgent.ts # moduleAgent API 封装
+│   │       │   └── useTheme.ts      # 主题管理
+│   │       └── __mocks__/
+│   │           └── moduleAgent.ts   # 测试 mock
 │   ├── agents/
-│   │   ├── AgentLauncher.ts # 启动 Agent 子进程，建立 ClientSideConnection
-│   │   ├── AgentManager.ts  # 管理 Agent 生命周期（Electron 路径未使用）
-│   │   └── AgentRouter.ts   # 消息路由（Electron 路径未使用）
+│   │   ├── AgentLauncher.ts         # 启动 Agent 子进程，建立 ClientSideConnection
+│   │   ├── AgentManager.ts          # 管理 Agent 生命周期（CLI 路径使用）
+│   │   ├── AgentRouter.ts           # 消息路由（CLI 路径使用）
+│   │   ├── AgentOrchestrator.ts     # Electron 路径 Agent 编排
+│   │   ├── McpBackend.ts            # MCP HTTP 后端
+│   │   ├── McpServerBuilder.ts      # MCP Server 配置构建
+│   │   ├── PromptBuilder.ts         # 系统提示 + 模块上下文构建
+│   │   └── WorkspaceIsolator.ts     # 工作区隔离
 │   ├── protocol/
 │   │   ├── acp/
 │   │   │   ├── connection.ts        # createAgentConnection — spawn + ndJsonStream
@@ -61,29 +89,48 @@ ModuleAgent/
 │   │   ├── ModuleGraph.ts           # 构建模块树（邻接表）
 │   │   ├── ModuleGenerator.ts       # 自动生成 module.md
 │   │   ├── ExclusionRules.ts        # 内置排除规则
-│   │   └── Logger.ts                # 日志系统
+│   │   ├── Logger.ts                # 日志系统
+│   │   └── PathUtils.ts             # 跨平台路径处理
 │   ├── config/
 │   │   ├── ConfigLoader.ts          # 加载 .module-agent.json
 │   │   ├── defaults.ts              # 默认配置
 │   │   └── schema.ts                # Zod schema
+│   ├── cli/
+│   │   └── index.ts                 # CLI 入口（`module-agent serve` / `tui`）
 │   └── types/
-│       └── module.ts                # ModuleDefinition, ModuleGraphNode 等
+│       ├── module.ts                # ModuleDefinition, ModuleGraphNode 等
+│       └── preload.ts               # ChatMsg, TreeNode, AgentStreamData 等
+├── electron/                        # 旧文件保留（esbuild 构建产物 main.cjs, preload.cjs）
+├── out/                             # electron-vite 构建输出
+│   ├── main/
+│   │   └── index.cjs               # 主进程 CJS bundle
+│   ├── preload/
+│   │   └── index.cjs               # 预加载 CJS bundle
+│   └── renderer/                   # 渲染进程 (Vite 产物)
 ├── dist/
-│   └── mcp-server.cjs               # MCP Server 打包产物（563KB，自包含）
+│   ├── mcp-server.cjs               # MCP Server 打包产物（自包含）
+│   └── cli.cjs                      # CLI 打包产物（自包含）
 ├── config/
 │   ├── mainagentprompt.md           # 主 Agent 系统提示
 │   └── subagentprompt.md            # 子 Agent 系统提示
+├── electron.vite.config.ts          # electron-vite 配置（main + preload + renderer）
+├── electron-builder.yml             # electron-builder 打包配置
+├── vitest.config.ts                 # Vitest 测试配置
+├── playwright.config.ts             # Playwright e2e 测试配置
 ├── test_acp.ts                      # ACP SDK 独立测试脚本
 ├── package.json
-└── tsconfig.json
+├── tsconfig.json
+├── tsconfig.node.json               # 主进程/preload TS 配置
+└── tsconfig.web.json                # 渲染进程 TS 配置
 ```
 
-### 已删除的文件
+### 已删除/废弃的文件
 - `src/protocol/acp/Transport.ts` — 替换为 SDK 的 `ndJsonStream`
 - `src/protocol/acp/ACPClient.ts` — 替换为 SDK 的 `ClientSideConnection`
 - `src/protocol/acp/ACPSession.ts` — 不再需要
 - `src/protocol/acp/types.ts` — 替换为 SDK 的 schema 类型
-- `src/cli/` — 整个 CLI 模块已移除
+- `electron/main.ts`, `electron/preload.ts`, `electron/renderer/` — 迁移到 `src/main/`、`src/preload/`、`src/renderer/`，旧目录保留构建产物
+- `electron/renderer.ts` — 替换为 Vue 3 SFC 组件（`src/renderer/src/components/`）
 
 ---
 
@@ -207,33 +254,32 @@ interface ModuleAgentApi {
 ## 5. 渲染进程 UI 结构
 
 ```
-setup-screen: 设置页面（首次使用）
-  ├─ agent-cmd-input    Agent 命令（默认 opencode）
-  ├─ agent-args-input   参数（默认 acp）
-  ├─ workspace-input    工作目录
-  ├─ project-input      模块目录
-  └─ btn-start          开始扫描
+SetupView.vue: 设置页面（首次使用）
+  ├─ Element Plus 表单控件（agent 命令、参数、工作目录、模块目录、代码源）
+  └─ 开始扫描按钮
 
-main-screen: 主界面
-  ├─ tree-panel: SVG 模块树
-  ├─ drawer: 模块详情抽屉
+MainView.vue: 主界面
+  ├─ SVGTree.vue: 交互式 SVG 模块依赖图（缩放/拖拽/折叠）
+  ├─ DrawerPanel.vue: 模块详情抽屉（Element Plus Drawer）
   │   ├─ 模块信息（路径、来源、子模块数）
-  │   ├─ stream-area: 流式输出区域
-  │   │   ├─ stream-thinking  灰色斜体（思考）
-  │   │   ├─ stream-tool      橙色高亮（工具调用）
-  │   │   └─ stream-content   正常文本（回复）
-  │   ├─ btn-cancel-stream: 取消按钮（流式输出时显示）
-  │   └─ ctx-bottom: 对话上下文
-  │       ├─ ctx-cards: 历史消息卡片
+  │   ├─ StreamArea.vue: 流式 Agent 输出
+  │   │   ├─ 思考内容（灰色斜体，agent_thought_chunk）
+  │   │   ├─ 工具调用（橙色高亮，tool_call）
+  │   │   └─ 回复文本（正常文本，agent_message_chunk）
+  │   ├─ 取消按钮（流式输出时显示）
+  │   └─ 对话上下文区域
+  │       ├─ ContextCards.vue: 历史消息卡片（分页）
   │       │   ├─ 思考标签（灰色）
   │       │   ├─ 工具标签（橙色）
+  │       │   ├─ 跨模块消息标签（蓝色，'cross' 角色）
   │       │   └─ 回复预览
-  │       ├─ ctx-paginator: 分页
-  │       └─ ctx-chat: 输入框 + 发送按钮
-  └─ modal-overlay: 消息详情弹窗
-      ├─ 思考过程 section
-      ├─ 工具调用 section
-      └─ 回复 section
+  │       └─ ChatInput.vue: 输入框 + 发送按钮
+  ├─ SettingsDialog.vue: 设置对话框（Element Plus Dialog）
+  ├─ MessageModal.vue: 消息详情弹窗（Element Plus Dialog）
+  │   ├─ 思考过程 section
+  │   ├─ 工具调用 section
+  │   └─ 回复 section
+  └─ ThemeToggle.vue: 暗色/亮色主题切换
 ```
 
 ### ChatMsg 数据结构
@@ -241,14 +287,16 @@ main-screen: 主界面
 ```typescript
 interface ChatMsg {
   id: string
-  role: 'user' | 'agent'
+  role: 'user' | 'agent' | 'cross'   // 'cross' = 跨模块通信消息
   content: string        // 回复文本 (agent_message_chunk)
   thinking: string       // 思考文本 (agent_thought_chunk)
   tools: string          // 工具调用信息
   time: string
-  status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error'
+  status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error' | 'interrupted'
   moduleName: string
   agentCmd: string
+  crossDirection?: 'sent' | 'received'  // cross 消息方向
+  crossModule?: string                  // 跨模块通信的目标模块
 }
 ```
 
@@ -260,31 +308,44 @@ interface ChatMsg {
 # 安装依赖
 npm install
 
-# 构建全部（renderer + main + preload + mcp-server）
+# 开发模式（Vite HMR，渲染进程 + 主进程 + preload 热重载）
+npm run dev
+
+# 类型检查（无 emit）
+npm run typecheck
+
+# 单元/组件测试（Vitest）
+npm run test
+
+# E2E 测试（Playwright）
+npm run test:e2e
+
+# 生产构建（electron-vite + MCP server + CLI）
 npm run build:electron
 
-# 启动
+# 构建并启动 Electron 应用
 npm run electron
 
-# 类型检查
-npx tsc --noEmit
+# 打包为可分发格式
+npm run dist
 
 # 独立测试 ACP SDK 通信
 npx tsx test_acp.ts [workspace_dir]
-
-# 单独构建
-npm run build:renderer      # renderer.js
-npm run build:main          # main.cjs
-npm run build:preload        # preload.cjs
-npm run build:mcp-server    # dist/mcp-server.cjs
 ```
 
-### esbuild 外部依赖
+### 构建工具分工
 
-`build:main` 将以下包标记为 external（不在 bundle 中）：
-`electron`, `fs-extra`, `gray-matter`, `marked`, `simple-git`, `zod`, `path`, `url`, `esbuild`, `@agentclientprotocol/sdk`
+**electron-vite** (`npm run build:electron` 的第一步):
+- 主进程 (`src/main/`) → `out/main/index.cjs`（CJS，external: electron, fs-extra, gray-matter, marked, simple-git, zod, @agentclientprotocol/sdk）
+- 预加载 (`src/preload/`) → `out/preload/index.cjs`（CJS，external: electron）
+- 渲染进程 (`src/renderer/`) → `out/renderer/`（Vite 产物，含 Vue 3 SFC 编译）
+- 配置在 `electron.vite.config.ts` 中统一管理
 
-`build:mcp-server` 打包所有依赖为自包含 CJS 文件（563KB），Agent 直接用 `node dist/mcp-server.cjs` 启动。
+**esbuild** (后续步骤):
+- `build:mcp-server` → `dist/mcp-server.cjs`（自包含 CJS，Agent 直接 `node dist/mcp-server.cjs` 启动）
+- `build:cli` → `dist/cli.cjs`（自包含 CJS，external: @opentui/*）
+
+`npm run dev` 时 electron-vite 以 Vite HMR 模式运行，渲染进程和主进程均支持热重载，无需手动重启。
 
 ---
 
@@ -313,10 +374,19 @@ npm run build:mcp-server    # dist/mcp-server.cjs
 
 ## 8. 已知问题与注意事项
 
+### 构建与工具链
+- **electron-vite**: 渲染进程（Vue 3）用 Vite 打包，主进程和 preload 用 esbuild。三者在 `electron.vite.config.ts` 统一配置。
+- **模块别名**: 渲染进程中 `@` → `src/renderer/src/`，主进程中 `@` → `src/`。两者在 `electron.vite.config.ts` 中分别配置。
+- **多 tsconfig**: `tsconfig.json`（根，含所有路径引用）、`tsconfig.node.json`（主进程/preload）、`tsconfig.web.json`（渲染进程）。
+- **Vite HMR**: `npm run dev` 时渲染进程 HMR 自动替换 Vue 组件，主进程和 preload 的改动用 electron-vite 的 watch 模式重建并重载窗口。
+- **CSP 管理**: Content Security Policy 在 `src/main/index.ts` 中通过 `session.defaultSession.webRequest.onHeadersReceived()` 设置，**不在 HTML `<meta>` 标签**。开发模式下必须允许 `ws://` 和 inline scripts 以支持 Vite HMR。
+- **`app.getAppPath()`**: MCP Server 和 CLI bundle 路径在 `package.json` 的 `files` 数组中必须包含，`electron-builder` 打包时确保这些文件被打入 asar。
+
 ### 路径处理
 - Windows 路径必须转为正斜杠 `/`，否则 Agent 解析失败
 - `AgentLauncher.launch()` 入口处自动 `cwd.replace(/\\/g, '/')`
 - `newSession()` 调用应使用 `launched.cwd` 而非原始 cwd
+- **WSL/Linux 上的 Windows 绝对路径**: `path.resolve('E:\\foo\\bar')` 在 Linux 上不识别盘符，会将整个路径当作相对路径并拼到 cwd。使用 `normalizeCodeSourcePath()` 将 `E:\foo\bar` 转换为 `/mnt/e/foo/bar`（仅在 `process.platform !== 'win32'` 时转换）。
 
 ### SDK 类型陷阱
 - `SessionUpdate.text` 不存在，正确路径是 `content.text`（`content` 是 `ContentBlock`）
@@ -343,7 +413,8 @@ npm run build:mcp-server    # dist/mcp-server.cjs
 ## 9. 待完成
 
 - [ ] `module_call` 的 HTTP 后端需要处理超时和大响应
-- [ ] AgentManager/AgentRouter 与 Electron 路径整合（目前两套并行代码）
-- [ ] 模块代码同步到工作区（WorkspaceManager 未实现）
-- [ ] 生产构建（electron-builder 打包）
+- [ ] AgentManager/AgentRouter 与 Electron 路径整合（目前两套并行代码，Electron 用 AgentOrchestrator，CLI 用 AgentManager/AgentRouter）
+- [ ] 模块代码同步到工作区（WorkspaceIsolator 已实现 workspace 目录隔离，但模块源码自动同步待完善）
+- [x] 生产构建基础配置（electron-builder.yml + `npm run dist`）
 - [ ] Mac/Linux 平台测试
+- [ ] 集成测试覆盖（Vitest 单元/组件测试 + Playwright e2e 框架已搭好，用例待扩充）
