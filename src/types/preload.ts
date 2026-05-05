@@ -35,6 +35,7 @@ export interface ChatMsg {
   agentCmd: string;
   crossDirection?: 'sent' | 'received';
   crossModule?: string;
+  crossPhase?: 'request' | 'response';
 }
 
 export interface AgentStreamData {

@@ -187,6 +187,7 @@ describe('useAgentStore', () => {
     expect(msgs[0]!.moduleName).toBe('target-module')
     expect(msgs[0]!.crossModule).toBe('other-module')
     expect(msgs[0]!.crossDirection).toBe('received')
+    expect(msgs[0]!.crossPhase).toBe('request')
     expect(msgs[0]!.content).toBe('Cross-context message from another module')
   })
 })

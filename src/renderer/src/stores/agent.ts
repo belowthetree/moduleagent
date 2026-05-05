@@ -80,6 +80,10 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   function restoreContext(moduleName: string): void {
+    // Don't overwrite live in-memory data with stale localStorage
+    if (contextMap.value.has(moduleName) && (contextMap.value.get(moduleName)?.length ?? 0) > 0) {
+      return
+    }
     const msgs = loadContext(moduleName)
     if (msgs.length > 0) {
       for (const msg of msgs) {
@@ -210,13 +214,30 @@ export const useAgentStore = defineStore('agent', () => {
     const msgId = liveMsgId.value.get(moduleName)
     if (msgId && (content || thinking || tools)) {
       const msgs = getMsgs(moduleName)
-      const idx = msgs.findIndex(m => m.id === msgId)
+      let idx = msgs.findIndex(m => m.id === msgId)
+      if (idx === -1) {
+        // msgId was set but msg not found by ID — find last executing agent msg instead
+        idx = msgs.findLastIndex(m => m.role === 'agent' && m.status === 'executing')
+      }
       if (idx !== -1) {
         msgs[idx]!.content = content
         msgs[idx]!.thinking = thinking
         msgs[idx]!.tools = tools
         msgs[idx]!.time = now()
         msgs[idx]!.status = 'completed'
+      } else {
+        // No matching msg found at all — create new completed msg
+        getMsgs(moduleName).push({
+          id: 'm' + Date.now(),
+          role: 'agent',
+          content,
+          thinking,
+          tools,
+          time: now(),
+          status: 'completed',
+          moduleName,
+          agentCmd: agentCmd.value,
+        })
       }
     } else if (!msgId && (content || thinking || tools)) {
       getMsgs(moduleName).push({
@@ -233,7 +254,10 @@ export const useAgentStore = defineStore('agent', () => {
     }
     if (msgId && !content && !thinking && !tools) {
       const msgs = getMsgs(moduleName)
-      const idx = msgs.findIndex(m => m.id === msgId)
+      let idx = msgs.findIndex(m => m.id === msgId)
+      if (idx === -1) {
+        idx = msgs.findLastIndex(m => m.role === 'agent' && m.status === 'executing')
+      }
       if (idx !== -1) msgs.splice(idx, 1)
     }
 
@@ -323,7 +347,7 @@ export const useAgentStore = defineStore('agent', () => {
   // ── Cross-context listener ──
   function ensureCrossContextListener(): void {
     if (crossContextCleanup.value) return
-    crossContextCleanup.value = window.moduleAgent.onCrossContext(({ moduleName, crossModule, direction, content, time }) => {
+    crossContextCleanup.value = window.moduleAgent.onCrossContext(({ moduleName, crossModule, direction, phase, content, time }) => {
       const msg: ChatMsg = {
         id: 'x' + Date.now() + Math.random().toString(36).slice(2, 6),
         role: 'cross',
@@ -336,6 +360,7 @@ export const useAgentStore = defineStore('agent', () => {
         agentCmd: '',
         crossDirection: direction,
         crossModule,
+        crossPhase: phase,
       }
       getMsgs(moduleName).push(msg)
       saveContext(moduleName)

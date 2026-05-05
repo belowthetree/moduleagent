@@ -46,13 +46,7 @@ export class AgentManager {
         this.logger?.info(`  stdio: ${s.command} ${(s.args || []).join(' ')}`);
       }
     }
-    const SESSION_TIMEOUT_MS = 30000;
-    const result = await Promise.race([
-      agent.connection.newSession({ cwd: agent.cwd, mcpServers: this.mcpConfig }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`newSession timed out after ${SESSION_TIMEOUT_MS / 1000}s`)), SESSION_TIMEOUT_MS)
-      ),
-    ]);
+    const result = await agent.connection.newSession({ cwd: agent.cwd, mcpServers: this.mcpConfig });
     const sessionId = result.sessionId;
     this.logger?.info(`MCP: newSession OK for main, sessionId=${sessionId.slice(0, 8)}`);
 
@@ -84,13 +78,7 @@ export class AgentManager {
       agent.onSessionUpdate = onSessionUpdate;
     }
     this.logger?.info(`MCP: newSession for ${moduleName} agent with ${this.mcpConfig.length} mcp servers`);
-    const SESSION_TIMEOUT_MS = 30000;
-    const result = await Promise.race([
-      agent.connection.newSession({ cwd: agent.cwd, mcpServers: this.mcpConfig }),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`newSession timed out after ${SESSION_TIMEOUT_MS / 1000}s`)), SESSION_TIMEOUT_MS)
-      ),
-    ]);
+    const result = await agent.connection.newSession({ cwd: agent.cwd, mcpServers: this.mcpConfig });
     const sessionId = result.sessionId;
     this.logger?.info(`MCP: newSession OK for ${moduleName}, sessionId=${sessionId.slice(0, 8)}`);
 

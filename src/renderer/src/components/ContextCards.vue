@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { ChatMsg } from '../../../types/preload'
 import { useAgentStore } from '../stores/agent'
 
@@ -29,6 +29,15 @@ function statusLabel(s: string): string {
   return map[s] || s
 }
 
+function crossDirectionLabel(msg: ChatMsg): string {
+  if (msg.crossDirection === 'sent') return `📤 发送至 ${msg.crossModule || '?'}`
+  return `📥 来自 ${msg.crossModule || '?'}`
+}
+
+function crossPhaseLabel(msg: ChatMsg): string {
+  return msg.crossPhase === 'request' ? '请求' : '响应'
+}
+
 function roleIcon(role: string): string {
   if (role === 'user') return '👤'
   if (role === 'agent') return '🤖'
@@ -45,6 +54,18 @@ function roleLabel(role: string): string {
 const msgs = computed<ChatMsg[]>(() => agentStore.getMsgs(props.moduleName))
 
 const isEmpty = computed(() => msgs.value.length === 0)
+
+// ── Auto-scroll to bottom ──
+function scrollToBottom() {
+  nextTick(() => {
+    if (cardListRef.value && cardListRef.value.lastElementChild) {
+      cardListRef.value.lastElementChild.scrollIntoView({ behavior: 'instant', block: 'end' })
+    }
+  })
+}
+
+watch(() => msgs.value.length, scrollToBottom)
+watch(() => msgs.value.map(m => m.content + m.thinking + m.tools).join(''), scrollToBottom)
 
 // ── Thinking toggle ──
 function toggleThinking(id: string) {
@@ -88,7 +109,7 @@ function onCancelStream() {
     <div v-if="isEmpty" class="ctx-empty">No conversations yet</div>
 
     <!-- Message list (newest at bottom) -->
-    <div v-else class="ctx-card-list">
+    <div ref="cardListRef" v-else class="ctx-card-list">
       <div
         v-for="msg in msgs"
         :key="msg.id"
@@ -100,13 +121,14 @@ function onCancelStream() {
           <span
             v-if="msg.role === 'cross'"
             class="ctx-role cross"
-          >{{ msg.crossDirection === 'sent' ? '📤' : '📥' }} 跨模块 {{ msg.crossDirection === 'sent' ? '→ ' + (msg.crossModule || '') : '← ' + (msg.crossModule || '') }}</span>
+          >{{ crossDirectionLabel(msg) }}</span>
           <span
             v-else
             class="ctx-role"
             :class="msg.role"
           >{{ roleIcon(msg.role) }} {{ roleLabel(msg.role) }}</span>
           <span class="ctx-status" :class="'st-' + msg.status">{{ statusLabel(msg.status) }}</span>
+          <span v-if="msg.role === 'cross'" class="ctx-phase-tag">{{ crossPhaseLabel(msg) }}</span>
         </div>
 
         <!-- Thinking toggle -->
@@ -149,55 +171,6 @@ function onCancelStream() {
           class="btn-cancel-stream"
           @click.stop="onCancelStream"
         >取消</button>
-      </div>
-
-      <!-- ── Live streaming card ── -->
-      <div
-        v-if="isStreaming"
-        class="ctx-card ctx-card-streaming"
-      >
-        <div class="ctx-card-top">
-          <span class="ctx-role agent">🤖 Agent</span>
-          <span class="ctx-status st-streaming">流式输出中</span>
-        </div>
-
-        <!-- Live thinking section -->
-        <div
-          v-if="streamState?.sections.thinking"
-          class="ctx-stream-section ctx-stream-thinking"
-        >
-          <span class="ctx-stream-label">💭 思考</span>
-          <div class="ctx-stream-body thinking-text">{{ streamState?.thinking || '' }}</div>
-        </div>
-
-        <!-- Live tools section -->
-        <div
-          v-if="streamState?.sections.tools"
-          class="ctx-stream-section ctx-stream-tools"
-        >
-          <span class="ctx-stream-label">🔧 工具调用</span>
-          <div class="ctx-stream-body tools-text">
-            <span
-              v-for="(line, idx) in (streamState?.tools || '').split('\n').filter(Boolean)"
-              :key="idx"
-              class="stream-tool-line"
-            >{{ line }}</span>
-          </div>
-        </div>
-
-        <!-- Live reply section -->
-        <div
-          v-if="streamState?.sections.reply"
-          class="ctx-stream-section ctx-stream-reply"
-        >
-          <span class="ctx-stream-label">💬 回复</span>
-          <div class="ctx-stream-body">{{ streamState?.reply || '' }}<span class="stream-cursor"></span></div>
-        </div>
-
-        <!-- Cancel button -->
-        <button class="btn-cancel-stream" @click.stop="onCancelStream">
-          取消
-        </button>
       </div>
     </div>
   </div>
@@ -324,6 +297,17 @@ function onCancelStream() {
 .st-completed   { background: var(--el-color-success-light-8); color: var(--el-color-success); }
 .st-error       { background: var(--el-color-danger-light-7);  color: var(--el-color-danger); }
 .st-interrupted { background: var(--el-color-warning-light-8); color: var(--el-color-warning); }
+
+/* ── Cross phase tag ── */
+.ctx-phase-tag {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: var(--el-color-info-light-8);
+  color: var(--el-color-info);
+  margin-left: 4px;
+}
 
 /* ── Content ── */
 .ctx-card .ctx-preview {

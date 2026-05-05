@@ -91,6 +91,7 @@ function onCloseDrawer(): void {
 // ── Lifecycle ──
 onMounted(async () => {
   agentStore.startRunningPoll()
+  agentStore.ensureCrossContextListener()
 
   // Auto-scan if tree not loaded yet (e.g., came directly from setup-skip)
   if (!projectStore.treeRoot && configStore.projectPath && configStore.workspacePath) {
