@@ -19,3 +19,4 @@ example/
 .module-agent/
 release/
 .module-agent.json
+out/
