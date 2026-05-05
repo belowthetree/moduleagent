@@ -44,6 +44,10 @@ export interface AgentStreamData {
   sessionId?: string;
   update: string;
   data: Record<string, unknown>;
+  reply?: string;
+  thinking?: string;
+  tools?: string;
+  sections?: { thinking: boolean; tools: boolean; reply: boolean };
 }
 
 export interface CrossContextData {

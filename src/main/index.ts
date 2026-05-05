@@ -11,6 +11,7 @@ import { Logger, LogLevel, defaultLogger } from '../core/Logger.js';
 import { normalizeCodeSourcePath } from '../core/PathUtils.js';
 import { AgentLauncher } from '../agents/AgentLauncher.js';
 import { AgentOrchestrator } from '../agents/AgentOrchestrator.js';
+import { AgentStateManager } from '../agents/AgentStateManager.js';
 import { McpBackendServer } from '../agents/McpBackend.js';
 import {
   workspacePathForModule,
@@ -50,6 +51,7 @@ let mcpGraphFile = '';
 
 let prompts = { mainPrompt: '', subPrompt: '' };
 let orchestrator: AgentOrchestrator | null = null;
+let stateManager: AgentStateManager | null = null;
 let mcpBackend: McpBackendServer | null = null;
 
 function createWindow() {
@@ -138,6 +140,8 @@ function registerIpcHandlers() {
       prompts = loadSystemPrompts(app.getAppPath());
       mcpGraphFile = writeMcpGraphFile(graph);
 
+      stateManager = new AgentStateManager(path.join(app.getAppPath(), '.module-agent', 'context'));
+
       orchestrator = new AgentOrchestrator({
         launcher,
         workspaceIsolator: {
@@ -159,11 +163,17 @@ function registerIpcHandlers() {
         callbacks: {
           onSessionUpdate(name, sessionId, notification) {
             if (mainWindow && !mainWindow.isDestroyed()) {
+              stateManager?.appendChunk(name, notification.update.sessionUpdate, notification.update);
+              const acc = stateManager?.getStreamState(name);
               mainWindow.webContents.send('agent:stream', {
                 moduleName: name,
                 sessionId,
                 update: notification.update.sessionUpdate,
                 data: notification.update,
+                reply: acc?.reply,
+                thinking: acc?.thinking,
+                tools: acc?.tools,
+                sections: acc?.sections,
               });
             }
           },
@@ -308,7 +318,8 @@ function registerIpcHandlers() {
       agentStatus.set(moduleName, 'idle');
       defaultLogger.info(`agent:cancel [${moduleName}]`);
     }
-    return {};
+    const acc = stateManager?.cancelStream(moduleName);
+    return { accumulated: acc };
   });
 
   ipcMain.handle('agent:stop', async (_event, moduleName: string) => {
@@ -320,6 +331,7 @@ function registerIpcHandlers() {
       sessionPrompted.delete(moduleName);
       defaultLogger.info(`agent:stop [${moduleName}]`);
     }
+    stateManager?.stopStream(moduleName);
     return {};
   });
 
