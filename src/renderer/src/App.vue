@@ -5,20 +5,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import { useConfigStore } from './stores/config'
 import { useTheme } from './composables/useTheme'
 
 // Trigger theme side effects — applyTheme() runs on module load,
 // setting document.documentElement class from localStorage 'theme'
 useTheme()
-
-const configStore = useConfigStore()
-
-onMounted(() => {
-  configStore.loadFromLocalStorage()
-})
 </script>
 
 <style scoped>

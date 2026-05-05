@@ -7,7 +7,7 @@ import MainView from '../views/MainView.vue'
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/setup',
+    redirect: '/main',
   },
   {
     path: '/setup',

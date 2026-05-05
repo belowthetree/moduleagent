@@ -16,9 +16,11 @@ const configStore = useConfigStore()
 
 // ── Settings dialog toggle ──
 const showSettings = ref(false)
+const scanning = ref(false)
 
 // ── Computed ──
 const statusText = computed(() => {
+  if (scanning.value) return '正在扫描...'
   if (!projectStore.treeRoot) return '就绪'
   const count = projectStore.flattenedNodes.length
   return `已渲染 ${count} 个节点`
@@ -83,8 +85,20 @@ function onCloseDrawer(): void {
 }
 
 // ── Lifecycle ──
-onMounted(() => {
+onMounted(async () => {
   agentStore.startRunningPoll()
+
+  // Auto-scan if tree not loaded yet (e.g., came directly from setup-skip)
+  if (!projectStore.treeRoot && configStore.projectPath && configStore.workspacePath) {
+    scanning.value = true
+    try {
+      await projectStore.scanProject(configStore.projectPath, configStore.workspacePath)
+    } catch (err) {
+      console.error('自动扫描失败:', (err as Error).message)
+    } finally {
+      scanning.value = false
+    }
+  }
 })
 
 onUnmounted(() => {
@@ -151,7 +165,7 @@ onUnmounted(() => {
 
     <!-- Status bar -->
     <div class="status-bar">
-      <span class="dot" />
+      <span class="dot" :class="{ scanning }" />
       <span class="status-text">{{ statusText }}</span>
       <span class="spacer" />
       <span class="status-path">{{ projectName }}</span>
@@ -219,6 +233,20 @@ onUnmounted(() => {
   height: 7px;
   border-radius: 50%;
   background: var(--el-color-success);
+}
+
+.dot.scanning {
+  background: var(--el-color-warning);
+  animation: pulse-dot 0.8s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .spacer {
