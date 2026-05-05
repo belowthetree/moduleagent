@@ -1,10 +1,19 @@
 import { createMockModuleAgentApi } from './src/renderer/src/__mocks__/moduleAgent';
-import type { ModuleAgentApi } from './src/types/preload';
 
-declare global {
-  interface Window {
-    moduleAgent: ModuleAgentApi;
-  }
-}
+// In-memory localStorage for Node environment
+const store = new Map<string, string>();
+(globalThis as any).localStorage = {
+  getItem: (key: string) => store.get(key) ?? null,
+  setItem: (key: string, value: string) => { store.set(key, value) },
+  removeItem: (key: string) => { store.delete(key) },
+  clear: () => { store.clear() },
+  get length() { return store.size },
+  key: (index: number) => [...store.keys()][index] ?? null,
+};
 
-window.moduleAgent = createMockModuleAgentApi();
+const mockApi = createMockModuleAgentApi();
+(globalThis as any).window = {
+  moduleAgent: mockApi,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+};
