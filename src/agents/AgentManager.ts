@@ -34,8 +34,9 @@ export class AgentManager {
     onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void,
     subModuleDirs?: string[],
   ): Promise<AgentEntry> {
-    const config = this.resolveAgentConfig('main');
-    const agent = await this.launcher.launch(config, 'main', mainCwd, this.logger, { subModuleDirs: subModuleDirs ?? [] });
+    const rootName = this.graph.root;
+    const config = this.resolveAgentConfig(rootName);
+    const agent = await this.launcher.launch(config, rootName, mainCwd, this.logger, { subModuleDirs: subModuleDirs ?? [] });
     if (onSessionUpdate) {
       agent.onSessionUpdate = onSessionUpdate;
     }
@@ -56,14 +57,14 @@ export class AgentManager {
     this.logger?.info(`MCP: newSession OK for main, sessionId=${sessionId.slice(0, 8)}`);
 
     const entry: AgentEntry = {
-      name: 'main',
+      name: rootName,
       config,
       agent,
       sessionId,
       modulePath: mainCwd,
       capabilities: agent.agentCapabilities,
     };
-    this.agents.set('main', entry);
+    this.agents.set(rootName, entry);
     return entry;
   }
 
@@ -138,7 +139,7 @@ export class AgentManager {
   }
 
   getMainAgent(): AgentEntry | undefined {
-    return this.agents.get('main');
+    return this.agents.get(this.graph.root);
   }
 
   hasAgent(name: string): boolean {

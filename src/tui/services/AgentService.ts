@@ -170,13 +170,6 @@ export class AgentService {
         if (!entry) throw new Error(`Failed to start agent "${name}"`);
       }
 
-      this.onMessage({
-        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        role: 'user',
-        content: text,
-        time: new Date().toLocaleTimeString(),
-      });
-
       this.setStatus('streaming');
 
       await this.agentRouter.sendToAgent(entry, text);

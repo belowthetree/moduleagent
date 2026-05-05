@@ -115,6 +115,14 @@ export async function startTui(projectRoot: string) {
 
   (globalThis as any).__tuiSendMessage = async (text: string) => {
     try {
+      const userMsg: ChatMessage = {
+        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        role: 'user',
+        content: text,
+        time: new Date().toLocaleTimeString(),
+      };
+      tuiState.setMessages([...tuiState.messages(), userMsg]);
+
       const streamMsg: ChatMessage = {
         id: `agent-${Date.now()}`,
         role: 'agent',

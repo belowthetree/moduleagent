@@ -30,9 +30,8 @@ export default function App() {
   const screen = () => tuiState.screen();
 
   const handleSend = (text: string) => {
-    addUserMessage(text);
-    tuiState.setAgentStatus('streaming');
-    // Signal AgentService (wired in Task 13)
+    // User message is now pushed by __tuiSendMessage before the agent placeholder,
+    // so streaming chunks append to the agent message, not the user message.
     (globalThis as any).__tuiSendMessage?.(text);
   };
 
