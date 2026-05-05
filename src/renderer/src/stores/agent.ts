@@ -367,18 +367,25 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   // ── Agent lifecycle ──
-  function cancelAgent(moduleName: string): void {
+  async function cancelAgent(moduleName: string): Promise<void> {
+    const result = await window.moduleAgent.cancelAgent(moduleName).catch(() => undefined)
     const msgId = liveMsgId.value.get(moduleName)
     if (msgId) {
       const msgs = getMsgs(moduleName)
       const idx = msgs.findIndex(m => m.id === msgId && m.status === 'executing')
       if (idx !== -1) {
+        const acc = result?.accumulated
+        if (acc) {
+          if (acc.reply) msgs[idx]!.content = acc.reply
+          if (acc.thinking) msgs[idx]!.thinking = acc.thinking
+          if (acc.tools) msgs[idx]!.tools = acc.tools
+        }
         msgs[idx]!.status = 'interrupted'
         msgs[idx]!.time = now()
       }
       liveMsgId.value.delete(moduleName)
+      saveContext(moduleName)
     }
-    window.moduleAgent.cancelAgent(moduleName).catch(() => { /* ignore */ })
   }
 
   async function sendMessage(moduleName: string, text: string, cwd: string): Promise<void> {

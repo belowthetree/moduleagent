@@ -82,7 +82,7 @@ export interface ModuleAgentApi {
 
   sendMessage(moduleName: string, text: string, cwd?: string): Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason: string }; error?: string }>;
 
-  cancelAgent(moduleName: string): Promise<{}>;
+  cancelAgent(moduleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>;
 
   stopAgent(moduleName: string): Promise<{}>;
 
