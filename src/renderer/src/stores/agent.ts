@@ -23,6 +23,8 @@ export const useAgentStore = defineStore('agent', () => {
   const ctxPage = ref(new Map<string, number>())
   const sendingLock = ref(false)
   const streamListenerCleanup = ref<(() => void) | null>(null)
+  const crossContextCleanup = ref<(() => void) | null>(null)
+  const selectedModuleName = ref<string | null>(null)
 
   // Config used by agent lifecycle (mirrors renderer.ts globals agentCmd/agentArgs)
   const agentCmd = ref('opencode')
@@ -101,6 +103,15 @@ export const useAgentStore = defineStore('agent', () => {
     ctxPage.value.clear()
     streamState.value.clear()
     clearStreamSnapshot()
+    if (streamListenerCleanup.value) {
+      streamListenerCleanup.value()
+      streamListenerCleanup.value = null
+    }
+    if (crossContextCleanup.value) {
+      crossContextCleanup.value()
+      crossContextCleanup.value = null
+    }
+    selectedModuleName.value = null
   }
 
   // ── Stream snapshot persistence (localStorage key: stream_snapshot) ──
@@ -169,6 +180,10 @@ export const useAgentStore = defineStore('agent', () => {
     streamState.value.delete(moduleName)
     if (streamState.value.size === 0) {
       clearStreamSnapshot()
+      if (streamListenerCleanup.value) {
+        streamListenerCleanup.value()
+        streamListenerCleanup.value = null
+      }
     }
   }
 
@@ -228,6 +243,37 @@ export const useAgentStore = defineStore('agent', () => {
       } else if (update === 'plan') {
         st.reply += `\n[计划更新]\n`
         scheduleStreamSave()
+      }
+    })
+  }
+
+  // ── Selected module sync (set by views when drawer opens/closes) ──
+  function setSelectedModuleName(name: string | null): void {
+    selectedModuleName.value = name
+  }
+
+  // ── Cross-context listener ──
+  function ensureCrossContextListener(): void {
+    if (crossContextCleanup.value) return
+    crossContextCleanup.value = window.moduleAgent.onCrossContext(({ moduleName, crossModule, direction, content, time }) => {
+      const msg: ChatMsg = {
+        id: 'x' + Date.now() + Math.random().toString(36).slice(2, 6),
+        role: 'cross',
+        content,
+        thinking: '',
+        tools: '',
+        time,
+        status: 'completed',
+        moduleName,
+        agentCmd: '',
+        crossDirection: direction,
+        crossModule,
+      }
+      getMsgs(moduleName).push(msg)
+      saveContext(moduleName)
+      // If this module's drawer is open, auto-paginate to latest page
+      if (selectedModuleName.value === moduleName) {
+        setPage(moduleName, Math.max(0, Math.ceil(getMsgs(moduleName).length / CTX_PAGE) - 1))
       }
     })
   }
@@ -311,6 +357,8 @@ export const useAgentStore = defineStore('agent', () => {
     ctxPage,
     sendingLock,
     streamListenerCleanup,
+    crossContextCleanup,
+    selectedModuleName,
     agentCmd,
     agentArgs,
     now,
@@ -330,6 +378,8 @@ export const useAgentStore = defineStore('agent', () => {
     stopStream,
     finishStream,
     ensureStreamListener,
+    setSelectedModuleName,
+    ensureCrossContextListener,
     cancelAgent,
     sendMessage,
     refreshRunningAgents,
