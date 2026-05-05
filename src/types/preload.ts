@@ -1,4 +1,9 @@
-export type AgentStatus = 'idle' | 'streaming' | 'error';
+export type AgentStatus = 'idle' | 'streaming' | 'error' | 'stopped';
+
+export interface AgentStatusData {
+  name: string;
+  status: AgentStatus;
+}
 
 export interface TreeNode {
   name: string;
@@ -86,6 +91,8 @@ export interface ModuleAgentApi {
   getRunningAgents(): Promise<{ name: string; status: AgentStatus }[]>;
 
   onAgentStream(callback: (data: AgentStreamData) => void): () => void;
+
+  onAgentStatus(callback: (data: AgentStatusData) => void): () => void;
 
   saveAgentConfig(
     projectRoot: string,

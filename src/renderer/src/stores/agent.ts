@@ -5,7 +5,6 @@ import type { AgentStatus, ChatMsg } from '../../../types/preload'
 // FROZEN constants — must match renderer.ts
 const LS_STREAM_SNAPSHOT = 'stream_snapshot'
 const CTX_PREFIX = 'ctx_'
-const POLL_INTERVAL = 3000
 const STREAM_SAVE_DEBOUNCE = 2000
 
 export const useAgentStore = defineStore('agent', () => {
@@ -32,8 +31,8 @@ export const useAgentStore = defineStore('agent', () => {
   const agentCmd = ref('opencode')
   const agentArgs = ref('acp')
 
-  // ── Internal timers (not exposed) ──
-  let runningPollTimer: ReturnType<typeof setInterval> | null = null
+  // ── Internal cleanup refs (not exposed) ──
+  let statusListenerCleanup: (() => void) | null = null
   let streamSaveTimer: ReturnType<typeof setTimeout> | null = null
 
   // ── Helpers ──
@@ -426,27 +425,24 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  // ── Running agents polling ──
-  async function refreshRunningAgents(): Promise<void> {
-    try {
-      runningAgents.value.clear()
-      const list = await window.moduleAgent.getRunningAgents()
-      for (const item of list) {
-        runningAgents.value.set(item.name, item.status)
+  // ── Push-based agent status listener ──
+  function ensureStatusListener(): void {
+    if (statusListenerCleanup) return
+    statusListenerCleanup = window.moduleAgent.onAgentStatus(({ name, status }) => {
+      const next = new Map(runningAgents.value)
+      if (status === 'stopped') {
+        next.delete(name)
+      } else {
+        next.set(name, status)
       }
-    } catch { /* ignore errors during polling */ }
-  }
-
-  function startRunningPoll(): void {
-    if (runningPollTimer) return
-    refreshRunningAgents()
-    runningPollTimer = setInterval(refreshRunningAgents, POLL_INTERVAL)
+      runningAgents.value = next
+    })
   }
 
   function stopRunningPoll(): void {
-    if (runningPollTimer) {
-      clearInterval(runningPollTimer)
-      runningPollTimer = null
+    if (statusListenerCleanup) {
+      statusListenerCleanup()
+      statusListenerCleanup = null
     }
     runningAgents.value.clear()
   }
@@ -481,8 +477,7 @@ export const useAgentStore = defineStore('agent', () => {
     ensureCrossContextListener,
     cancelAgent,
     sendMessage,
-    refreshRunningAgents,
-    startRunningPoll,
+    ensureStatusListener,
     stopRunningPoll,
   }
 })

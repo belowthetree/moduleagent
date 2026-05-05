@@ -71,8 +71,8 @@ async function rescan(): Promise<void> {
     console.error('重新扫描失败:', (err as Error).message)
   }
 
-  // Re-start polling
-  agentStore.startRunningPoll()
+  // Re-start status listener
+  agentStore.ensureStatusListener()
 }
 
 function clearAll(): void {
@@ -90,7 +90,7 @@ function onCloseDrawer(): void {
 
 // ── Lifecycle ──
 onMounted(async () => {
-  agentStore.startRunningPoll()
+  agentStore.ensureStatusListener()
   agentStore.ensureCrossContextListener()
 
   // Auto-scan if tree not loaded yet (e.g., came directly from setup-skip)

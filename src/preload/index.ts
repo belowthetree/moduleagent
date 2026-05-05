@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ModuleAgentApi, AgentStreamData, CrossContextData, ScanResult, AgentStatus } from '../types/preload.js';
+import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus } from '../types/preload.js';
 
 const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke('dialog:selectDir', title) as Promise<string | null>,
@@ -28,6 +28,12 @@ const api: ModuleAgentApi = {
     const handler = (_event: Electron.IpcRendererEvent, data: AgentStreamData) => callback(data);
     ipcRenderer.on('agent:stream', handler);
     return () => ipcRenderer.removeListener('agent:stream', handler);
+  },
+
+  onAgentStatus: (callback: (data: AgentStatusData) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: AgentStatusData) => callback(data);
+    ipcRenderer.on('agent:status', handler);
+    return () => ipcRenderer.removeListener('agent:status', handler);
   },
 
   // Config APIs

@@ -228,6 +228,7 @@ function registerIpcHandlers() {
         },
         setAgentStatus(name, status) {
           agentStatus.set(name, status);
+          mainWindow?.webContents.send('agent:status', { name, status });
         },
         onLog(level, message) {
           if (level === 'error') defaultLogger.error(message);
@@ -276,6 +277,7 @@ function registerIpcHandlers() {
     } catch (err) {
       defaultLogger.error(`agent:start failed [${moduleName}]: ${(err as Error).message}`);
       agentStatus.set(moduleName, 'error');
+      mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'error' });
       return { error: (err as Error).message };
     }
   });
@@ -290,6 +292,7 @@ function registerIpcHandlers() {
 
     try {
       agentStatus.set(moduleName, 'streaming');
+      mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'streaming' });
       const promptBlocks = buildPromptBlocks({
         moduleName,
         userText: text,
@@ -303,10 +306,12 @@ function registerIpcHandlers() {
         prompt: promptBlocks,
       });
       agentStatus.set(moduleName, 'idle');
+      mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'idle' });
       return { stopReason: result.stopReason };
     } catch (err) {
       defaultLogger.error(`agent:send failed [${moduleName}]: ${(err as Error).message}`);
       agentStatus.set(moduleName, 'error');
+      mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'error' });
       return { error: (err as Error).message };
     }
   });
@@ -316,6 +321,7 @@ function registerIpcHandlers() {
     if (entry) {
       try { await entry.launched.connection.cancel({ sessionId: entry.sessionId }); } catch {}
       agentStatus.set(moduleName, 'idle');
+      mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'idle' });
       defaultLogger.info(`agent:cancel [${moduleName}]`);
     }
     const acc = stateManager?.cancelStream(moduleName);
@@ -328,6 +334,7 @@ function registerIpcHandlers() {
       try { entry.launched.process.kill(); } catch {}
       orchestrator!.agents.delete(moduleName);
       agentStatus.delete(moduleName);
+      mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'stopped' });
       sessionPrompted.delete(moduleName);
       defaultLogger.info(`agent:stop [${moduleName}]`);
     }

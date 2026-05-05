@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAgentStore } from '../agent'
-import { createMockModuleAgentApi, triggerStream, triggerCrossContext } from '../../__mocks__/moduleAgent'
+import { createMockModuleAgentApi, triggerStream, triggerCrossContext, triggerStatus } from '../../__mocks__/moduleAgent'
 import type { ChatMsg } from '../../../../types/preload'
 
 function makeMock() {
@@ -43,14 +43,13 @@ describe('useAgentStore', () => {
     spy.mockRestore()
   })
 
-  it('stopAgent: refreshRunningAgents updates runningAgents Map', async () => {
-    vi.spyOn(window.moduleAgent, 'getRunningAgents').mockResolvedValue([
-      { name: 'agent-1', status: 'idle' as const },
-      { name: 'agent-2', status: 'streaming' as const },
-    ])
-
+  it('stopAgent: ensureStatusListener updates runningAgents Map via push events', () => {
+    const mock = makeMock()
     const store = useAgentStore()
-    await store.refreshRunningAgents()
+    store.ensureStatusListener()
+
+    triggerStatus(mock, { name: 'agent-1', status: 'idle' })
+    triggerStatus(mock, { name: 'agent-2', status: 'streaming' })
 
     expect(store.runningAgents.get('agent-1')).toBe('idle')
     expect(store.runningAgents.get('agent-2')).toBe('streaming')
@@ -153,18 +152,22 @@ describe('useAgentStore', () => {
     expect(all[11]!.content).toBe('msg 11')
   })
 
-  it('refreshRunningAgents: mock returns list, updates Map', async () => {
-    vi.spyOn(window.moduleAgent, 'getRunningAgents').mockResolvedValue([
-      { name: 'agent-a', status: 'streaming' as const },
-      { name: 'agent-b', status: 'idle' as const },
-    ])
-
+  it('ensureStatusListener: push events update runningAgents Map (including stopped)', () => {
+    const mock = makeMock()
     const store = useAgentStore()
-    await store.refreshRunningAgents()
+    store.ensureStatusListener()
+
+    triggerStatus(mock, { name: 'agent-a', status: 'streaming' })
+    triggerStatus(mock, { name: 'agent-b', status: 'idle' })
 
     expect(store.runningAgents.size).toBe(2)
     expect(store.runningAgents.get('agent-a')).toBe('streaming')
     expect(store.runningAgents.get('agent-b')).toBe('idle')
+
+    triggerStatus(mock, { name: 'agent-a', status: 'stopped' })
+    expect(store.runningAgents.has('agent-a')).toBe(false)
+    expect(store.runningAgents.get('agent-b')).toBe('idle')
+    expect(store.runningAgents.size).toBe(1)
   })
 
   it('cross-context: event appends to correct moduleName', () => {

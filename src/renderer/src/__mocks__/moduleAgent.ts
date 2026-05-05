@@ -1,6 +1,7 @@
 import type {
   ModuleAgentApi,
   AgentStreamData,
+  AgentStatusData,
   CrossContextData,
   AgentStatus,
   ScanResult,
@@ -11,6 +12,7 @@ import type {
 interface MockInternals {
   streamCallbacks: Array<(data: AgentStreamData) => void>;
   crossContextCallbacks: Array<(data: CrossContextData) => void>;
+  statusCallbacks: Array<(data: AgentStatusData) => void>;
 }
 
 const internalsMap = new WeakMap<ModuleAgentApi, MockInternals>();
@@ -27,6 +29,7 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
   const internals: MockInternals = {
     streamCallbacks: [],
     crossContextCallbacks: [],
+    statusCallbacks: [],
   };
 
   const api: ModuleAgentApi = {
@@ -97,6 +100,16 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
       };
     },
 
+    onAgentStatus: (callback: (data: AgentStatusData) => void): (() => void) => {
+      internals.statusCallbacks.push(callback);
+      return () => {
+        const idx = internals.statusCallbacks.indexOf(callback);
+        if (idx !== -1) {
+          internals.statusCallbacks.splice(idx, 1);
+        }
+      };
+    },
+
     saveAgentConfig: (
       _projectRoot: string,
       _cmd: string,
@@ -146,6 +159,13 @@ export function triggerStream(mock: ModuleAgentApi, data: AgentStreamData): void
 export function triggerCrossContext(mock: ModuleAgentApi, data: CrossContextData): void {
   const internals = getInternals(mock);
   for (const cb of internals.crossContextCallbacks) {
+    cb(data);
+  }
+}
+
+export function triggerStatus(mock: ModuleAgentApi, data: AgentStatusData): void {
+  const internals = getInternals(mock);
+  for (const cb of internals.statusCallbacks) {
     cb(data);
   }
 }
