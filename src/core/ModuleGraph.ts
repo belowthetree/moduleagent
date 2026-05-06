@@ -9,17 +9,49 @@ export class ModuleGraph {
     this.nodes.clear();
 
     for (const desc of descriptors) {
-      let nodeName = desc.name;
+      desc.relativePath = desc.relativePath.replace(/\\/g, '/');
+    }
+
+    const descNameMap = new Map<string, ModuleDescriptor>();
+
+    for (const desc of descriptors) {
+      let nodeName = desc.relativePath !== '.' ? desc.relativePath : desc.name;
+      (desc as { name: string }).name = nodeName;
       if (this.nodes.has(nodeName)) {
-        const fallback = desc.relativePath;
-        if (this.nodes.has(fallback)) {
-          log.warn(`ModuleGraph: skipping duplicate module "${desc.name}" at "${desc.relativePath}" — name collision, both name and relativePath already taken`);
+        const existing = this.nodes.get(nodeName)!;
+
+        if (existing.relativePath === desc.relativePath) {
+          log.debug(`ModuleGraph: skipping duplicate scan of "${desc.name}" at "${desc.relativePath}"`);
           continue;
         }
-        log.warn(`ModuleGraph: renaming "${desc.name}" → "${fallback}" (name collision, "${desc.name}" already in graph)`);
-        (desc as { name: string }).name = fallback;
-        nodeName = fallback;
+
+        const existingRelativePath = existing.relativePath;
+        const isExistingRoot = existingRelativePath === '.';
+
+        if (!isExistingRoot) {
+          this.nodes.delete(nodeName);
+          existing.name = existingRelativePath;
+          this.nodes.set(existingRelativePath, existing);
+
+          const existingDesc = descNameMap.get(nodeName);
+          if (existingDesc) {
+            (existingDesc as { name: string }).name = existingRelativePath;
+            descNameMap.delete(nodeName);
+            descNameMap.set(existingRelativePath, existingDesc);
+          }
+          log.warn(`ModuleGraph: renamed existing "${nodeName}" → "${existingRelativePath}" (name collision)`);
+        }
+
+        nodeName = desc.relativePath;
+        if (this.nodes.has(nodeName)) {
+          log.warn(`ModuleGraph: skipping "${desc.name}" at "${desc.relativePath}" — cannot disambiguate`);
+          continue;
+        }
+        log.warn(`ModuleGraph: resolved "${desc.name}" → "${nodeName}" (collided with "${existing.relativePath}")`);
+        (desc as { name: string }).name = nodeName;
       }
+
+      descNameMap.set(nodeName, desc);
       const node: ModuleGraphNode = {
         name: nodeName,
         absolutePath: desc.rootPath,
@@ -44,7 +76,7 @@ export class ModuleGraph {
     for (const desc of descriptors) {
       const subModules = desc.definition.subModules;
       for (const sub of subModules) {
-        const childNode = ModuleGraph.findModuleByName(descriptors, sub.name);
+        const childNode = ModuleGraph.findModuleByName(descriptors, sub.name, sub.path, desc.relativePath);
         if (childNode) {
           const parentNode = this.nodes.get(desc.name);
           const child = this.nodes.get(childNode.name);
@@ -69,10 +101,31 @@ export class ModuleGraph {
   private static findModuleByName(
     descriptors: ModuleDescriptor[],
     name: string,
+    subPath?: string,
+    parentRelPath?: string,
   ): ModuleDescriptor | undefined {
+    if (parentRelPath) {
+      const baseRelPath = parentRelPath !== '.' ? parentRelPath : '';
+
+      if (subPath) {
+        const cleanPath = subPath.replace(/^\.\//, '');
+        const fullPath = baseRelPath ? `${baseRelPath}/${cleanPath}` : cleanPath;
+        const byFullPath = descriptors.find((d) => d.relativePath === fullPath);
+        if (byFullPath) return byFullPath;
+      }
+
+      const namePath = baseRelPath ? `${baseRelPath}/${name}` : name;
+      const byNamePath = descriptors.find((d) => d.relativePath === namePath);
+      if (byNamePath) return byNamePath;
+    }
+
     const match = descriptors.find((d) => d.name === name);
     if (match) return match;
-    return descriptors.find((d) => d.relativePath === name);
+
+    const byRelPath = descriptors.find((d) => d.relativePath === name);
+    if (byRelPath) return byRelPath;
+
+    return undefined;
   }
 
   static getSubtreeNames(graph: ModuleGraphType, startName: string): string[] {

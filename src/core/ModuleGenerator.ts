@@ -25,7 +25,7 @@ export class ModuleGenerator {
     const relativePath = path.relative(projectRoot, dirPath);
     const moduleName = relativePath || path.basename(projectRoot);
     const description = await ModuleGenerator.inferDescription(dirPath);
-    const subModules = await ModuleGenerator.inferSubModules(dirPath, options.extraExclude || []);
+    const subModules = await ModuleGenerator.inferSubModules(dirPath, projectRoot, options.extraExclude || []);
     const body = await ModuleGenerator.inferBody(dirPath, moduleName);
 
     const result = ModuleGenerator.composeModuleMd(
@@ -59,7 +59,7 @@ export class ModuleGenerator {
     return `${basename} 模块`;
   }
 
-  private static async inferSubModules(dirPath: string, extraExclude: string[]): Promise<{ name: string; path: string; description: string }[]> {
+  private static async inferSubModules(dirPath: string, projectRoot: string, extraExclude: string[]): Promise<{ name: string; path: string; description: string }[]> {
     const subs: { name: string; path: string; description: string }[] = [];
 
     let entries: fs.Dirent[];
@@ -74,9 +74,11 @@ export class ModuleGenerator {
       if (isBuiltinExcluded(entry.name)) continue;
       if (extraExclude.includes(entry.name)) continue;
 
-      const subDesc = await ModuleGenerator.inferDescription(path.join(dirPath, entry.name));
+      const subDir = path.join(dirPath, entry.name);
+      const subRelPath = path.relative(projectRoot, subDir);
+      const subDesc = await ModuleGenerator.inferDescription(subDir);
       subs.push({
-        name: entry.name,
+        name: subRelPath,
         path: `./${entry.name}`,
         description: subDesc,
       });
