@@ -74,6 +74,8 @@ export interface ModuleAgentApi {
 
   scanProject(projectRoot: string): Promise<ScanResult>;
 
+  generateModules(projectRoot: string): Promise<{ success: boolean; count: number; error?: string }>;
+
   getTree(): Promise<TreeNode | null>;
 
   startAgent(moduleName: string, cmd: string, args: string[], cwd: string): Promise<{ sessionId?: string; error?: string }>;

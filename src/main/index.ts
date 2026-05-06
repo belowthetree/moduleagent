@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import path from 'path';
-import fs from 'fs';
+import fs from 'fs-extra';
 import os from 'os';
 
 import { ModuleScanner } from '../core/ModuleScanner.js';
@@ -112,25 +112,23 @@ function registerIpcHandlers() {
       const descriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
 
       // Also scan .module-agent/module/ for additional module.md files
-      const moduleScanPath = path.join(config.projectPath, '.module-agent', 'module');
+      const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
       fs.mkdirSync(moduleScanPath, { recursive: true });
-      if (moduleScanPath !== path.resolve(projectRoot)) {
-        try {
-          const extraDesc = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
-          const seen = new Set(descriptors.map((d) => d.moduleMdPath));
-          for (const d of extraDesc) {
-            if (!seen.has(d.moduleMdPath)) descriptors.push(d);
-          }
-          defaultLogger.info(`project:scan found ${extraDesc.length} extra modules in ${moduleScanPath}`);
-        } catch (err) {
-          defaultLogger.warn(`project:scan failed to scan extra modules in ${moduleScanPath}: ${(err as Error).message}`);
+      try {
+        const extraDesc = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
+        const seen = new Set(descriptors.map((d) => d.moduleMdPath));
+        for (const d of extraDesc) {
+          if (!seen.has(d.moduleMdPath)) descriptors.push(d);
         }
+        defaultLogger.info(`project:scan found ${extraDesc.length} extra modules in ${moduleScanPath}`);
+      } catch (err) {
+        defaultLogger.warn(`project:scan failed to scan extra modules in ${moduleScanPath}: ${(err as Error).message}`);
       }
 
       const graph = new ModuleGraph().build(descriptors, projectRoot);
       currentGraph = graph;
       currentProjectRoot = projectRoot;
-      currentWorkspaceRoot = path.join(config.projectPath, '.module-agent', 'workspace');
+      currentWorkspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
 
       prompts = loadSystemPrompts(app.getAppPath());
       mcpGraphFile = writeMcpGraphFile(graph);
@@ -256,6 +254,162 @@ function registerIpcHandlers() {
     }
     const rootNode = currentGraph.nodes.get(currentGraph.root);
     return rootNode ? buildTree(rootNode) : null;
+  });
+
+  ipcMain.handle('project:generateModules', async (_event, projectRoot: string) => {
+    try {
+      const workspaceConfig = await ConfigLoader.loadOrCreate(projectRoot);
+      const config = ConfigLoader.getDefaultConfig(workspaceConfig);
+
+      // 1. Create minimal root module.md so graph has a root node
+      const rootModulePath = path.join(projectRoot, 'module.md');
+      if (!(await fs.pathExists(rootModulePath))) {
+        const rootModuleName = path.basename(projectRoot);
+        await fs.writeFile(
+          rootModulePath,
+          `---\nname: ${rootModuleName}\ndescription: ${rootModuleName} project root module\n---\n\n# ${rootModuleName}\n\n## Module Description\n\nTo be filled\n`,
+          'utf-8',
+        );
+      }
+
+      // 2. Scan project + .module-agent/module/ → build graph
+      const mainDescriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
+
+      const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
+      fs.ensureDirSync(moduleScanPath);
+      const extraDescriptors = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
+
+      const allDescriptors = [...mainDescriptors];
+      const seenPaths = new Set(allDescriptors.map((d) => d.moduleMdPath));
+      for (const d of extraDescriptors) {
+        if (!seenPaths.has(d.moduleMdPath)) allDescriptors.push(d);
+      }
+
+      const graph = new ModuleGraph().build(allDescriptors, projectRoot);
+
+      const rootNode = graph.nodes.get(graph.root);
+      if (!rootNode) {
+        return { success: false, count: 0, error: 'No root module found after scan' };
+      }
+
+      // 3. Resolve agent config (module-specific > default)
+      let agentCommand = config.agents.default.command;
+      let agentArgs = config.agents.default.args || [];
+      const modules = config.agents.modules;
+      if (modules && modules[rootNode.name]) {
+        agentCommand = modules[rootNode.name]!.command;
+        agentArgs = modules[rootNode.name]!.args;
+      }
+
+      // 4. Prepare workspace + submodule dirs
+      const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
+      let cwd: string;
+      if (rootNode.relativePath !== '.') {
+        cwd = await prepareModuleWorkspace(rootNode, {
+          workspaceRoot,
+          projectPath: config.projectPath,
+          graph,
+        });
+      } else {
+        cwd = rootNode.absolutePath;
+      }
+
+      const subModuleDirs = getSubModuleDirs(rootNode, graph, (n) =>
+        workspacePathForModule(n, workspaceRoot, projectRoot),
+      );
+
+      // 5. Launch agent + create session
+      const launched = await launcher.launch(
+        { command: agentCommand, args: agentArgs },
+        rootNode.name,
+        cwd,
+        defaultLogger,
+        { subModuleDirs },
+      );
+
+      const graphFile = writeMcpGraphFile(graph);
+      const mcpServers = buildMcpServers({
+        moduleName: rootNode.name,
+        basePath: app.getAppPath(),
+        graphFile,
+      });
+
+      const { sessionId } = await launched.connection.newSession({
+        cwd,
+        mcpServers,
+      });
+
+      // 6. Send generation prompt
+      const projectName = path.basename(projectRoot);
+      const dirs = mainDescriptors
+        .map((d) => path.relative(projectRoot, path.dirname(d.moduleMdPath)))
+        .filter(Boolean);
+
+      const systemBlock = {
+        type: 'text' as const,
+        text: `You are a module documentation expert. Your task is to analyze source code directories and generate comprehensive module.md files.
+
+Each module.md must have YAML frontmatter with:
+- name: module name
+- description: what this module does (inferred from source code)
+- submodules: child modules (name, path, description)
+
+The body must include:
+- Module purpose and role
+- Public API / exports
+- Key dependencies
+- Usage examples
+- Architecture notes
+
+Write each module.md to: ${moduleScanPath}/<relative-path>/module.md
+Use the file_access tool to create directories and write files.
+
+DO NOT overwrite existing module.md files.`,
+      };
+
+      const dirsList =
+        dirs.length > 0
+          ? dirs.map((d) => `  - ${d}`).join('\n')
+          : '  (root module only)';
+
+      const userBlock = {
+        type: 'text' as const,
+        text: `Project: ${projectName}
+Project root: ${projectRoot}
+
+Please analyze the following source directories and generate module.md for each one:
+
+${dirsList}
+
+For each directory:
+1. Read the source files to understand what the module does
+2. Generate a comprehensive module.md with API docs, dependencies, usage
+3. Write it to ${moduleScanPath}/<relative-path>/module.md
+4. Include proper submodule references for child directories
+
+Start with the root module, then work through each sub-module.`,
+      };
+
+      const prompt = [systemBlock, userBlock];
+
+      const result = await launched.connection.prompt({ sessionId, prompt });
+      defaultLogger.info(`[generateModules] Agent completed. stopReason=${result.stopReason}`);
+
+      try { fs.unlinkSync(graphFile); } catch {}
+
+      // 7. Rescan to discover newly generated modules
+      const newMainDescriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
+      const newExtraDescriptors = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
+      const newAllDescriptors = [...newMainDescriptors, ...newExtraDescriptors];
+      const newSeen = new Set(newAllDescriptors.map((d) => d.moduleMdPath));
+      const totalCount = newSeen.size;
+
+      defaultLogger.info(`[generateModules] Done. Total modules: ${totalCount}`);
+      return { success: true, count: totalCount };
+    } catch (err) {
+      defaultLogger.error(`[generateModules] Error: ${(err as Error).message}`);
+      return { success: false, count: 0, error: (err as Error).message };
+    }
   });
 
   // ── Agent IPC ──

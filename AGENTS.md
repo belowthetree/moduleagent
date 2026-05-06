@@ -56,7 +56,7 @@ They share `AgentLauncher`, `ModuleScanner`, `ModuleGraph`, and the protocol lay
 |-------|---------|
 | `agents.default.command` / `args` | Agent executable and arguments |
 | `exclude` | Directory/pattern list to skip during module scanning |
-| `projectPath` | Root project directory. `.module-agent/module/` and `.module-agent/workspace/` are auto-created here |
+| `projectPath` | Root project directory. `.module-agent/module/` (module docs) and `.module-agent/workspace/` (isolated runtime copies) are always created under this directory |
 
 When changing the schema, update both `src/config/schema.ts` (Zod) and `src/config/defaults.ts` (TypeScript interface + `DEFAULT_CONFIG`). Then ensure all config consumers are updated:
 - `src/tui/services/AgentService.ts` (TUI path)
@@ -77,6 +77,16 @@ When changing the schema, update both `src/config/schema.ts` (Zod) and `src/conf
 | `src/config/` | ConfigLoader, schema (Zod), defaults |
 | `config/` | System prompt markdown files |
 | `dist/mcp-server.cjs` | Self-contained MCP server bundle (spawned by agents) |
+
+### Runtime directories (created under user's project root)
+
+| Directory | Purpose |
+|-----------|---------|
+| `.module-agent/` | All runtime data for a project |
+| `.module-agent/module/` | Module `.md` files — the definitive location for all module documentation |
+| `.module-agent/workspace/` | Isolated runtime copies of source code for agent execution |
+| `.module-agent/context/` | Agent conversation context storage |
+| `.module-agent.json` | Project configuration file |
 
 ## Build details
 

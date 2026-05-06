@@ -98,7 +98,7 @@ ModuleAgent/
 │   │   └── ExclusionRules.ts       # 内置排除规则
 │   │
 │   ├── workspace/
-│   │   ├── WorkspaceManager.ts      # ~/.module-agent/workspaces/<hash>/
+│   │   ├── WorkspaceManager.ts      # <projectRoot>/.module-agent/workspace/
 │   │   ├── ModuleSyncer.ts          # 同步模块文件到工作区
 │   │   ├── GitModuleSource.ts       # Git clone/pull
 │   │   └── LocalModuleSource.ts     # 本地路径硬链接/复制
@@ -174,7 +174,7 @@ ModuleAgent/
 - `agents.default`: 默认的 Agent 应用配置，所有未单独配置的模块使用
 - `agents.modules`: 按模块名指定特定 Agent 应用配置
 - `exclude`: 额外排除的文件/目录 glob 模式（叠加内置排除列表）
-- `projectPath`: 项目根目录路径（默认 `.`），Agent 在此目录中工作。系统自动在 `.module-agent/module/` 中扫描模块，在 `.module-agent/workspace/` 中创建隔离工作空间
+- `projectPath`: 项目根目录路径（默认 `.`）。**模块目录**为 `<projectRoot>/.module-agent/module/`，**工作目录**为 `<projectRoot>/.module-agent/workspace/`。Agent 在工作目录的模块子目录中运行。
 
 ### 5.2 内置排除规则
 

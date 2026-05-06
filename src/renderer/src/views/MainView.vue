@@ -17,6 +17,7 @@ const configStore = useConfigStore()
 // ── Settings dialog toggle ──
 const showSettings = ref(false)
 const scanning = ref(false)
+const generating = ref(false)
 
 // ── Computed ──
 const statusText = computed(() => {
@@ -57,6 +58,23 @@ async function rescan(): Promise<void> {
 
   // Re-start status listener
   agentStore.ensureStatusListener()
+}
+
+async function generateModules(): Promise<void> {
+  if (!configStore.projectPath) return
+  generating.value = true
+  try {
+    const result = await window.moduleAgent.generateModules(configStore.projectPath)
+    if (result.success) {
+      scanning.value = true
+      await projectStore.scanProject(configStore.projectPath)
+    }
+  } catch (err) {
+    console.error('生成模块失败:', (err as Error).message)
+  } finally {
+    generating.value = false
+    scanning.value = false
+  }
 }
 
 function clearAll(): void {
@@ -103,6 +121,9 @@ onUnmounted(() => {
         <el-button text @click="rescan">↻ 扫描</el-button>
         <el-button text @click="clearAll">清空</el-button>
       </div>
+      <div class="toolbar-center" v-if="configStore.projectPath">
+        <span class="toolbar-path">{{ configStore.projectPath }}</span>
+      </div>
       <div class="toolbar-right">
         <el-button text @click="showSettings = true">⚙ 设置</el-button>
         <ThemeToggle />
@@ -112,6 +133,15 @@ onUnmounted(() => {
     <!-- ── 主内容区 ── -->
     <div class="main-content">
       <div class="tree-area">
+        <!-- Empty state: no modules found -->
+        <div v-if="!projectStore.treeRoot && !scanning" class="empty-state">
+          <div class="empty-icon">📁</div>
+          <p class="empty-text">未发现模块文件</p>
+          <p class="empty-hint">项目目录中尚无 module.md 文件</p>
+          <el-button type="primary" :loading="generating" @click="generateModules">
+            🤖 调用 Agent 生成模块
+          </el-button>
+        </div>
         <SVGTree
           :root="projectStore.treeRoot"
           :selected-node="projectStore.selectedNode"
@@ -166,10 +196,26 @@ onUnmounted(() => {
 }
 
 .toolbar-left,
+.toolbar-center,
 .toolbar-right {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.toolbar-center {
+  flex: 1;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.toolbar-path {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60vw;
 }
 
 /* ── 主内容区 ── */
@@ -225,4 +271,17 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── 空状态 ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+}
+.empty-icon { font-size: 48px; }
+.empty-text { font-size: 16px; color: var(--el-text-color-primary); margin: 0; }
+.empty-hint { font-size: 13px; color: var(--el-text-color-secondary); margin: 0; }
 </style>

@@ -7,6 +7,9 @@ const api: ModuleAgentApi = {
   scanProject: (projectRoot: string) =>
     ipcRenderer.invoke('project:scan', projectRoot) as Promise<ScanResult>,
 
+  generateModules: (projectRoot: string) =>
+    ipcRenderer.invoke('project:generateModules', projectRoot) as Promise<{ success: boolean; count: number; error?: string }>,
+
   getTree: () => ipcRenderer.invoke('project:getTree') as Promise<Record<string, unknown> | null>,
 
   // Agent APIs

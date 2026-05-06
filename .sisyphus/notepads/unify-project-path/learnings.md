@@ -254,3 +254,50 @@
 ### Verification
 - `npm run typecheck` → no new errors. Only pre-existing TS6305 + TUI JSX + ConfigLoader test issues remain.
 - File length: 245 → 218 lines (11% reduction)
+
+## Startup config validation fix (post-refactoring bug)
+
+### Problem
+After refactoring to `projectPath`, the startup flow only restored config from localStorage, never validated the actual `.module-agent.json` file. If `lastProject` localStorage key had a stale value but the config file was deleted/emptied, the router guard (checking `!configStore.projectPath`) saw a truthy value and didn't redirect to `/setup`. MainView loaded with broken config.
+
+### Solution
+Added config file validation between `loadFromLocalStorage()` and `app.mount()` in `main.ts`:
+1. If `projectPath` is truthy, call `loadFromProject(projectPath)` to read the actual config file
+2. ConfigLoader returns `projectPath: '.'` when file is missing/invalid → clear to `''` → router redirects to `/setup`
+3. If load throws → catch → clear → redirect to `/setup`
+4. If config is valid → `projectPath` stays → MainView loads normally
+
+### Key insight
+The `projectPath` default value `'.'` (from `DEFAULT_CONFIG_ENTRY`) serves as a reliable sentinel: it only appears when ConfigLoader falls back to defaults. No real user would set `projectPath: '.'` (they use absolute paths in the UI).
+
+### Final state
+- 22 implementation tasks + 1 bug fix + 4 final-wave reviews = 27 work items
+- 24 source files modified
+- Net: -740 / +324 lines
+- 23 new tests (schema, defaults, ConfigLoader)
+- Zero new type errors
+- Zero new test failures
+
+## Task — Generate Modules feature
+
+### Files changed
+- `src/main/index.ts` — added `project:generateModules` IPC handler + ModuleGenerator import, changed `fs` import from `'fs'` to `'fs-extra'` (needed for `fs.pathExists`)
+- `src/preload/index.ts` — added `generateModules` bridge method
+- `src/types/preload.ts` — added `generateModules` to `ModuleAgentApi` interface
+- `src/renderer/src/views/MainView.vue` — added empty state UI with "生成模块" button, `generating` ref, `generateModules()` function, CSS
+
+### Key decisions
+1. **`fs` → `fs-extra` swap in main/index.ts**: Node's `fs` doesn't have `pathExists`. All existing code (writeFile, mkdirSync, unlinkSync, readdir, promises) works with `fs-extra` since it re-exports everything from Node's `fs`. Zero impact on existing functionality.
+2. **Recursive depth limit of 5**: Prevents runaway recursion in deeply nested project structures.
+3. **Skip rules**: Hidden dirs (`.`), `node_modules`, and config `exclude` patterns — same filtering as module scanning.
+4. **No overwrite**: Only generates `module.md` if it doesn't already exist (`fs.pathExists` check).
+5. **Auto-rescan**: After successful generation, calls `projectStore.scanProject()` to discover newly created modules and update the tree.
+
+### Verification
+- `npm run typecheck`: Zero new errors across all 4 changed files
+- Only pre-existing TS6305 composite project infrastructure errors remain
+
+### ModuleGenerator API
+- `ModuleGenerator.generate({ dirPath, extraExclude }): Promise<string>` — returns module.md content as string, does NOT write to disk
+- Uses `isBuiltinExcluded` internally to filter submodules
+- The IPC handler is responsible for writing files and directory traversal

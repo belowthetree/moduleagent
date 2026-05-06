@@ -3,11 +3,15 @@
   "started_at": "2026-05-06T05:48:37.004Z",
   "session_ids": [
     "ses_2047dea29ffeLxRJV3U4DUgsvv",
-    "ses_2032d6c22ffenY0x9X7jnYVyiw"
+    "ses_2032d6c22ffenY0x9X7jnYVyiw",
+    "ses_2031f271cffe6AoutDw5QY3N3q",
+    "ses_2031ef87affePvVAr73EMVm9FG"
   ],
   "session_origins": {
     "ses_2047dea29ffeLxRJV3U4DUgsvv": "direct",
-    "ses_2032d6c22ffenY0x9X7jnYVyiw": "appended"
+    "ses_2032d6c22ffenY0x9X7jnYVyiw": "appended",
+    "ses_2031f271cffe6AoutDw5QY3N3q": "appended",
+    "ses_2031ef87affePvVAr73EMVm9FG": "appended"
   },
   "plan_name": "unify-project-path",
   "agent": "atlas",

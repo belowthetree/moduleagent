@@ -21,4 +21,20 @@ app.use(ElementPlus, { locale })
 const configStore = useConfigStore()
 configStore.loadFromLocalStorage()
 
+// Validate config file exists at the stored path.
+// loadFromProject falls back to defaults (projectPath = '.') when
+// the config file is missing, corrupt, or empty — clear projectPath
+// so the beforeEach guard redirects to /setup.
+if (configStore.projectPath) {
+  try {
+    await configStore.loadFromProject(configStore.projectPath)
+    // Default projectPath is '.' when config file wasn't found
+    if (configStore.projectPath === '.') {
+      configStore.projectPath = ''
+    }
+  } catch {
+    configStore.projectPath = ''
+  }
+}
+
 app.mount('#app')
