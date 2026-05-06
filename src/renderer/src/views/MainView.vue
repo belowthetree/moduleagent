@@ -40,12 +40,6 @@ const projectName = computed(() => {
   return p.split(/[/\\]/).pop() || p
 })
 
-// ── FAB actions ──
-function goBack(): void {
-  agentStore.stopRunningPoll()
-  router.push('/setup')
-}
-
 async function rescan(): Promise<void> {
   if (!configStore.workspacePath || !configStore.projectPath) return
 
@@ -106,7 +100,6 @@ onUnmounted(() => {
     <!-- ── 工具栏 ── -->
     <header class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="goBack">← 返回</el-button>
         <el-button text @click="rescan">↻ 扫描</el-button>
         <el-button text @click="clearAll">清空</el-button>
       </div>
