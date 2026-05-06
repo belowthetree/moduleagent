@@ -100,7 +100,6 @@ ModuleAgent/
 │   └── types/
 │       ├── module.ts                # ModuleDefinition, ModuleGraphNode 等
 │       └── preload.ts               # ChatMsg, TreeNode, AgentStreamData 等
-├── electron/                        # 旧文件保留（esbuild 构建产物 main.cjs, preload.cjs）
 ├── out/                             # electron-vite 构建输出
 │   ├── main/
 │   │   └── index.cjs               # 主进程 CJS bundle

@@ -118,7 +118,7 @@ export async function runSetup(
     // Ensure module.md exists (silent auto-gen when project is resolved)
     if (!fs.existsSync(path.join(projectRoot, 'module.md'))) {
       try {
-        const content = await ModuleGenerator.generate({ dirPath: projectRoot });
+        const content = await ModuleGenerator.generate({ dirPath: projectRoot, projectRoot });
         fs.writeFileSync(path.join(projectRoot, 'module.md'), content, 'utf-8');
         console.log(`  已自动生成 module.md`);
         log.info(`Setup: auto-generated module.md (${content.length} chars)`);

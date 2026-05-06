@@ -109,21 +109,11 @@ function registerIpcHandlers() {
     try {
       const workspaceConfig = await ConfigLoader.loadOrCreate(projectRoot);
       const config = ConfigLoader.getDefaultConfig(workspaceConfig);
-      const descriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
 
-      // Also scan .module-agent/module/ for additional module.md files
+      // Only scan .module-agent/module/ — the definitive location for all module.md files
       const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
       fs.mkdirSync(moduleScanPath, { recursive: true });
-      try {
-        const extraDesc = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
-        const seen = new Set(descriptors.map((d) => d.moduleMdPath));
-        for (const d of extraDesc) {
-          if (!seen.has(d.moduleMdPath)) descriptors.push(d);
-        }
-        defaultLogger.info(`project:scan found ${extraDesc.length} extra modules in ${moduleScanPath}`);
-      } catch (err) {
-        defaultLogger.warn(`project:scan failed to scan extra modules in ${moduleScanPath}: ${(err as Error).message}`);
-      }
+      const descriptors = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
 
       const graph = new ModuleGraph().build(descriptors, projectRoot);
       currentGraph = graph;
@@ -262,7 +252,9 @@ function registerIpcHandlers() {
       const config = ConfigLoader.getDefaultConfig(workspaceConfig);
 
       // 1. Create minimal root module.md so graph has a root node
-      const rootModulePath = path.join(projectRoot, 'module.md');
+      const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
+      fs.ensureDirSync(moduleScanPath);
+      const rootModulePath = path.join(moduleScanPath, 'module.md');
       if (!(await fs.pathExists(rootModulePath))) {
         const rootModuleName = path.basename(projectRoot);
         await fs.writeFile(
@@ -272,20 +264,9 @@ function registerIpcHandlers() {
         );
       }
 
-      // 2. Scan project + .module-agent/module/ → build graph
-      const mainDescriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
-
-      const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
-      fs.ensureDirSync(moduleScanPath);
-      const extraDescriptors = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
-
-      const allDescriptors = [...mainDescriptors];
-      const seenPaths = new Set(allDescriptors.map((d) => d.moduleMdPath));
-      for (const d of extraDescriptors) {
-        if (!seenPaths.has(d.moduleMdPath)) allDescriptors.push(d);
-      }
-
-      const graph = new ModuleGraph().build(allDescriptors, projectRoot);
+      // 2. Scan .module-agent/module/ → build graph
+      const descriptors = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
+      const graph = new ModuleGraph().build(descriptors, projectRoot);
 
       const rootNode = graph.nodes.get(graph.root);
       if (!rootNode) {
@@ -350,9 +331,9 @@ function registerIpcHandlers() {
         text: `You are a module documentation expert. Your task is to analyze source code directories and generate comprehensive module.md files.
 
 Each module.md must have YAML frontmatter with:
-- name: module name
+- name: module name — use the relative path from project root (e.g., "src/utils" not just "utils") to ensure uniqueness
 - description: what this module does (inferred from source code)
-- submodules: child modules (name, path, description)
+- submodules: child modules (name, path, description) — the "name" must match the child module's frontmatter name exactly
 
 The body must include:
 - Module purpose and role
@@ -398,10 +379,8 @@ Start with the root module, then work through each sub-module.`,
       try { fs.unlinkSync(graphFile); } catch {}
 
       // 7. Rescan to discover newly generated modules
-      const newMainDescriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
-      const newExtraDescriptors = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
-      const newAllDescriptors = [...newMainDescriptors, ...newExtraDescriptors];
-      const newSeen = new Set(newAllDescriptors.map((d) => d.moduleMdPath));
+      const newDescriptors = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
+      const newSeen = new Set(newDescriptors.map((d) => d.moduleMdPath));
       const totalCount = newSeen.size;
 
       defaultLogger.info(`[generateModules] Done. Total modules: ${totalCount}`);

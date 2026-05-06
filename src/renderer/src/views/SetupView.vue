@@ -90,7 +90,7 @@ onMounted(() => {
 
         <!-- Project Path -->
         <el-form-item label="项目目录">
-          <p class="field-hint">项目根目录，将在其中自动创建 .module-agent/module/ 和 .module-agent/workspace/ 子目录</p>
+          <p class="field-hint">项目根目录，模块文件存储在 .module-agent/module/ 中，工作空间在 .module-agent/workspace/</p>
           <el-input v-model="configStore.projectPath" placeholder="输入或点击右侧按钮选择项目目录...">
             <template #append>
               <el-button @click="selectProject">浏览</el-button>
@@ -105,7 +105,7 @@ onMounted(() => {
           class="setup-note"
         >
           <template #title>
-            将自动在项目目录下创建 <code>.module-agent/module/</code>（存放模块描述文件）和 <code>.module-agent/workspace/</code>（Agent 工作空间）
+            模块描述文件存储在 <code>.module-agent/module/</code>，Agent 工作空间在 <code>.module-agent/workspace/</code>
           </template>
         </el-alert>
       </el-form>

@@ -6,30 +6,34 @@ import { defaultLogger as log } from './Logger.js';
 
 export interface GenerateOptions {
   dirPath: string;
+  projectRoot: string;
   force?: boolean;
   extraExclude?: string[];
 }
 
 export class ModuleGenerator {
   static async generate(options: GenerateOptions): Promise<string> {
-    const { dirPath } = options;
+    const { dirPath, projectRoot } = options;
 
-    log.info(`ModuleGenerator: generating for ${dirPath}`);
+    log.info(`ModuleGenerator: generating for ${dirPath} (projectRoot=${projectRoot})`);
     if (!await fs.pathExists(dirPath)) {
       throw new Error(`Directory does not exist: ${dirPath}`);
     }
 
-    const dirName = path.basename(path.resolve(dirPath));
+    // Use relative path from project root as module name for uniqueness.
+    // Falls back to basename for the root module (where relative path is "").
+    const relativePath = path.relative(projectRoot, dirPath);
+    const moduleName = relativePath || path.basename(projectRoot);
     const description = await ModuleGenerator.inferDescription(dirPath);
     const subModules = await ModuleGenerator.inferSubModules(dirPath, options.extraExclude || []);
-    const body = await ModuleGenerator.inferBody(dirPath, dirName);
+    const body = await ModuleGenerator.inferBody(dirPath, moduleName);
 
     const result = ModuleGenerator.composeModuleMd(
-      { name: dirName, description },
+      { name: moduleName, description },
       body,
       subModules,
     );
-    log.info(`ModuleGenerator: generated module.md for ${dirName} (${subModules.length} submodules, ${result.length} chars)`);
+    log.info(`ModuleGenerator: generated module.md for "${moduleName}" (${subModules.length} submodules, ${result.length} chars)`);
     return result;
   }
 

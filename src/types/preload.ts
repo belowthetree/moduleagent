@@ -26,6 +26,7 @@ export interface LayoutNode {
   height: number;
   collapsed: boolean;
   subtreeHeight: number;
+  parentName: string;
 }
 
 export interface ChatMsg {

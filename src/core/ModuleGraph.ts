@@ -9,15 +9,26 @@ export class ModuleGraph {
     this.nodes.clear();
 
     for (const desc of descriptors) {
+      let nodeName = desc.name;
+      if (this.nodes.has(nodeName)) {
+        const fallback = desc.relativePath;
+        if (this.nodes.has(fallback)) {
+          log.warn(`ModuleGraph: skipping duplicate module "${desc.name}" at "${desc.relativePath}" — name collision, both name and relativePath already taken`);
+          continue;
+        }
+        log.warn(`ModuleGraph: renaming "${desc.name}" → "${fallback}" (name collision, "${desc.name}" already in graph)`);
+        (desc as { name: string }).name = fallback;
+        nodeName = fallback;
+      }
       const node: ModuleGraphNode = {
-        name: desc.name,
+        name: nodeName,
         absolutePath: desc.rootPath,
         relativePath: desc.relativePath,
         parent: null,
         children: [],
         definition: desc.definition,
       };
-      this.nodes.set(desc.name, node);
+      this.nodes.set(nodeName, node);
     }
 
     if (this.nodes.size === 0) {
@@ -46,6 +57,9 @@ export class ModuleGraph {
     }
 
     log.info(`ModuleGraph: built with ${this.nodes.size} nodes, root=${this.root}`);
+    for (const [name, node] of this.nodes) {
+      log.info(`ModuleGraph: node "${name}" parent="${node.parent ?? '<none>'}" children=[${node.children.join(', ')}]`);
+    }
     return {
       root: this.root,
       nodes: new Map(this.nodes),
@@ -56,7 +70,9 @@ export class ModuleGraph {
     descriptors: ModuleDescriptor[],
     name: string,
   ): ModuleDescriptor | undefined {
-    return descriptors.find((d) => d.name === name);
+    const match = descriptors.find((d) => d.name === name);
+    if (match) return match;
+    return descriptors.find((d) => d.relativePath === name);
   }
 
   static getSubtreeNames(graph: ModuleGraphType, startName: string): string[] {

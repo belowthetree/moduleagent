@@ -9,7 +9,7 @@ import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { defaultLogger } from '../../core/Logger.js';
 import { buildMcpServers, writeMcpGraphFile } from '../../agents/McpServerBuilder.js';
 import { getSubModuleDirs, workspacePathForModule } from '../../agents/WorkspaceIsolator.js';
-import type { ModuleDescriptor, ModuleGraph as ModuleGraphType } from '../../types/module.js';
+import type { ModuleGraph as ModuleGraphType } from '../../types/module.js';
 import type { ConfigEntry } from '../../config/defaults.js';
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { StreamHandler } from './StreamHandler.js';
@@ -57,39 +57,14 @@ export class AgentService {
     const workspaceConfig = await ConfigLoader.load(projectRoot);
     this.config = ConfigLoader.getDefaultConfig(workspaceConfig);
 
-    const descriptors: ModuleDescriptor[] = [];
-
-    const projectDesc = await ModuleScanner.scan({
-      projectRoot,
+    const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
+    fs.ensureDirSync(moduleScanPath);
+    const descriptors = await ModuleScanner.scan({
+      projectRoot: moduleScanPath,
       extraExclude: this.config.exclude,
     });
-    descriptors.push(...projectDesc);
 
-    const moduleScanPath = path.join(this.config.projectPath, '.module-agent', 'module');
-
-    if (moduleScanPath !== path.resolve(projectRoot)) {
-      defaultLogger.info(`ModuleScanner: scanning modulesPath ${moduleScanPath}`);
-      try {
-        fs.ensureDirSync(moduleScanPath);
-        const codeDesc = await ModuleScanner.scan({
-          projectRoot: moduleScanPath,
-          extraExclude: this.config.exclude,
-        });
-        const seen = new Set(projectDesc.map((d) => d.moduleMdPath));
-        for (const d of codeDesc) {
-          if (!seen.has(d.moduleMdPath)) {
-            descriptors.push(d);
-          }
-        }
-        defaultLogger.info(`ModuleScanner: found ${codeDesc.length} modules in modulesPath`);
-      } catch (err) {
-        defaultLogger.warn(`ModuleScanner: failed to scan modulesPath ${moduleScanPath} | ${(err as Error).message}`);
-      }
-    } else {
-      defaultLogger.warn(`ModuleScanner: modulesPath equals project root — only scanning project root.`);
-    }
-
-    defaultLogger.info(`ModuleScanner: total ${descriptors.length} modules`);
+    defaultLogger.info(`ModuleScanner: found ${descriptors.length} modules in ${moduleScanPath}`);
     this.graph = new ModuleGraph().build(descriptors, projectRoot);
 
     const graphFile = writeMcpGraphFile(this.graph, os.tmpdir());

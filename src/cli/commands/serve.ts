@@ -1,4 +1,6 @@
 import readline from 'readline';
+import path from 'path';
+import fs from 'fs-extra';
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';
@@ -113,7 +115,9 @@ function serializeList(graph: ModuleGraphType) {
 async function scanProject(projectRoot: string) {
   const workspaceConfig = await ConfigLoader.load(projectRoot);
   const config = ConfigLoader.getDefaultConfig(workspaceConfig);
-  const descriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
+  const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
+  fs.ensureDirSync(moduleScanPath);
+  const descriptors = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
   const graph = new ModuleGraph().build(descriptors, projectRoot);
   return { graph, descriptors };
 }

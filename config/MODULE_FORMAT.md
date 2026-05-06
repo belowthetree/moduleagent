@@ -1,6 +1,6 @@
 # Module.md 文件规范
 
-`module.md` 是 ModuleAgent 的**模块描述文件**，每个模块目录下放置一个。它定义模块的元信息和子模块结构，但**不包含模块的源代码** — 项目路径在 `.module-agent.json` 的 `projectPath` 字段中统一配置。
+`module.md` 是 ModuleAgent 的**模块描述文件**，用于定义模块的元信息和子模块结构。所有 `module.md` 统一存放在 `.module-agent/module/` 目录下，**不侵入源代码目录**。项目路径在 `.module-agent.json` 的 `projectPath` 字段中统一配置。
 
 ## 核心概念
 
@@ -9,51 +9,83 @@ ModuleAgent 中涉及项目目录及其自动创建的子目录，职责分离�
 ```
 项目目录 (projectRoot)
 ─────────────────────────
-存放 module.md 和项目源码
-定义模块层级结构
-代码即项目源码本身
-自动创建 .module-agent/ 子目录管理扫描与隔离
+存放项目源码
+自动创建 .module-agent/ 子目录管理模块定义与工作区隔离
 
 projectRoot/
-├── module.md
-├── agent-cli/
-│   └── acp/module.md
-├── server/module.md
+├── .module-agent.json
 ├── .module-agent/
-│   ├── module/           ← 模块扫描目录
-│   └── workspace/        ← Agent 工作空间
-└── ...
+│   ├── module/              ← 所有 module.md 在此，目录树镜像源码树
+│   │   ├── module.md           (根模块)
+│   │   ├── server/
+│   │   │   ├── module.md       (server 模块)
+│   │   │   ├── api/
+│   │   │   │   └── module.md   (api 子模块)
+│   │   │   ├── models/
+│   │   │   │   └── module.md   (models 子模块)
+│   │   │   └── services/
+│   │   │       └── module.md   (services 子模块)
+│   │   ├── frontend/
+│   │   │   ├── module.md       (frontend 模块)
+│   │   │   ├── components/
+│   │   │   │   └── module.md   (components 子模块)
+│   │   │   └── pages/
+│   │   │       └── module.md   (pages 子模块)
+│   │   └── shared/
+│   │       └── module.md       (shared 模块)
+│   └── workspace/           ← Agent 隔离工作空间
+├── server/                  ← 源代码（无 module.md）
+│   ├── api/
+│   ├── models/
+│   └── services/
+├── frontend/                ← 源代码（无 module.md）
+│   ├── components/
+│   └── pages/
+└── shared/                  ← 源代码（无 module.md）
 ```
 
-- **项目目录**：存放 `module.md` 文件和项目源码，Agent 在此目录下工作。
-- **`.module-agent/` 子目录**：自动创建。`module/` 为模块扫描入口，`workspace/` 为 Agent 隔离工作空间。子模块代码被物理隔离复制到 `.module-agent/workspace/<相对路径>/` 下。
+- **项目目录**：存放项目源码，Agent 在此目录下工作。
+- **`.module-agent/module/`**：所有 `module.md` 文件统一存放于此，目录树镜像项目源码树的目录结构，便于按路径查找对应模块。
+- **`.module-agent/workspace/`**：Agent 隔离工作空间。子模块代码被物理隔离复制到 `.module-agent/workspace/<相对路径>/` 下。
 
 ## 文件位置
 
-模块以树形结构组织，每个目录可以包含一个 `module.md`：
+所有 `module.md` 文件集中存放在 `.module-agent/module/` 目录下，目录结构镜像项目源码树：
 
 ```
 project-root/
-├── module.md              # 根模块（主 Agent 负责）
-├── server/
-│   ├── module.md          # server 模块
+├── .module-agent/
+│   └── module/                    ← 所有 module.md 在此
+│       ├── module.md              # 根模块（主 Agent 负责）
+│       ├── server/
+│       │   ├── module.md          # server 模块
+│       │   ├── api/
+│       │   │   └── module.md      # api 子模块
+│       │   ├── models/
+│       │   │   └── module.md      # models 子模块
+│       │   └── services/
+│       │       └── module.md      # services 子模块
+│       ├── frontend/
+│       │   ├── module.md          # frontend 模块
+│       │   ├── components/
+│       │   │   └── module.md      # components 子模块
+│       │   └── pages/
+│       │       └── module.md      # pages 子模块
+│       └── shared/
+│           └── module.md          # shared 模块
+├── server/                        ← 源代码目录（不含 module.md）
 │   ├── api/
-│   │   └── module.md      # api 子模块
 │   ├── models/
-│   │   └── module.md      # models 子模块
 │   └── services/
-│       └── module.md      # services 子模块
-├── frontend/
-│   ├── module.md          # frontend 模块
+├── frontend/                      ← 源代码目录（不含 module.md）
 │   ├── components/
-│   │   └── module.md      # components 子模块
 │   └── pages/
-│       └── module.md      # pages 子模块
-└── shared/
-    └── module.md          # shared 模块
+└── shared/                        ← 源代码目录（不含 module.md）
 ```
 
-包含 `module.md` 的目录即被识别为一个模块，模块名和层级关系由文件系统中的目录位置决定。
+`.module-agent/module/` 下的每个子目录对应源代码树中的一个模块目录，`module.md` 定义该模块的元信息。模块名和层级关系由 `.module-agent/module/` 下的目录位置决定。
+
+> **注意**：`module.md` 是文档描述文件，并非源代码。它由 Agent 或 ModuleScanner 自动生成到 `.module-agent/module/` 中，不会出现在源码目录下。源码目录保持干净。
 
 ## 文件格式
 
@@ -96,7 +128,7 @@ submodules:
 | `path` | 是 | string | 子模块路径，相对于父模块目录，同时也是 Agent 工作目录的子路径 |
 | `description` | 否 | string | 子模块描述 |
 
-> **重要**：子模块必须在 frontmatter 中显式声明其路径。`path` 字段决定了子模块的工作目录位置，`name` 用于跨模块通信。
+> **重要**：子模块必须在 frontmatter 中显式声明其路径。`path` 字段指向源代码目录中的相对路径（与 `.module-agent/module/` 下的目录路径一致）。`name` 用于跨模块通信。
 
 ### Markdown 正文
 
@@ -184,14 +216,14 @@ description: API 路由和控制层，定义了所有 REST 端点
 
 ## 解析流程
 
-1. `ModuleScanner` 从项目根目录递归扫描所有 `module.md` 文件
+1. `ModuleScanner` 从 `.module-agent/module/` 目录递归扫描所有 `module.md` 文件
 2. `ModuleParser.parseFile()` 对每个文件：
    - 使用 `gray-matter` 解析 frontmatter（`name`、`description`、`submodules`）
    - 子模块优先从 frontmatter 读取，若无则回退到解析 Markdown 正文中的 `## 子模块` 列表（兼容旧格式）
    - 使用 `marked` 解析 Markdown，提取 `## 模块说明` 段落
 3. `ModuleGraph.build()` 将所有模块描述符构建为树形图
 4. 运行时，Agent 首次消息中自动注入对应模块的 `module.md` 正文
-5. Agent 的 cwd 根据 frontmatter 中声明的 `path` 字段（即模块目录的相对路径）确定
+5. Agent 的 cwd 根据 frontmatter 中声明的 `path` 字段（即模块目录相对于项目根目录的路径）确定
 
 ## 项目路径配置
 
@@ -215,15 +247,18 @@ projectPath = /path/to/project
 
 模块树:
   server/     → 源码路径: /path/to/project/server/
+                  模块描述: /path/to/project/.module-agent/module/server/module.md
   frontend/   → 源码路径: /path/to/project/frontend/
+                  模块描述: /path/to/project/.module-agent/module/frontend/module.md
   shared/     → 源码路径: /path/to/project/shared/
+                  模块描述: /path/to/project/.module-agent/module/shared/module.md
 ```
 
 ### 自动创建的目录
 
 | 目录 | 用途 |
 |---|---|
-| `projectPath/.module-agent/module/` | 模块扫描入口，ModuleScanner 在此发现 `module.md` |
+| `projectPath/.module-agent/module/` | 模块描述文件存放目录，ModuleScanner 在此发现 `module.md` |
 | `projectPath/.module-agent/workspace/` | Agent 隔离工作空间，模块代码被复制到此运行 |
 
 ## 工作区隔离

@@ -126,30 +126,23 @@ function sanitizeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_')
 }
 
-function findParentName(node: TreeNode): string | null {
-  for (const n of flattenedNodes.value) {
-    if (n.data.children.some(c => c.name === node.name)) return n.data.name
-  }
-  return null
-}
-
 function isCollapsedAncestor(node?: LayoutNode): boolean {
   if (!node) return false
-  const pn = findParentName(node.data)
+  const pn = node.parentName
   if (!pn) return false
   const p = flattenedNodes.value.find(n => n.data.name === pn)
   return !p ? false : p.collapsed ? true : isCollapsedAncestor(p)
 }
 
 // ── Layout algorithm (exact migration from renderer.ts:904-922) ──
-function layoutTree(node: TreeNode, depth: number, stY: number, _isRoot: boolean): LayoutNode {
+function layoutTree(node: TreeNode, depth: number, stY: number, _isRoot: boolean, parentName?: string): LayoutNode {
   const x = depth * (NODE_W + H_GAP)
   const y = stY
   let childY = y + NODE_H + V_GAP
   const kids: LayoutNode[] = []
 
   for (const c of node.children) {
-    const cl = layoutTree(c, depth + 1, childY, false)
+    const cl = layoutTree(c, depth + 1, childY, false, node.name)
     kids.push(cl)
     childY += cl.subtreeHeight + V_GAP
   }
@@ -162,6 +155,7 @@ function layoutTree(node: TreeNode, depth: number, stY: number, _isRoot: boolean
     data: node, x, y, width: NODE_W, height: NODE_H,
     collapsed: !!collapsedRef.value[node.name],
     subtreeHeight: sh,
+    parentName: parentName ?? '',
   }
   flattenedNodes.value.push(self)
   return self
@@ -209,7 +203,7 @@ const edgePaths = computed(() => {
 
   for (const n of vis) {
     if (n.data.name === props.root?.name) continue
-    const pn = findParentName(n.data)
+    const pn = n.parentName
     if (!pn || !nameSet.has(pn)) continue
     const p = flattenedNodes.value.find(x => x.data.name === pn)
     if (!p || !nameSet.has(p.data.name)) continue

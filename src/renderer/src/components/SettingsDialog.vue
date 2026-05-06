@@ -29,7 +29,7 @@ watch(() => props.visible, (v) => {
 
 // ── Browse buttons ──
 async function selectProject(): Promise<void> {
-  const d = await api.selectDir('选择模块目录')
+  const d = await api.selectDir('选择项目目录')
   if (!d) return
   configStore.projectPath = d
 }
@@ -101,10 +101,10 @@ function onCancel(): void {
         <el-input v-model="configStore.agentArgs" placeholder="acp" />
       </el-form-item>
 
-      <!-- Project (Module) Directory -->
-      <el-form-item label="模块目录">
-        <p class="field-hint">包含 module.md 的项目根目录</p>
-        <el-input v-model="configStore.projectPath" placeholder="输入或点击右侧按钮选择模块目录...">
+      <!-- Project Directory -->
+      <el-form-item label="项目目录">
+        <p class="field-hint">项目根目录，模块文件存储在 .module-agent/module/ 中</p>
+        <el-input v-model="configStore.projectPath" placeholder="输入或点击右侧按钮选择项目目录...">
           <template #append>
             <el-button @click="selectProject">浏览</el-button>
           </template>
