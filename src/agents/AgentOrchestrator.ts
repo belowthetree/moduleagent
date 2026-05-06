@@ -1,4 +1,5 @@
 import { AgentLauncher, type LaunchedAgent, type AgentConfig } from './AgentLauncher.js';
+import path from 'path';
 import type { ModuleGraphNode, ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { AgentCapabilities, SessionNotification, McpServerStdio, ContentBlock } from '@agentclientprotocol/sdk';
 import type { Logger } from '../core/Logger.js';
@@ -31,7 +32,7 @@ export interface WorkspaceIsolator {
 
   codeSourcePathForModule(
     node: ModuleGraphNode,
-    codeSource: { type: string; path?: string } | null,
+    projectPath: string,
   ): string;
 
   getSubModuleDirs(
@@ -44,17 +45,10 @@ export interface WorkspaceIsolator {
     node: ModuleGraphNode,
     options: {
       workspaceRoot: string | null;
-      codeSource: { type: string; path?: string; url?: string; branch?: string } | null;
+      projectPath: string;
       graph: ModuleGraphType | null;
-      gitCacheDir: Map<string, string>;
       onLog?: (msg: string) => void;
     },
-  ): Promise<string>;
-
-  resolveGitCodeSource(
-    codeSource: { type: string; url?: string; branch?: string } | null,
-    gitCacheDir: Map<string, string>,
-    onLog?: (msg: string) => void,
   ): Promise<string>;
 }
 
@@ -92,7 +86,7 @@ export interface AgentOrchestratorOptions {
   basePath: string;
   projectRoot: string;
   workspaceRoot: string | null;
-  codeSource: { type: string; path?: string; url?: string; branch?: string } | null;
+  projectPath: string;
   graph: ModuleGraphType | null;
   sessionPrompted: Set<string>;
   lastSent: Map<string, { text: string; time: number }>;
@@ -115,7 +109,7 @@ export class AgentOrchestrator {
   private basePath: string;
   private projectRoot: string;
   private workspaceRoot: string | null;
-  private codeSource: { type: string; path?: string; url?: string; branch?: string } | null;
+  private projectPath: string;
   private graph: ModuleGraphType | null;
   private logger: Logger;
   private callbacks?: AgentOrchestratorOptions['callbacks'];
@@ -125,7 +119,6 @@ export class AgentOrchestrator {
   lastSent: Map<string, { text: string; time: number }>;
 
   // Mutable instance state
-  gitCacheDir = new Map<string, string>();
   pendingStarts = new Map<string, Promise<AgentEntry>>();
   agents = new Map<string, AgentEntry>();
   mcpBackendPort = 0;
@@ -139,7 +132,7 @@ export class AgentOrchestrator {
     this.basePath = options.basePath;
     this.projectRoot = options.projectRoot;
     this.workspaceRoot = options.workspaceRoot;
-    this.codeSource = options.codeSource;
+    this.projectPath = options.projectPath;
     this.graph = options.graph;
     this.sessionPrompted = options.sessionPrompted;
     this.lastSent = options.lastSent;
@@ -316,20 +309,17 @@ export class AgentOrchestrator {
   private async _resolveCwd(node: ModuleGraphNode | null): Promise<string> {
     if (!node) return this.projectRoot;
 
-    if (this.workspaceRoot && node.relativePath !== '.') {
+    const workspaceRoot = this.workspaceRoot || path.join(this.projectPath, '.module-agent', 'workspace');
+
+    if (node.relativePath !== '.') {
       await this.workspaceIsolator.prepareModuleWorkspace(node, {
-        workspaceRoot: this.workspaceRoot,
-        codeSource: this.codeSource,
+        workspaceRoot,
+        projectPath: this.projectPath,
         graph: this.graph,
-        gitCacheDir: this.gitCacheDir,
       });
-      return this.workspaceIsolator.workspacePathForModule(node, this.workspaceRoot, this.projectRoot);
+      return this.workspaceIsolator.workspacePathForModule(node, workspaceRoot, this.projectRoot);
     }
 
-    if (node.relativePath === '.') {
-      return this.projectRoot;
-    }
-
-    return node.absolutePath;
+    return this.projectRoot;
   }
 }

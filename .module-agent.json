@@ -1,25 +1,2 @@
 {
-  "configs": [
-    {
-      "name": "default",
-      "agents": {
-        "default": {
-          "command": "opencode",
-          "args": [
-            "acp"
-          ]
-        }
-      },
-      "exclude": [],
-      "workspace": {
-        "path": "E:\\Project\\workspace\\workspace"
-      },
-      "codeSource": {
-        "type": "local",
-        "path": "E:\\Project\\workspace\\agent-cli"
-      },
-      "modulesPath": "E:\\Project\\workspace\\module"
-    }
-  ],
-  "defaultConfig": "default"
 }

@@ -41,7 +41,7 @@ const projectName = computed(() => {
 })
 
 async function rescan(): Promise<void> {
-  if (!configStore.workspacePath || !configStore.projectPath) return
+  if (!configStore.projectPath) return
 
   agentStore.stopRunningPoll()
   projectStore.treeRoot = null
@@ -50,7 +50,7 @@ async function rescan(): Promise<void> {
 
   // Re-scan
   try {
-    await projectStore.scanProject(configStore.projectPath, configStore.workspacePath)
+    await projectStore.scanProject(configStore.projectPath)
   } catch (err) {
     console.error('重新扫描失败:', (err as Error).message)
   }
@@ -78,10 +78,10 @@ onMounted(async () => {
   agentStore.ensureCrossContextListener()
 
   // Auto-scan if tree not loaded yet (e.g., came directly from setup-skip)
-  if (!projectStore.treeRoot && configStore.projectPath && configStore.workspacePath) {
+  if (!projectStore.treeRoot && configStore.projectPath) {
     scanning.value = true
     try {
-      await projectStore.scanProject(configStore.projectPath, configStore.workspacePath)
+      await projectStore.scanProject(configStore.projectPath)
     } catch (err) {
       console.error('自动扫描失败:', (err as Error).message)
     } finally {

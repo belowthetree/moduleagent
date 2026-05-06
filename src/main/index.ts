@@ -8,7 +8,6 @@ import { ModuleGraph } from '../core/ModuleGraph.js';
 import { ConfigLoader } from '../config/ConfigLoader.js';
 import { DEFAULT_CONFIG, type ProjectConfig } from '../config/defaults.js';
 import { Logger, LogLevel, defaultLogger } from '../core/Logger.js';
-import { normalizeCodeSourcePath } from '../core/PathUtils.js';
 import { AgentLauncher } from '../agents/AgentLauncher.js';
 import { AgentOrchestrator } from '../agents/AgentOrchestrator.js';
 import { AgentStateManager } from '../agents/AgentStateManager.js';
@@ -18,7 +17,6 @@ import {
   codeSourcePathForModule,
   getSubModuleDirs,
   prepareModuleWorkspace,
-  resolveGitCodeSource,
 } from '../agents/WorkspaceIsolator.js';
 import {
   loadSystemPrompts,
@@ -39,7 +37,6 @@ let mainWindow: BrowserWindow | null = null;
 let currentGraph: ModuleGraphType | null = null;
 let currentProjectRoot = '';
 let currentWorkspaceRoot = '';
-let currentCodeSource: { type: 'git' | 'local'; url?: string; branch?: string; path?: string } | null = null;
 
 const agentStatus = new Map<string, 'idle' | 'streaming' | 'error'>();
 const lastSent = new Map<string, { text: string; time: number }>();
@@ -114,13 +111,10 @@ function registerIpcHandlers() {
       const config = ConfigLoader.getDefaultConfig(workspaceConfig);
       const descriptors = await ModuleScanner.scan({ projectRoot, extraExclude: config.exclude });
 
-      // Also scan modulesPath (or fallback to codeSource.path) for additional modules
-      const moduleScanPath = config.modulesPath
-        ? normalizeCodeSourcePath(config.modulesPath)
-        : config.codeSource.type === 'local' && config.codeSource.path
-          ? normalizeCodeSourcePath(config.codeSource.path)
-          : '';
-      if (moduleScanPath && moduleScanPath !== path.resolve(projectRoot)) {
+      // Also scan .module-agent/module/ for additional module.md files
+      const moduleScanPath = path.join(config.projectPath, '.module-agent', 'module');
+      fs.mkdirSync(moduleScanPath, { recursive: true });
+      if (moduleScanPath !== path.resolve(projectRoot)) {
         try {
           const extraDesc = await ModuleScanner.scan({ projectRoot: moduleScanPath, extraExclude: config.exclude });
           const seen = new Set(descriptors.map((d) => d.moduleMdPath));
@@ -129,15 +123,14 @@ function registerIpcHandlers() {
           }
           defaultLogger.info(`project:scan found ${extraDesc.length} extra modules in ${moduleScanPath}`);
         } catch (err) {
-          defaultLogger.warn(`project:scan failed to scan modulesPath ${moduleScanPath}: ${(err as Error).message}`);
+          defaultLogger.warn(`project:scan failed to scan extra modules in ${moduleScanPath}: ${(err as Error).message}`);
         }
       }
 
       const graph = new ModuleGraph().build(descriptors, projectRoot);
       currentGraph = graph;
       currentProjectRoot = projectRoot;
-      currentWorkspaceRoot = workspaceRoot;
-      currentCodeSource = config.codeSource || null;
+      currentWorkspaceRoot = path.join(config.projectPath, '.module-agent', 'workspace');
 
       prompts = loadSystemPrompts(app.getAppPath());
       mcpGraphFile = writeMcpGraphFile(graph);
@@ -151,14 +144,13 @@ function registerIpcHandlers() {
           codeSourcePathForModule,
           getSubModuleDirs,
           prepareModuleWorkspace,
-          resolveGitCodeSource,
         },
         promptBuilder: { buildPromptBlocks },
         mcpServerBuilder: { buildMcpServers, writeMcpGraphFile },
         basePath: app.getAppPath(),
         projectRoot,
-        workspaceRoot,
-        codeSource: config.codeSource || null,
+        workspaceRoot: currentWorkspaceRoot,
+        projectPath: config.projectPath,
         graph,
         sessionPrompted,
         lastSent,
@@ -248,7 +240,7 @@ function registerIpcHandlers() {
       defaultLogger.info(`MCP setup complete: graph=${mcpGraphFile} port=${mcpBackendPort}`);
 
       const nodes: Record<string, ModuleGraphNode> = {};
-      for (const [name, node] of graph.nodes) nodes[name] = { ...node, workspacePath: workspaceRoot };
+      for (const [name, node] of graph.nodes) nodes[name] = { ...node, workspacePath: currentWorkspaceRoot };
       return { root: graph.root, nodes, moduleCount: descriptors.length };
     } catch (err) { return { error: (err as Error).message }; }
   });
@@ -453,7 +445,7 @@ function registerIpcHandlers() {
   });
 
   // ── Config IPC ──
-  ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }; modulesPath?: string }) => {
+  ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; projectPath?: string }) => {
     const configPath = path.join(projectRoot, '.module-agent.json');
     let workspaceConfig;
     try {
@@ -464,8 +456,7 @@ function registerIpcHandlers() {
     const config = ConfigLoader.getDefaultConfig(workspaceConfig);
     if (updates.command) config.agents.default.command = updates.command;
     if (updates.args) config.agents.default.args = updates.args;
-    if (updates.codeSource) config.codeSource = updates.codeSource;
-    if (updates.modulesPath !== undefined) config.modulesPath = updates.modulesPath;
+    if (updates.projectPath !== undefined) config.projectPath = updates.projectPath;
     await fs.promises.writeFile(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
     defaultLogger.info(`config:save wrote to ${configPath}`);
     return { success: true };
@@ -475,9 +466,9 @@ function registerIpcHandlers() {
     try {
       const workspaceConfig = await ConfigLoader.load(projectRoot);
       const config = ConfigLoader.getDefaultConfig(workspaceConfig);
-      return { command: config.agents.default.command, args: config.agents.default.args || [], codeSource: config.codeSource, modulesPath: config.modulesPath };
+      return { command: config.agents.default.command, args: config.agents.default.args || [], projectPath: config.projectPath };
     } catch {
-      return { command: DEFAULT_CONFIG.agents.default.command, args: DEFAULT_CONFIG.agents.default.args || [], codeSource: DEFAULT_CONFIG.codeSource, modulesPath: DEFAULT_CONFIG.modulesPath };
+      return { command: DEFAULT_CONFIG.agents.default.command, args: DEFAULT_CONFIG.agents.default.args || [], projectPath: DEFAULT_CONFIG.projectPath };
     }
   });
 }

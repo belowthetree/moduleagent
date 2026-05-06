@@ -165,9 +165,7 @@ ModuleAgent/
     }
   },
   "exclude": ["docs", "test", "*.config.ts"],
-  "workspace": {
-    "path": "~/.module-agent/workspaces"
-  }
+  "projectPath": "."
 }
 ```
 
@@ -176,7 +174,7 @@ ModuleAgent/
 - `agents.default`: 默认的 Agent 应用配置，所有未单独配置的模块使用
 - `agents.modules`: 按模块名指定特定 Agent 应用配置
 - `exclude`: 额外排除的文件/目录 glob 模式（叠加内置排除列表）
-- `workspace.path`: 工作目录根路径，默认 `~/.module-agent/workspaces`
+- `projectPath`: 项目根目录路径（默认 `.`），Agent 在此目录中工作。系统自动在 `.module-agent/module/` 中扫描模块，在 `.module-agent/workspace/` 中创建隔离工作空间
 
 ### 5.2 内置排除规则
 
@@ -408,13 +406,14 @@ class MCPServer {
 ### 10.1 目录结构
 
 ```
-~/.module-agent/
-└── workspaces/
-    └── <project-hash>/           # 项目 hash (SHA256 前 12 位)
-        ├── main/                 # 主 Agent 工作目录 (项目根目录的符号链接或镜像)
+<projectRoot>/
+└── .module-agent/
+    ├── module/                   # 模块扫描目录：module.md 在此发现
+    └── workspace/                # Agent 工作空间根目录
+        ├── main/                 # 主 Agent 工作目录（项目根目录的符号链接或镜像）
         ├── modules/
         │   ├── frontend/         # 模块 frontend
-        │   │   └── (从 git clone 或本地复制)
+        │   │   └── (从项目源码复制)
         │   ├── backend/          # 模块 backend
         │   └── database/         # 模块 database
         └── .module-agent.json    # 项目配置的副本
@@ -424,7 +423,7 @@ class MCPServer {
 
 ```typescript
 class WorkspaceManager {
-  basePath: string;    // ~/.module-agent/workspaces
+  basePath: string;    // <projectRoot>/.module-agent/workspace
   projectHash: string; // SHA256(projectRoot) 前 12 位
 
   getWorkspacePath(): string;
@@ -436,11 +435,9 @@ class WorkspaceManager {
 }
 ```
 
-### 10.3 代码来源策略
+### 10.3 代码来源
 
-- **git 类型**: `simple-git` clone 到工作区，后续 pull 更新
-- **local 类型**: 复制 (或硬链接) 到工作区
-- **无 source**: 仅创建目录，Agent 可自行操作
+模块源码来自项目根目录（`projectPath`）。隔离工作空间中从项目目录复制模块文件，Agent 在隔离目录中工作。
 
 ---
 

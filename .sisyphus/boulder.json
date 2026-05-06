@@ -1,63 +1,96 @@
 {
-  "active_plan": "/mnt/e/Project/ModuleAgent/.sisyphus/plans/agent-backend-migration.md",
-  "started_at": "2026-05-05T15:39:10.602Z",
+  "active_plan": "/mnt/e/Project/ModuleAgent/.sisyphus/plans/unify-project-path.md",
+  "started_at": "2026-05-06T05:48:37.004Z",
   "session_ids": [
-    "ses_207bf0805ffeGFFhlwo91mmfjz",
-    "ses_206e9e9a2ffe5qsw2UtbCDTu1n",
-    "ses_206e9b4ceffe1flT0PedTuJngh"
+    "ses_2047dea29ffeLxRJV3U4DUgsvv",
+    "ses_2032d6c22ffenY0x9X7jnYVyiw"
   ],
   "session_origins": {
-    "ses_207bf0805ffeGFFhlwo91mmfjz": "direct",
-    "ses_206e9e9a2ffe5qsw2UtbCDTu1n": "appended",
-    "ses_206e9b4ceffe1flT0PedTuJngh": "appended"
+    "ses_2047dea29ffeLxRJV3U4DUgsvv": "direct",
+    "ses_2032d6c22ffenY0x9X7jnYVyiw": "appended"
   },
-  "plan_name": "agent-backend-migration",
+  "plan_name": "unify-project-path",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "AgentStateManager class skeleton + types",
-      "session_id": "ses_207338b2fffex3q5OW0yYWy05A",
+      "task_title": "Create Zod schema tests for `projectPath` field",
+      "session_id": "ses_20429c99fffee75Koxls7ixjbN",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-05T15:47:14.917Z"
+      "category": "quick",
+      "updated_at": "2026-05-06T05:52:03.791Z"
     },
     "todo:2": {
       "task_key": "todo:2",
       "task_label": "2",
-      "task_title": "Stream accumulation in main process",
-      "session_id": "ses_2072ae4beffeTfqFxDv21qVJUQ",
+      "task_title": "Create defaults tests for `projectPath`",
+      "session_id": "ses_20426d372ffeTx96cvB384gXyS",
       "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-05T15:55:26.903Z"
-    },
-    "todo:3": {
-      "task_key": "todo:3",
-      "task_label": "3",
-      "task_title": "Context persistence (disk read/write)",
-      "session_id": "ses_2072433d3ffeIaHmOG7kDDGCYU",
-      "agent": "Sisyphus-Junior",
-      "category": "deep",
-      "updated_at": "2026-05-05T16:00:44.150Z"
+      "category": "quick",
+      "updated_at": "2026-05-06T05:54:17.420Z"
     },
     "todo:4": {
       "task_key": "todo:4",
       "task_label": "4",
-      "task_title": "Push-based agent status events",
-      "session_id": "ses_2071efc6cffewPKRCkzm0Oo108",
+      "task_title": "Update schema.ts - replace old fields with `projectPath`",
+      "session_id": "ses_2042248e2ffekgOu3YTf2Ri78b",
       "agent": "Sisyphus-Junior",
       "category": "quick",
-      "updated_at": "2026-05-05T16:11:22.569Z"
+      "updated_at": "2026-05-06T05:59:09.313Z"
+    },
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "Update Electron main/index.ts (project:scan + config IPC)",
+      "session_id": "ses_2041f5d43ffei419smDxxOHG65",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-06T06:12:48.359Z"
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "Simplify WorkspaceIsolator.ts - remove codeSource, remove git",
+      "session_id": "ses_204141c08ffemUoFydb8NwhNGn",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-06T06:24:28.214Z"
+    },
+    "todo:15": {
+      "task_key": "todo:15",
+      "task_label": "15",
+      "task_title": "Unify configStore localStorage fields",
+      "session_id": "ses_204098272ffefHadwwbV62JCGT",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-06T06:29:19.661Z"
+    },
+    "todo:16": {
+      "task_key": "todo:16",
+      "task_label": "16",
+      "task_title": "Update SetupView.vue",
+      "session_id": "ses_20405a76bffeZFvGQNr7G2IGr5",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-05-06T06:32:52.067Z"
+    },
+    "todo:20": {
+      "task_key": "todo:20",
+      "task_label": "20",
+      "task_title": "Update AGENTS.md + CLAUDE.md",
+      "session_id": "ses_204023fd4ffeIQZqHz0QOI4gK0",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-06T06:34:43.871Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_206e27330ffek50onCTBubd4zP",
-      "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-05T17:09:56.886Z"
+      "session_id": "ses_203fd0fe6ffe37h2S5SrXigNbS",
+      "agent": "oracle",
+      "updated_at": "2026-05-06T06:45:14.063Z"
     }
   }
 }

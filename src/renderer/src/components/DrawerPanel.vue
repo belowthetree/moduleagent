@@ -30,7 +30,7 @@ let resizeStartWidth = 0
 const agentCwd = computed(() => {
   if (!props.node) return ''
   if (props.node.path === '.') return configStore.projectPath
-  const base = configStore.workspacePath || configStore.projectPath
+  const base = configStore.projectPath
   return base + '/' + props.node.path.replace(/^\.\//, '')
 })
 

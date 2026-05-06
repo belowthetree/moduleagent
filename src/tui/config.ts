@@ -49,9 +49,7 @@ export async function writeModuleAgentJson(
     name: entryName,
     agents: entryConfig.agents ?? DEFAULT_CONFIG_ENTRY.agents,
     exclude: entryConfig.exclude ?? DEFAULT_CONFIG_ENTRY.exclude,
-    workspace: entryConfig.workspace ?? DEFAULT_CONFIG_ENTRY.workspace,
-    codeSource: entryConfig.codeSource ?? DEFAULT_CONFIG_ENTRY.codeSource,
-    modulesPath: entryConfig.modulesPath ?? '',
+    projectPath: entryConfig.projectPath ?? DEFAULT_CONFIG_ENTRY.projectPath,
   };
 
   if (existingIdx >= 0) {

@@ -1,17 +1,8 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { DEFAULT_CONFIG_ENTRY, DEFAULT_WORKSPACE_CONFIG, type ConfigEntry, type WorkspaceConfig } from './defaults.js';
-import { ProjectConfigSchema, WorkspaceConfigSchema } from './schema.js';
+import { WorkspaceConfigSchema } from './schema.js';
 import { defaultLogger } from '../core/Logger.js';
-
-function migrateLegacyConfig(raw: Record<string, unknown>): WorkspaceConfig {
-  // Parse as old single config, wrap into new array format
-  const legacy = ProjectConfigSchema.parse(raw);
-  return {
-    configs: [{ name: 'default', ...legacy } as ConfigEntry],
-    defaultConfig: 'default',
-  };
-}
 
 export class ConfigLoader {
   static async load(projectRoot: string): Promise<WorkspaceConfig> {
@@ -23,26 +14,25 @@ export class ConfigLoader {
     }
 
     defaultLogger.info(`[config] Loading config: ${configPath}`);
-    const raw = await fs.readJson(configPath);
-
-    // Try new format first
-    let result = WorkspaceConfigSchema.safeParse(raw);
-    if (result.success) {
-      defaultLogger.info(`[config] Loaded ${result.data.configs.length} config(s), default: ${result.data.defaultConfig}`);
-      return result.data;
+    let raw: unknown;
+    try {
+      raw = await fs.readJson(configPath);
+    } catch {
+      defaultLogger.warn('[config] Failed to read config file, using defaults');
+      return { ...DEFAULT_WORKSPACE_CONFIG };
     }
 
-    // Fall back: try old single-config format and migrate
-    const legacyResult = ProjectConfigSchema.safeParse(raw);
-    if (legacyResult.success) {
-      defaultLogger.info('[config] Migrating legacy config to new array format');
-      const migrated = {
-        configs: [{ name: 'default', ...legacyResult.data } as ConfigEntry],
-        defaultConfig: 'default',
-      };
-      // Save the migrated format back
-      await fs.writeJson(configPath, migrated, { spaces: 2 });
-      return migrated;
+    const result = WorkspaceConfigSchema.safeParse(raw);
+    if (result.success) {
+      defaultLogger.info(`[config] Loaded ${result.data.configs.length} config(s), default: ${result.data.defaultConfig}`);
+      // Warn if projectPath in config differs from config file location
+      const defaultEntry = ConfigLoader.getDefaultConfig(result.data);
+      const resolvedConfigDir = path.resolve(projectRoot);
+      const resolvedProjectPath = path.resolve(defaultEntry.projectPath);
+      if (resolvedProjectPath !== resolvedConfigDir) {
+        defaultLogger.warn('[config] projectPath in config differs from config file location');
+      }
+      return result.data;
     }
 
     defaultLogger.warn('[config] Invalid config format, using defaults');

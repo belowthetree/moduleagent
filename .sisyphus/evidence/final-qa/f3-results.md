@@ -154,3 +154,32 @@ Only difference: TypeScript type annotations (new uses `ScanResult`/`AgentStatus
 - No new type errors introduced by the migration
 - IPC contract fully preserved
 - localStorage data migration compatible
+
+## F3: Schema Migration QA — Wed May 06 2026
+
+### Test Suites
+| Suite | Tests | Result |
+|-------|-------|--------|
+| schema.test.ts | 9 | PASS |
+| defaults.test.ts | 7 | PASS |
+| ConfigLoader.test.ts (mocked) | 7 | PASS |
+| manual-qa.test.ts (Zod + logic) | 24 | PASS |
+| real-file-qa.test.ts (real files) | 7 | PASS |
+| **TOTAL** | **54** | **ALL PASS** |
+
+### Scenarios
+- Valid new format with projectPath ✓
+- ConfigEntrySchema with name + projectPath ✓
+- WorkspaceConfigSchema with configs array ✓
+- Multi-config workspace with different projectPaths ✓
+- loadOrCreate creates/loads correctly ✓
+
+### Edge Cases
+- Missing projectPath → Zod rejects ✓
+- projectPath as number/object/boolean → Zod rejects ✓
+- Old format (codeSource+workspace) → rejected, fallback to defaults ✓
+- Mixed format → strips old fields, keeps projectPath ✓
+- Empty string projectPath → accepted (z.string() default) ✓
+- Malformed JSON → no crash, falls back to defaults ✓
+
+### Verdict: APPROVE

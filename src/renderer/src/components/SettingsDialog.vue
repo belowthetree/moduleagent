@@ -19,8 +19,6 @@ const saving = ref(false)
 const error = ref('')
 const originalProjectPath = ref('')
 
-const showCodeSourcePath = ref(configStore.codeSourceType === 'local')
-
 // ── Track original projectPath when dialog opens ──
 watch(() => props.visible, (v) => {
   if (v) {
@@ -29,28 +27,11 @@ watch(() => props.visible, (v) => {
   }
 })
 
-// ── Watch codeSourceType changes ──
-watch(() => configStore.codeSourceType, (v) => {
-  showCodeSourcePath.value = v === 'local'
-})
-
 // ── Browse buttons ──
-async function selectWorkspace(): Promise<void> {
-  const d = await api.selectDir('选择工作目录')
-  if (!d) return
-  configStore.workspacePath = d
-}
-
 async function selectProject(): Promise<void> {
   const d = await api.selectDir('选择模块目录')
   if (!d) return
   configStore.projectPath = d
-}
-
-async function selectCodeSourcePath(): Promise<void> {
-  const d = await api.selectDir('选择代码根目录')
-  if (!d) return
-  configStore.codeSourcePath = d
 }
 
 // ── Save ──
@@ -120,16 +101,6 @@ function onCancel(): void {
         <el-input v-model="configStore.agentArgs" placeholder="acp" />
       </el-form-item>
 
-      <!-- Workspace Directory -->
-      <el-form-item label="工作目录">
-        <p class="field-hint">Agent 的工作空间，模块代码将同步到此目录</p>
-        <el-input v-model="configStore.workspacePath" placeholder="输入或点击右侧按钮选择工作目录...">
-          <template #append>
-            <el-button @click="selectWorkspace">浏览</el-button>
-          </template>
-        </el-input>
-      </el-form-item>
-
       <!-- Project (Module) Directory -->
       <el-form-item label="模块目录">
         <p class="field-hint">包含 module.md 的项目根目录</p>
@@ -140,24 +111,6 @@ function onCancel(): void {
         </el-input>
       </el-form-item>
 
-      <!-- Code Source Type -->
-      <el-form-item label="代码来源类型">
-        <p class="field-hint">模块代码的来源</p>
-        <el-select v-model="configStore.codeSourceType" class="full-width">
-          <el-option label="本地目录" value="local" />
-          <el-option label="Git 仓库" value="git" disabled />
-        </el-select>
-      </el-form-item>
-
-      <!-- Local Code Path (conditional) -->
-      <el-form-item v-if="showCodeSourcePath" label="本地代码路径">
-        <p class="field-hint">源码所在的根目录，模块按相对路径从中映射</p>
-        <el-input v-model="configStore.codeSourcePath" placeholder="输入或点击右侧按钮选择代码根目录...">
-          <template #append>
-            <el-button @click="selectCodeSourcePath">浏览</el-button>
-          </template>
-        </el-input>
-      </el-form-item>
     </el-form>
 
     <!-- Footer -->

@@ -158,16 +158,16 @@ export async function startTui(projectRoot: string) {
     if (await validateModuleAgentJson(projectRoot)) {
       await (globalThis as any).__tuiInitAgent(projectRoot);
 
-      // Warn if modulesPath is not configured
+      // Warn if projectPath is not configured
       const { ConfigLoader } = await import('../config/ConfigLoader.js');
       const workspaceConfig = await ConfigLoader.load(projectRoot);
       const config = ConfigLoader.getDefaultConfig(workspaceConfig);
-      const hasModulesPath = config.modulesPath || (config.codeSource.type === 'local' && config.codeSource.path);
-      if (!hasModulesPath) {
+      const hasProjectPath = !!config.projectPath;
+      if (!hasProjectPath) {
         const msg: ChatMessage = {
           id: `sys-${Date.now()}`,
           role: 'system',
-          content: '输入 /setup 可配置模块文件夹路径。',
+          content: '输入 /setup 可配置项目路径。',
           time: new Date().toLocaleTimeString(),
         };
         tuiState.setMessages([...tuiState.messages(), msg]);

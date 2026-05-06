@@ -48,7 +48,7 @@ They share `AgentLauncher`, `ModuleScanner`, `ModuleGraph`, and the protocol lay
 
 ## Project config
 
-`.module-agent.json` at the **user's project root** (not this repo's root) configures agent command, args, exclusions, workspace path, code source, and module discovery path. Schema in `src/config/schema.ts`. Note: the repo's own `.module-agent.json` is a sample for self-hosting.
+`.module-agent.json` at the **user's project root** (not this repo's root) configures the agent command, args, exclusions, and project root. Schema in `src/config/schema.ts`. Note: the repo's own `.module-agent.json` is a sample for self-hosting.
 
 ### Config fields
 
@@ -56,13 +56,11 @@ They share `AgentLauncher`, `ModuleScanner`, `ModuleGraph`, and the protocol lay
 |-------|---------|
 | `agents.default.command` / `args` | Agent executable and arguments |
 | `exclude` | Directory/pattern list to skip during module scanning |
-| `workspace.path` | Where isolated workspace copies are created (Electron path) |
-| `codeSource.type` / `path` | Source code location for workspace isolation (`local` or `git`) |
-| `modulesPath` | **Module folder** — additional directory scanned for `module.md` files. Distinct from `codeSource.path` (which is for source isolation). When empty, falls back to `codeSource.path` for backward compatibility. |
+| `projectPath` | Root project directory. `.module-agent/module/` and `.module-agent/workspace/` are auto-created here |
 
-When changing the schema, update both `src/config/schema.ts` (Zod) and `src/config/defaults.ts` (TypeScript interface + `DEFAULT_CONFIG`). Then ensure all three config consumers are updated:
+When changing the schema, update both `src/config/schema.ts` (Zod) and `src/config/defaults.ts` (TypeScript interface + `DEFAULT_CONFIG`). Then ensure all config consumers are updated:
 - `src/tui/services/AgentService.ts` (TUI path)
- - `src/main/index.ts` `config:save` / `config:get` / `project:scan` (Electron path)
+- `src/main/index.ts` `config:save` / `config:get` / `project:scan` (Electron path)
 - `src/cli/commands/setup.ts` (CLI interactive setup)
 
 ## Key directories

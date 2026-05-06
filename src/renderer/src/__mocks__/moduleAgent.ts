@@ -6,7 +6,6 @@ import type {
   AgentStatus,
   ScanResult,
   TreeNode,
-  CodeSource,
   ChatMsg,
   MigrationData,
 } from '../../../types/preload';
@@ -39,7 +38,7 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
       return Promise.resolve('/mock/selected/dir');
     },
 
-    scanProject: (_projectRoot: string, _workspaceRoot: string): Promise<ScanResult> => {
+    scanProject: (_projectRoot: string): Promise<ScanResult> => {
       return Promise.resolve({
         root: '/mock/project',
         moduleCount: 5,
@@ -116,8 +115,7 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
       _projectRoot: string,
       _cmd: string,
       _args: string[],
-      _codeSource?: CodeSource,
-      _modulesPath?: string,
+      _projectPath?: string,
     ): Promise<{ success: boolean }> => {
       return Promise.resolve({ success: true });
     },
@@ -125,14 +123,12 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
     getAgentConfig: (_projectRoot: string): Promise<{
       command: string;
       args: string[];
-      codeSource?: CodeSource;
-      modulesPath?: string;
+      projectPath?: string;
     }> => {
       return Promise.resolve({
         command: 'opencode',
         args: ['acp'],
-        codeSource: { type: 'local', path: '/mock/project' },
-        modulesPath: '/mock/modules',
+        projectPath: '/mock/project',
       });
     },
 

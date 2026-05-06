@@ -69,17 +69,10 @@ export interface CrossContextData {
   time: string;
 }
 
-export interface CodeSource {
-  type: 'git' | 'local';
-  url?: string;
-  branch?: string;
-  path?: string;
-}
-
 export interface ModuleAgentApi {
   selectDir(title: string): Promise<string | null>;
 
-  scanProject(projectRoot: string, workspaceRoot: string): Promise<ScanResult>;
+  scanProject(projectRoot: string): Promise<ScanResult>;
 
   getTree(): Promise<TreeNode | null>;
 
@@ -103,15 +96,13 @@ export interface ModuleAgentApi {
     projectRoot: string,
     cmd: string,
     args: string[],
-    codeSource?: CodeSource,
-    modulesPath?: string,
+    projectPath?: string,
   ): Promise<{ success: boolean }>;
 
   getAgentConfig(projectRoot: string): Promise<{
     command: string;
     args: string[];
-    codeSource?: CodeSource;
-    modulesPath?: string;
+    projectPath?: string;
   }>;
 
   migrateCheck(keys: string[]): Promise<{ needed: string[]; streamNeeded: boolean }>;

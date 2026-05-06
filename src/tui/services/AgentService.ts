@@ -1,5 +1,5 @@
 import path from 'path';
-import fs from 'fs';
+import fs from 'fs-extra';
 import os from 'os';
 import { AgentManager, type AgentEntry } from '../../agents/AgentManager.js';
 import { AgentRouter } from '../../agents/AgentRouter.js';
@@ -7,7 +7,6 @@ import { ConfigLoader } from '../../config/ConfigLoader.js';
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { defaultLogger } from '../../core/Logger.js';
-import { normalizeCodeSourcePath } from '../../core/PathUtils.js';
 import { buildMcpServers, writeMcpGraphFile } from '../../agents/McpServerBuilder.js';
 import { getSubModuleDirs, workspacePathForModule } from '../../agents/WorkspaceIsolator.js';
 import type { ModuleDescriptor, ModuleGraph as ModuleGraphType } from '../../types/module.js';
@@ -66,17 +65,12 @@ export class AgentService {
     });
     descriptors.push(...projectDesc);
 
-    // Resolve the module scanning path: modulesPath (new) takes priority,
-    // falling back to codeSource.path for backward compatibility.
-    const moduleScanPath = this.config.modulesPath
-      ? normalizeCodeSourcePath(this.config.modulesPath)
-      : this.config.codeSource.type === 'local' && this.config.codeSource.path
-        ? normalizeCodeSourcePath(this.config.codeSource.path)
-        : '';
+    const moduleScanPath = path.join(this.config.projectPath, '.module-agent', 'module');
 
-    if (moduleScanPath && moduleScanPath !== path.resolve(projectRoot)) {
+    if (moduleScanPath !== path.resolve(projectRoot)) {
       defaultLogger.info(`ModuleScanner: scanning modulesPath ${moduleScanPath}`);
       try {
+        fs.ensureDirSync(moduleScanPath);
         const codeDesc = await ModuleScanner.scan({
           projectRoot: moduleScanPath,
           extraExclude: this.config.exclude,
@@ -92,7 +86,7 @@ export class AgentService {
         defaultLogger.warn(`ModuleScanner: failed to scan modulesPath ${moduleScanPath} | ${(err as Error).message}`);
       }
     } else {
-      defaultLogger.warn(`ModuleScanner: modulesPath is empty — only scanning project root. Run 'module-agent config' to configure.`);
+      defaultLogger.warn(`ModuleScanner: modulesPath equals project root — only scanning project root.`);
     }
 
     defaultLogger.info(`ModuleScanner: total ${descriptors.length} modules`);

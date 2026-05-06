@@ -4,8 +4,8 @@ import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData
 const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke('dialog:selectDir', title) as Promise<string | null>,
 
-  scanProject: (projectRoot: string, workspaceRoot: string) =>
-    ipcRenderer.invoke('project:scan', projectRoot, workspaceRoot) as Promise<ScanResult>,
+  scanProject: (projectRoot: string) =>
+    ipcRenderer.invoke('project:scan', projectRoot) as Promise<ScanResult>,
 
   getTree: () => ipcRenderer.invoke('project:getTree') as Promise<Record<string, unknown> | null>,
 
@@ -37,11 +37,11 @@ const api: ModuleAgentApi = {
   },
 
   // Config APIs
-  saveAgentConfig: (projectRoot: string, cmd: string, args: string[], codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }, modulesPath?: string) =>
-    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args, codeSource, modulesPath }) as Promise<{ success: boolean }>,
+  saveAgentConfig: (projectRoot: string, cmd: string, args: string[], projectPath?: string) =>
+    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args, projectPath }) as Promise<{ success: boolean }>,
 
   getAgentConfig: (projectRoot: string) =>
-    ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; codeSource?: { type: 'git' | 'local'; url?: string; branch?: string; path?: string }; modulesPath?: string }>,
+    ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; projectPath?: string }>,
 
   // Migration APIs
   migrateCheck: (keys: string[]) => ipcRenderer.invoke('migrate:check', keys) as Promise<{ needed: string[]; streamNeeded: boolean }>,

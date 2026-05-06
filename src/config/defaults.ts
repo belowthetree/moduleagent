@@ -1,10 +1,3 @@
-export interface CodeSourceConfig {
-  type: 'git' | 'local';
-  url?: string;
-  branch?: string;
-  path?: string;
-}
-
 export interface ProjectConfig {
   agents: {
     default: {
@@ -17,11 +10,7 @@ export interface ProjectConfig {
     }>;
   };
   exclude: string[];
-  workspace: {
-    path: string;
-  };
-  codeSource: CodeSourceConfig;
-  modulesPath?: string;
+  projectPath: string;
 }
 
 export interface ConfigEntry extends ProjectConfig {
@@ -42,14 +31,7 @@ export const DEFAULT_CONFIG_ENTRY: ConfigEntry = {
     },
   },
   exclude: [],
-  workspace: {
-    path: '.module-agent/workspaces',
-  },
-  codeSource: {
-    type: 'local',
-    path: '',
-  },
-  modulesPath: '',
+  projectPath: '.',
 };
 
 export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {

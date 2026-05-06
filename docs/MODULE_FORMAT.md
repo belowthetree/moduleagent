@@ -1,27 +1,32 @@
 # Module.md 文件规范
 
-`module.md` 是 ModuleAgent 的**模块描述文件**，每个模块目录下放置一个。它定义模块的元信息和子模块结构，但**不包含模块的源代码** — 代码来源在项目设置中统一配置。
+`module.md` 是 ModuleAgent 的**模块描述文件**，每个模块目录下放置一个。它定义模块的元信息和子模块结构，但**不包含模块的源代码** — 项目路径在 `.module-agent.json` 的 `projectPath` 字段中统一配置。
 
 ## 核心概念
 
-ModuleAgent 中涉及三个目录，职责分离：
+ModuleAgent 中涉及项目目录及其自动创建的子目录，职责分离：
 
 ```
-项目目录 (projectRoot)         代码来源 (codeSource)            工作目录 (workspace)
-─────────────────────────     ────────────────────────      ────────────────────────
-存放 module.md               存放实际源代码                  Agent 运行时的工作空间
-定义模块层级结构              模块代码在此处拉取              模块被隔离复制到此
-E:\project\module\            E:\source\monorepo\            E:\workspace\
-├── module.md                  ├── acp/                      ├── acp/   ← 从代码来源复制
-├── agent-cli/                 │   └── src/...               │   └── src/...
-│   └── acp/module.md          ├── server/                   ├── server/
-├── server/module.md           │   └── src/...               │   └── src/...
-└── ...                        └── ...                       └── ...
+项目目录 (projectRoot)
+─────────────────────────
+存放 module.md 和项目源码
+定义模块层级结构
+代码即项目源码本身
+自动创建 .module-agent/ 子目录管理扫描与隔离
+
+projectRoot/
+├── module.md
+├── agent-cli/
+│   └── acp/module.md
+├── server/module.md
+├── .module-agent/
+│   ├── module/           ← 模块扫描目录
+│   └── workspace/        ← Agent 工作空间
+└── ...
 ```
 
-- **项目目录**：仅存放 `module.md` 文件，定义模块树。Agent **不在此目录工作**。
-- **代码来源**：在设置界面中配置的源码根路径（本地目录或 Git 仓库）。Agent 启动时从此处拉取代码。
-- **工作目录**：Agent 实际运行的地方。子模块代码被物理隔离复制到 `<工作目录>/<相对路径>/` 下。
+- **项目目录**：存放 `module.md` 文件和项目源码，Agent 在此目录下工作。
+- **`.module-agent/` 子目录**：自动创建。`module/` 为模块扫描入口，`workspace/` 为 Agent 隔离工作空间。子模块代码被物理隔离复制到 `.module-agent/workspace/<相对路径>/` 下。
 
 ## 文件位置
 
@@ -188,58 +193,48 @@ description: API 路由和控制层，定义了所有 REST 端点
 4. 运行时，Agent 首次消息中自动注入对应模块的 `module.md` 正文
 5. Agent 的 cwd 根据 frontmatter 中声明的 `path` 字段（即模块目录的相对路径）确定
 
-## 代码来源配置
+## 项目路径配置
 
-代码来源在项目设置界面（或 `.module-agent.json`）中统一配置，而非在每个 `module.md` 中单独声明。每个模块的代码路径由「代码来源根目录 + 模块相对路径」组合而成。
+项目路径在 `.module-agent.json` 中通过 `projectPath` 字段配置：
 
-> **重要**：必须在设置中配置代码来源，否则 Agent 启动时无法拉取源码，隔离功能将被跳过。
+```json
+{
+  "projectPath": ".",
+  "agents": { ... }
+}
+```
 
-### 配置字段
+系统自动在项目根目录下创建 `.module-agent/module/` 和 `.module-agent/workspace/` 子目录。每个模块的代码路径由「项目根目录 + 模块相对路径」组合而成。
 
-| 字段 | 必填 | 类型 | 说明 |
-|---|---|---|---|
-| `codeSource.type` | 是 | `"git"` \| `"local"` | 来源类型 |
-| `codeSource.path` | local 时必填 | string | 本地代码根目录的绝对路径 |
-| `codeSource.url` | git 时必填 | string | Git 仓库地址 |
-| `codeSource.branch` | 否 | string | 分支名，默认使用仓库默认分支 |
+> **重要**：`projectPath` 必须配置为项目根目录，否则模块扫描和隔离功能无法正常工作。
 
-### 本地代码示例
+### 路径示例
 
 ```
-设置界面: 代码来源类型 = 本地目录, 本地代码路径 = E:\source\monorepo
+projectPath = /path/to/project
 
 模块树:
-  server/     → 源码路径: E:\source\monorepo\server\
-  frontend/   → 源码路径: E:\source\monorepo\frontend\
-  shared/     → 源码路径: E:\source\monorepo\shared\
+  server/     → 源码路径: /path/to/project/server/
+  frontend/   → 源码路径: /path/to/project/frontend/
+  shared/     → 源码路径: /path/to/project/shared/
 ```
 
-### Git 仓库示例
+### 自动创建的目录
 
-```
-设置界面: 代码来源类型 = Git 仓库, URL = https://github.com/example/my-app.git, 分支 = main
-
-模块树:
-  server/     → 源码路径: <缓存>/main/server/
-  frontend/   → 源码路径: <缓存>/main/frontend/
-```
-
-### 未配置时的行为
-
-如果 `codeSource` 未配置或路径为空，系统启动 Agent 时会：
-1. 打印警告日志：`no code source configured, skipping isolation`
-2. 跳过工作区复制，Agent 直接在模块描述文件所在目录启动
-3. 物理隔离功能不生效，所有模块共享同一文件空间
+| 目录 | 用途 |
+|---|---|
+| `projectPath/.module-agent/module/` | 模块扫描入口，ModuleScanner 在此发现 `module.md` |
+| `projectPath/.module-agent/workspace/` | Agent 隔离工作空间，模块代码被复制到此运行 |
 
 ## 工作区隔离
 
-当配置了工作目录和代码来源后，每次 Agent 启动时会自动执行以下流程：
+当配置了 `projectPath` 后，每次 Agent 启动时会自动执行以下流程：
 
 ### 隔离流程
 
 ```
-1. 计算源码路径:  <代码来源根>/<模块相对路径>/
-2. 计算目标路径:  <工作目录>/<模块相对路径>/
+1. 计算源码路径:  <projectPath>/<模块相对路径>/
+2. 计算目标路径:  <projectPath>/.module-agent/workspace/<模块相对路径>/
    （根模块使用模块名作为子目录）
 3. 复制源码到目标路径（过滤 node_modules、.git）
 4. 在目标路径启动 Agent
@@ -250,7 +245,7 @@ Agent 的工作目录由模块的相对路径决定，该路径与父模块 fron
 ### 目录结构
 
 ```
-工作目录/
+<projectPath>/.module-agent/workspace/
 ├── config/
 │   ├── mainagentprompt.md  # 主 Agent 系统提示词
 │   └── subagentprompt.md   # 子 Agent 系统提示词
@@ -259,11 +254,11 @@ Agent 的工作目录由模块的相对路径决定，该路径与父模块 fron
 │   ├── server/
 │   └── frontend/
 ├── server/                # 子模块（使用相对路径）
-│   ├── src/...            # ← 从代码来源复制
+│   ├── src/...            # ← 从项目源码复制
 │   └── api/
 │       └── src/...
 └── frontend/              # 子模块（使用相对路径）
-    ├── src/...            # ← 从代码来源复制
+    ├── src/...            # ← 从项目源码复制
     └── components/
         └── src/...
 ```
@@ -272,14 +267,14 @@ Agent 的工作目录由模块的相对路径决定，该路径与父模块 fron
 
 | Agent 角色 | 工作目录 | 可见范围 |
 |---|---|---|
-| 主 Agent（根模块） | `<工作目录>/<模块名>/` | 可见所有子模块文件夹，用于协调调度 |
-| 子 Agent | `<工作目录>/<相对路径>/` | 仅可见自己模块的文件 |
+| 主 Agent（根模块） | `.module-agent/workspace/<模块名>/` | 可见所有子模块文件夹，用于协调调度 |
+| 子 Agent | `.module-agent/workspace/<相对路径>/` | 仅可见自己模块的文件 |
 
 ### 错误处理
 
 | 场景 | 行为 |
 |---|---|
-| 代码来源未配置或路径为空 | 打印 `no code source configured, skipping isolation` 警告，跳过复制 |
+| `projectPath` 未配置 | 打印 `no project path configured, skipping isolation` 警告，跳过复制 |
 | 源码目录不存在 | 复制失败，回退到模块描述文件所在目录 |
-| 工作目录未配置 | 不做隔离，Agent 直接在模块描述文件目录启动 |
+| `.module-agent/workspace/` 不存在 | 自动创建 |
 | 复制成功 | Agent 在隔离的工作目录中启动 |

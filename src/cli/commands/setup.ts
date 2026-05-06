@@ -49,7 +49,7 @@ function createLineReader(rl: readline.Interface) {
 }
 
 function isConfigComplete(config: ProjectConfig): boolean {
-  return !!(config.agents.default.command && config.workspace.path);
+  return !!config.projectPath;
 }
 
 export async function runSetup(
@@ -100,11 +100,11 @@ export async function runSetup(
   if (!hasConfig || !isConfigComplete(config)) {
     console.log('\n=== ModuleAgent Setup ===\n');
 
-    // 1. 模块目录 — where module.md files live
+    // 1. 项目路径 — project root (module.md + workspaces auto-created)
     if (!hasExplicitProject) {
-      const modDir = await reader.readLine(`  模块目录 [${projectRoot}]: `);
-      if (modDir.trim()) {
-        const resolved = path.resolve(modDir.trim());
+      const projInput = await reader.readLine(`  项目路径 (源代码所在目录，.module-agent/module/ 和 .module-agent/workspace/ 目录将自动创建) [${projectRoot}]: `);
+      if (projInput.trim()) {
+        const resolved = path.resolve(projInput.trim());
         if (fs.existsSync(resolved)) {
           projectRoot = resolved;
         } else {
@@ -112,7 +112,8 @@ export async function runSetup(
         }
       }
     }
-    console.log(`  模块目录: ${projectRoot}`);
+    config.projectPath = projectRoot;
+    console.log(`  项目路径: ${projectRoot}`);
 
     // Ensure module.md exists (silent auto-gen when project is resolved)
     if (!fs.existsSync(path.join(projectRoot, 'module.md'))) {
@@ -127,14 +128,7 @@ export async function runSetup(
       }
     }
 
-    // 2. 工作目录 — where agent workspaces are created
-    const wsDefault = config.workspace.path || '.module-agent/workspaces';
-    const wsPath = await reader.readLine(`  工作目录 [${wsDefault}]: `);
-    if (wsPath.trim()) {
-      config.workspace.path = wsPath.trim();
-    }
-
-    // 3. Agent 命令
+    // 2. Agent 命令
     const cmd = await reader.readLine(`  Agent 命令 [${config.agents.default.command}]: `);
     if (cmd.trim()) config.agents.default.command = cmd.trim();
 
@@ -143,29 +137,6 @@ export async function runSetup(
     const argsStr = await reader.readLine(`  Agent 参数 [${currentArgs}]: `);
     if (argsStr.trim()) {
       config.agents.default.args = argsStr.trim().split(/\s+/);
-    }
-
-    // 4.5. 模块文件夹 — where module.md files are discovered
-    const modFolder = await reader.readLine(`  模块文件夹 (module.md 所在路径) [${config.modulesPath || '(未指定)'}]: `);
-    if (modFolder.trim()) config.modulesPath = modFolder.trim();
-
-    // 5. 代码来源类型
-    const srcType = await reader.readLine(`  代码来源类型 (local/git) [${config.codeSource.type || 'local'}]: `);
-    if (srcType.trim() === 'git') {
-      config.codeSource.type = 'git';
-    } else if (srcType.trim() === 'local') {
-      config.codeSource.type = 'local';
-    }
-
-    // 6. Source-specific fields
-    if (config.codeSource.type === 'git') {
-      const gitUrl = await reader.readLine(`  Git 仓库地址 [${config.codeSource.url || ''}]: `);
-      if (gitUrl.trim()) config.codeSource.url = gitUrl.trim();
-      const gitBranch = await reader.readLine(`  Git 分支 [${config.codeSource.branch || 'main'}]: `);
-      if (gitBranch.trim()) config.codeSource.branch = gitBranch.trim();
-    } else {
-      const localPath = await reader.readLine(`  本地代码路径 [${config.codeSource.path || projectRoot}]: `);
-      if (localPath.trim()) config.codeSource.path = path.resolve(localPath.trim());
     }
 
     // Save config in new array format
@@ -185,16 +156,11 @@ export async function runSetup(
 
   // ── Summary ──
 
-  const csInfo = config.codeSource.type === 'git'
-    ? `git @ ${config.codeSource.url || '?'} (${config.codeSource.branch || 'main'})`
-    : `local @ ${config.codeSource.path || projectRoot}`;
-
   console.log('');
-  console.log(`  模块目录:      ${projectRoot}`);
-  console.log(`  模块文件夹:    ${config.modulesPath || '(未指定)'}`);
-  console.log(`  工作目录:      ${config.workspace.path}`);
+  console.log(`  项目路径:      ${projectRoot}`);
+  console.log(`  模块目录:      ${path.join(projectRoot, '.module-agent/module/')}`);
+  console.log(`  工作目录:      ${path.join(projectRoot, '.module-agent/workspace/')}`);
   console.log(`  Agent:        ${config.agents.default.command} ${(config.agents.default.args || []).join(' ')}`);
-  console.log(`  代码来源:      ${csInfo}`);
   console.log('');
 
   saveLastProject(projectRoot);

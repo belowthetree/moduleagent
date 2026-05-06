@@ -14,34 +14,19 @@ const error = ref('')
 const scanning = ref(false)
 
 // ── Computed ──
-const startDisabled = computed(() => !configStore.workspacePath || !configStore.projectPath)
-const showCodeSourcePath = computed(() => configStore.codeSourceType === 'local')
+const startDisabled = computed(() => !configStore.projectPath)
 
 // ── Browse buttons ──
-async function selectWorkspace(): Promise<void> {
-  const d = await api.selectDir('选择工作目录')
-  if (!d) return
-  configStore.workspacePath = d
-  configStore.saveToLocalStorage()
-}
-
 async function selectProject(): Promise<void> {
-  const d = await api.selectDir('选择模块目录')
+  const d = await api.selectDir('选择项目目录')
   if (!d) return
   configStore.projectPath = d
   configStore.saveToLocalStorage()
 }
 
-async function selectCodeSourcePath(): Promise<void> {
-  const d = await api.selectDir('选择代码根目录')
-  if (!d) return
-  configStore.codeSourcePath = d
-  configStore.saveToLocalStorage()
-}
-
 // ── Start scan ──
 async function startScan(): Promise<void> {
-  if (!configStore.workspacePath || !configStore.projectPath) return
+  if (!configStore.projectPath) return
 
   error.value = ''
   scanning.value = true
@@ -50,7 +35,7 @@ async function startScan(): Promise<void> {
 
   try {
     await configStore.saveToProject(configStore.projectPath)
-    await projectStore.scanProject(configStore.projectPath, configStore.workspacePath)
+    await projectStore.scanProject(configStore.projectPath)
     router.push('/main')
   } catch (err) {
     error.value = '扫描失败: ' + (err instanceof Error ? err.message : String(err))
@@ -71,7 +56,7 @@ onMounted(() => {
       <!-- Header -->
       <div class="setup-header">
         <h1 class="setup-logo">ModuleAgent</h1>
-        <p class="setup-subtitle">配置工作目录、模块目录和 Agent 命令后开始</p>
+        <p class="setup-subtitle">选择项目目录，配置 Agent 命令后即可开始扫描</p>
       </div>
 
       <!-- Error Alert -->
@@ -103,44 +88,26 @@ onMounted(() => {
           <el-input v-model="configStore.agentArgs" placeholder="acp" />
         </el-form-item>
 
-        <!-- Workspace Directory -->
-        <el-form-item label="工作目录">
-          <p class="field-hint">Agent 的工作空间，模块代码将同步到此目录</p>
-          <el-input v-model="configStore.workspacePath" placeholder="输入或点击右侧按钮选择工作目录...">
-            <template #append>
-              <el-button @click="selectWorkspace">浏览</el-button>
-            </template>
-          </el-input>
-        </el-form-item>
-
-        <!-- Project (Module) Directory -->
-        <el-form-item label="模块目录">
-          <p class="field-hint">包含 module.md 的项目根目录</p>
-          <el-input v-model="configStore.projectPath" placeholder="输入或点击右侧按钮选择模块目录...">
+        <!-- Project Path -->
+        <el-form-item label="项目目录">
+          <p class="field-hint">项目根目录，将在其中自动创建 .module-agent/module/ 和 .module-agent/workspace/ 子目录</p>
+          <el-input v-model="configStore.projectPath" placeholder="输入或点击右侧按钮选择项目目录...">
             <template #append>
               <el-button @click="selectProject">浏览</el-button>
             </template>
           </el-input>
         </el-form-item>
 
-        <!-- Code Source Type -->
-        <el-form-item label="代码来源类型">
-          <p class="field-hint">模块代码的来源</p>
-          <el-select v-model="configStore.codeSourceType" class="full-width">
-            <el-option label="本地目录" value="local" />
-            <el-option label="Git 仓库（即将支持）" value="git" disabled />
-          </el-select>
-        </el-form-item>
-
-        <!-- Local Code Path (conditional) -->
-        <el-form-item v-if="showCodeSourcePath" label="本地代码路径">
-          <p class="field-hint">源码所在的根目录，模块按相对路径从中映射</p>
-          <el-input v-model="configStore.codeSourcePath" placeholder="输入或点击右侧按钮选择代码根目录...">
-            <template #append>
-              <el-button @click="selectCodeSourcePath">浏览</el-button>
-            </template>
-          </el-input>
-        </el-form-item>
+        <!-- Auto-created dirs note -->
+        <el-alert
+          type="info"
+          :closable="false"
+          class="setup-note"
+        >
+          <template #title>
+            将自动在项目目录下创建 <code>.module-agent/module/</code>（存放模块描述文件）和 <code>.module-agent/workspace/</code>（Agent 工作空间）
+          </template>
+        </el-alert>
       </el-form>
 
       <!-- Start Button -->
@@ -217,8 +184,16 @@ onMounted(() => {
   line-height: 1.4;
 }
 
-.full-width {
-  width: 100%;
+.setup-note {
+  margin-bottom: 0;
+}
+
+.setup-note code {
+  background: var(--el-color-info-light-9);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .setup-actions {
@@ -236,10 +211,6 @@ onMounted(() => {
 
 .setup-form :deep(.el-input__wrapper.is-focus) {
   border-color: var(--el-color-primary);
-  box-shadow: none !important;
-}
-
-.setup-form :deep(.el-select .el-input__wrapper) {
   box-shadow: none !important;
 }
 </style>

@@ -5,13 +5,6 @@ export const AgentConfigSchema = z.object({
   args: z.array(z.string()).optional(),
 });
 
-export const CodeSourceSchema = z.object({
-  type: z.enum(['git', 'local']),
-  url: z.string().optional(),
-  branch: z.string().optional(),
-  path: z.string().optional(),
-});
-
 // Single project config entry (without name)
 export const ProjectConfigSchema = z.object({
   agents: z.object({
@@ -19,11 +12,7 @@ export const ProjectConfigSchema = z.object({
     modules: z.record(z.string(), AgentConfigSchema).optional(),
   }),
   exclude: z.array(z.string()),
-  workspace: z.object({
-    path: z.string(),
-  }),
-  codeSource: CodeSourceSchema,
-  modulesPath: z.string().optional(),
+  projectPath: z.string(),
 });
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
