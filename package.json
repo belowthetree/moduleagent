@@ -24,7 +24,10 @@
       "output": "release"
     },
     "files": [
+      "out/**/*",
+      "dist/**/*",
       "src/**/*",
+      "config/**/*",
       "node_modules/**/*",
       "package.json"
     ],
@@ -41,6 +44,7 @@
     "@opentui/core": "^0.2.2",
     "@opentui/keymap": "^0.2.2",
     "@opentui/solid": "^0.2.2",
+    "cosmiconfig": "^9.0.1",
     "element-plus": "^2.13.7",
     "fs-extra": "^11.2.0",
     "gray-matter": "^4.0.3",

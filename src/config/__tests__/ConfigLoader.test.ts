@@ -6,13 +6,21 @@ import { defaultLogger } from '../../core/Logger'
 
 vi.mock('fs-extra')
 
+let mockSearchResult: { config: unknown; filepath: string; isEmpty: boolean } | null = null
+
+vi.mock('../../core/ConfigPaths.js', () => ({
+  configExplorer: {
+    search: vi.fn().mockImplementation(() => mockSearchResult),
+  },
+}))
+
 describe('ConfigLoader', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSearchResult = null
   })
 
   describe('load()', () => {
-    // 1. Valid new-format config is parsed correctly
     it('returns parsed config with projectPath when loading valid new-format config', async () => {
       const mockConfig = {
         configs: [
@@ -25,15 +33,13 @@ describe('ConfigLoader', () => {
         ],
         defaultConfig: 'd',
       }
-      vi.mocked(fs.pathExists).mockResolvedValue(true)
-      vi.mocked(fs.readJson).mockResolvedValue(mockConfig)
+      mockSearchResult = { config: mockConfig, filepath: '/test/.module-agent.json', isEmpty: false }
 
       const result = await ConfigLoader.load('/test')
 
       expect(result.configs[0]).toHaveProperty('projectPath', '/proj')
     })
 
-    // 2. Old-format config is rejected (falls back to defaults, NOT migrated)
     it('rejects old-format config and falls back to defaults with warning', async () => {
       const oldConfig = {
         agents: { default: { command: 'test' } },
@@ -42,34 +48,30 @@ describe('ConfigLoader', () => {
         codeSource: { type: 'local' as const, path: '/src' },
         modulesPath: '/mod',
       }
-      vi.mocked(fs.pathExists).mockResolvedValue(true)
-      vi.mocked(fs.readJson).mockResolvedValue(oldConfig)
+      mockSearchResult = { config: oldConfig, filepath: '/test/.module-agent.json', isEmpty: false }
       const warnSpy = vi.spyOn(defaultLogger, 'warn')
 
       const result = await ConfigLoader.load('/test')
 
       expect(result).toEqual(DEFAULT_WORKSPACE_CONFIG)
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Invalid config format')
+        expect.stringContaining('Invalid config format'),
       )
-      // ConfigLoader must NOT attempt to migrate old config
       expect(vi.mocked(fs.writeJson)).not.toHaveBeenCalled()
       warnSpy.mockRestore()
     })
 
-    // 3. No config file → defaults
     it('returns DEFAULT_WORKSPACE_CONFIG when no config file exists', async () => {
-      vi.mocked(fs.pathExists).mockResolvedValue(false)
+      mockSearchResult = null
 
       const result = await ConfigLoader.load('/test')
 
       expect(result).toEqual(DEFAULT_WORKSPACE_CONFIG)
     })
 
-    // 4. Invalid JSON in config file → fallback to defaults
-    it('falls back to defaults when config file has invalid JSON', async () => {
-      vi.mocked(fs.pathExists).mockResolvedValue(true)
-      vi.mocked(fs.readJson).mockRejectedValue(new Error('invalid JSON'))
+    it('falls back to defaults when config search throws', async () => {
+      const { configExplorer } = await import('../../core/ConfigPaths.js')
+      vi.mocked(configExplorer.search).mockRejectedValueOnce(new Error('read error'))
 
       const result = await ConfigLoader.load('/test')
 
@@ -78,23 +80,21 @@ describe('ConfigLoader', () => {
   })
 
   describe('loadOrCreate()', () => {
-    // 5. Creates file when missing and returns defaults
     it('creates config file when none exists and returns defaults', async () => {
-      vi.mocked(fs.pathExists).mockResolvedValue(false)
+      mockSearchResult = null
 
       const result = await ConfigLoader.loadOrCreate('/test')
 
       expect(vi.mocked(fs.writeJson)).toHaveBeenCalledWith(
         expect.stringContaining('.module-agent.json'),
         DEFAULT_WORKSPACE_CONFIG,
-        { spaces: 2 }
+        { spaces: 2 },
       )
       expect(result).toEqual(DEFAULT_WORKSPACE_CONFIG)
     })
   })
 
   describe('getDefaultConfig()', () => {
-    // 6. Finds the named default config
     it('returns the config matching defaultConfig name', () => {
       const workspace = {
         configs: [
@@ -109,7 +109,6 @@ describe('ConfigLoader', () => {
       expect(result.name).toBe('b')
     })
 
-    // 7. Falls back to first config when defaultConfig name not found
     it('falls back to first config when defaultConfig name is not found', () => {
       const workspace = {
         configs: [

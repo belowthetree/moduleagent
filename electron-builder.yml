@@ -6,6 +6,7 @@ files:
   - 'out/**/*'
   - 'dist/**/*'
   - 'src/**/*'
+  - 'config/**/*'
   - 'node_modules/**/*'
   - 'package.json'
   - '!**/.vscode/*'

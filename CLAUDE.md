@@ -52,6 +52,37 @@ Communication pattern: Core exposes `CoreCallbacks` interface (callback injectio
 - **MCP server bundle path**: Use `app.getAppPath()` (Electron app root), NOT the user's project root. The bundle lives at `dist/mcp-server.cjs` relative to this repo.
 - **First message per session** injects system prompt (`config/mainagentprompt.md` or `config/subagentprompt.md`) + module context. Subsequent messages skip this. Tracked via `sessionPrompted` Set.
 
+## Config resolution (dev vs production)
+
+### Dev mode
+
+Activated by `module-agent.bat dev` or `module-agent.sh dev` (sets `MODULE_AGENT_DEV=1`). Also auto-detected when running under `electron-vite dev` (`app.isPackaged === false`).
+
+- **Prompt files** (`config/*.md`): read from `{repo}/config/`
+- **Project config** (`.module-agent.json`): discovered via `cosmiconfig` searching upward from cwd
+
+### Production mode
+
+When `MODULE_AGENT_DEV` is not set and the app is packaged.
+
+- **Prompt files**: read from `{env-paths config}/config/` — e.g. `~/.config/module-agent/config/` on Linux
+- **Project config**: discovered via `cosmiconfig` searching upward from cwd; global preset at `{env-paths config}/.module-agent.json` serves as fallback
+- **First run**: `ensureConfigFiles()` in `src/core/ConfigPaths.ts` copies bundled `.md` files and `.module-agent.json` from the app bundle to the user config directory (skipping existing files)
+
+### Platform-specific config directories (via `env-paths`)
+
+| Platform | Config root |
+|----------|-------------|
+| Linux | `~/.config/module-agent/` |
+| macOS | `~/Library/Application Support/module-agent/` |
+| Windows | `%APPDATA%/module-agent/Config/` |
+
+### Key files
+
+- `src/core/ConfigPaths.ts` — `isDev()`, `getPromptConfigDir()`, `ensureConfigFiles()`, `configExplorer` (cosmiconfig)
+- `src/config/ConfigLoader.ts` — uses `configExplorer` from ConfigPaths to discover `.module-agent.json`
+- `src/agents/PromptBuilder.ts` — `loadSystemPrompts(configDir)` reads `.md` files from resolved `configDir`
+
 ## Project config
 
 `.module-agent.json` at the **user's project root** (not this repo's root) configures the agent command, args, exclusions, and project root. Schema in `src/config/schema.ts`. Note: the repo's own `.module-agent.json` is a sample for self-hosting.

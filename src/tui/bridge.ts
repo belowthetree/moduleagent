@@ -65,9 +65,11 @@ export class TuiBridge {
       },
     };
 
+    const repoRoot = findRepoRoot();
     this.core = new ModuleAgentCore({
       callbacks,
-      basePath: findRepoRoot(),
+      basePath: repoRoot,
+      configDir: path.join(repoRoot, 'config'),
       logger: defaultLogger,
     });
   }

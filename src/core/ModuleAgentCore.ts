@@ -1,3 +1,4 @@
+import path from 'path';
 import { defaultLogger, type Logger } from './Logger.js';
 import { ModuleAgentSubsystem } from './ModuleAgentSubsystem.js';
 import { RoleAgentSubsystem } from './RoleAgentSubsystem.js';
@@ -19,6 +20,7 @@ import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 export interface ModuleAgentCoreOptions {
   callbacks: CoreCallbacks;
   basePath: string;
+  configDir?: string;
   logger?: Logger;
   /** Enable role agent support */
   enableRoles?: boolean;
@@ -36,6 +38,7 @@ export class ModuleAgentCore {
   private callbacks: CoreCallbacks;
   private logger: Logger;
   private basePath: string;
+  private configDir: string;
 
   modules: ModuleAgentSubsystem;
   roles: RoleAgentSubsystem | null = null;
@@ -46,11 +49,13 @@ export class ModuleAgentCore {
   constructor(options: ModuleAgentCoreOptions) {
     this.callbacks = options.callbacks;
     this.basePath = options.basePath;
+    this.configDir = options.configDir || path.join(options.basePath, 'config');
     this.logger = options.logger || defaultLogger;
 
     this.modules = new ModuleAgentSubsystem({
       callbacks: this.callbacks,
       basePath: this.basePath,
+      configDir: this.configDir,
       logger: this.logger,
       onSessionUpdate: options.onSessionUpdate,
     });
@@ -85,6 +90,7 @@ export class ModuleAgentCore {
     this.roles = new RoleAgentSubsystem({
       callbacks: this.callbacks,
       basePath: this.basePath,
+      configDir: this.configDir,
       projectPath,
       workspaceRoot,
       logger: this.logger,

@@ -14,6 +14,7 @@ import type { CoreCallbacks } from './CoreTypes.js';
 export interface RoleAgentSubsystemOptions {
   callbacks: CoreCallbacks;
   basePath: string;
+  configDir?: string;
   projectPath: string;
   workspaceRoot: string;
   logger?: Logger;
@@ -40,7 +41,8 @@ export class RoleAgentSubsystem {
     this._onSessionUpdate = options.onSessionUpdate;
 
     // Load role agent prompt
-    const rolePromptPath = path.join(options.basePath, 'config', 'roleagentprompt.md');
+    const resolvedConfigDir = options.configDir || path.join(options.basePath, 'config');
+    const rolePromptPath = path.join(resolvedConfigDir, 'roleagentprompt.md');
     try {
       this.rolePrompt = fs.readFileSync(rolePromptPath, 'utf-8');
       this.logger.info(`Loaded role agent prompt (${this.rolePrompt.length} chars)`);

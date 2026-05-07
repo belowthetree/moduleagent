@@ -24,6 +24,7 @@ echo Unknown option: %MODE%
 goto :usage
 
 :dev
+set "MODULE_AGENT_DEV=1"
 echo =========================================
 echo   ModuleAgent - Dev Mode ^(HMR + DevTools^)
 echo =========================================

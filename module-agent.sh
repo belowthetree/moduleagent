@@ -15,6 +15,7 @@ ModuleAgent Launcher
 
 Usage:
   module-agent.sh                    Launch GUI (default)
+  module-agent.sh dev                Dev mode (HMR + DevTools)
   module-agent.sh tui [project]      Start TUI mode
   module-agent.sh list [project]     List all modules (JSON)
   module-agent.sh get <name> [project] Get module details (JSON)
@@ -100,6 +101,14 @@ cli() {
 
 case "$MODE" in
     --help|-h) usage ;;
+    dev)
+        export MODULE_AGENT_DEV=1
+        if [ ! -d "node_modules" ] || [ ! -d "node_modules/electron-vite" ]; then
+            echo "Installing dependencies..."
+            npm install --silent || exit 1
+        fi
+        npx electron-vite dev
+        ;;
     tui) tui ;;
     list|get|serve) cli ;;
     "") gui ;;

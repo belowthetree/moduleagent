@@ -26,6 +26,7 @@ import {
   getSubModuleDirs,
   prepareModuleWorkspace,
 } from '../agents/WorkspaceIsolator.js';
+import { getPromptConfigDir, ensureConfigFiles } from '../core/ConfigPaths.js';
 import type { ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../types/module.js';
 import type { ChatMsg } from '../types/preload.js';
 import type { CoreCallbacks } from '../core/CoreTypes.js';
@@ -40,6 +41,7 @@ export class ElectronBridge {
   private stateManager: AgentStateManager | null = null;
   private mcpBackend: McpBackendServer | null = null;
   private logger: Logger;
+  private configDir: string;
 
   private prompts = { mainPrompt: '', subPrompt: '', rolePrompt: '' };
 
@@ -52,11 +54,16 @@ export class ElectronBridge {
     this.mainWindow = mainWindow;
     this.logger = defaultLogger;
 
+    const basePath = this._getBasePath();
+    this.configDir = getPromptConfigDir(basePath);
+    ensureConfigFiles(path.join(basePath, 'config'));
+
     const callbacks: CoreCallbacks = this._buildCallbacks();
 
     this.core = new ModuleAgentCore({
       callbacks,
-      basePath: this._getBasePath(),
+      basePath,
+      configDir: this.configDir,
       logger: this.logger,
       onSessionUpdate: (moduleName, sessionId, notification) => {
         // Forward to AgentStateManager for accumulation
@@ -190,11 +197,10 @@ export class ElectronBridge {
         const graph = new ModuleGraph().build(descriptors, projectRoot);
         const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
 
-        // Load prompts
-        const basePath = self._getBasePath();
-        self.prompts = { ...loadSystemPrompts(basePath), rolePrompt: '' };
+        // Load prompts from resolved config dir
+        self.prompts = { ...loadSystemPrompts(self.configDir), rolePrompt: '' };
         try {
-          const rpPath = path.join(basePath, 'config', 'roleagentprompt.md');
+          const rpPath = path.join(self.configDir, 'roleagentprompt.md');
           self.prompts.rolePrompt = fs.readFileSync(rpPath, 'utf-8');
         } catch { /* optional */ }
 

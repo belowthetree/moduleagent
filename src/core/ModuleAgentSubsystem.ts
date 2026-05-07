@@ -45,6 +45,7 @@ export interface AgentEntry {
 export interface ModuleAgentSubsystemOptions {
   callbacks: CoreCallbacks;
   basePath: string;
+  configDir?: string;
   logger?: Logger;
   contextDir?: string;
   /** Optional external session-update listener (e.g. AgentStateManager in Electron) */
@@ -60,6 +61,7 @@ export interface ModuleAgentSubsystemOptions {
 export class ModuleAgentSubsystem {
   private callbacks: CoreCallbacks;
   private basePath: string;
+  private configDir: string;
   private logger: Logger;
   private launcher = new AgentLauncher();
 
@@ -88,6 +90,7 @@ export class ModuleAgentSubsystem {
   constructor(options: ModuleAgentSubsystemOptions) {
     this.callbacks = options.callbacks;
     this.basePath = options.basePath;
+    this.configDir = options.configDir || path.join(options.basePath, 'config');
     this.logger = options.logger || defaultLogger;
     this._onSessionUpdate = options.onSessionUpdate;
     this._onCrossContext = options.onCrossContext;
@@ -115,7 +118,7 @@ export class ModuleAgentSubsystem {
     this.graph = new ModuleGraph().build(descriptors, projectRoot);
 
     this.mcpGraphFile = writeMcpGraphFile(this.graph, os.tmpdir());
-    this.prompts = loadSystemPrompts(this.basePath);
+    this.prompts = loadSystemPrompts(this.configDir);
     this.currentModule = this.graph.root;
 
     this.setStatus('idle');
