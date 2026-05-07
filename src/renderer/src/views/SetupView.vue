@@ -2,45 +2,35 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useConfigStore } from '../stores/config'
-import { useProjectStore } from '../stores/project'
-import { useModuleAgent } from '../composables/useModuleAgent'
 
 const router = useRouter()
 const configStore = useConfigStore()
-const projectStore = useProjectStore()
-const api = useModuleAgent()
 
 const error = ref('')
-const scanning = ref(false)
 
 // ── Computed ──
-const startDisabled = computed(() => !configStore.projectPath)
+const confirmDisabled = computed(() => !configStore.projectPath)
 
 // ── Browse buttons ──
 async function selectProject(): Promise<void> {
-  const d = await api.selectDir('选择项目目录')
+  const d = await window.moduleAgent.selectDir('选择项目目录')
   if (!d) return
   configStore.projectPath = d
   configStore.saveToLocalStorage()
 }
 
-// ── Start scan ──
-async function startScan(): Promise<void> {
+// ── Confirm setup ──
+async function confirmSetup(): Promise<void> {
   if (!configStore.projectPath) return
 
   error.value = ''
-  scanning.value = true
-
   configStore.saveToLocalStorage()
 
   try {
     await configStore.saveToProject(configStore.projectPath)
-    await projectStore.scanProject(configStore.projectPath)
     router.push('/main')
   } catch (err) {
-    error.value = '扫描失败: ' + (err instanceof Error ? err.message : String(err))
-  } finally {
-    scanning.value = false
+    error.value = '保存配置失败: ' + (err instanceof Error ? err.message : String(err))
   }
 }
 
@@ -56,7 +46,7 @@ onMounted(() => {
       <!-- Header -->
       <div class="setup-header">
         <h1 class="setup-logo">ModuleAgent</h1>
-        <p class="setup-subtitle">选择项目目录，配置 Agent 命令后即可开始扫描</p>
+        <p class="setup-subtitle">选择项目目录，配置 Agent 命令后确认进入</p>
       </div>
 
       <!-- Error Alert -->
@@ -73,7 +63,6 @@ onMounted(() => {
       <!-- Form -->
       <el-form
         label-position="top"
-        :disabled="scanning"
         class="setup-form"
       >
         <!-- Agent Command -->
@@ -110,17 +99,16 @@ onMounted(() => {
         </el-alert>
       </el-form>
 
-      <!-- Start Button -->
+      <!-- Confirm Button -->
       <div class="setup-actions">
         <el-button
           type="primary"
           size="large"
-          :disabled="startDisabled"
-          :loading="scanning"
-          @click="startScan"
-          class="btn-start"
+          :disabled="confirmDisabled"
+          @click="confirmSetup"
+          class="btn-confirm"
         >
-          {{ scanning ? '扫描中...' : '开始扫描' }}
+          确认
         </el-button>
       </div>
     </el-card>
@@ -200,7 +188,7 @@ onMounted(() => {
   margin-top: 8px;
 }
 
-.btn-start {
+.btn-confirm {
   width: 100%;
 }
 
