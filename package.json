@@ -1,5 +1,5 @@
 {
-  "name": "module-agent",
+  "name": "@belowthetree/module-agent",
   "version": "0.1.0",
   "description": "模块化 Agent 编排框架",
   "type": "module",
