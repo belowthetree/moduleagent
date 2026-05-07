@@ -47,8 +47,11 @@ ModuleAgent/
 │   │       │   └── MainView.vue     # 主界面（模块树 + Agent 对话）
 │   │       ├── components/
 │   │       │   ├── SVGTree.vue      # 交互式 SVG 模块树
-│   │       │   ├── DrawerPanel.vue  # 模块详情抽屉
-│   │       │   ├── StreamArea.vue   # 流式 Agent 输出
+│   │       │   ├── LeftSidebar.vue  # 左侧页签栏（节点树 / 角色 Agent）
+│   │       │   ├── NodeDetailPanel.vue # 模块详情 + 对话面板（主区域）
+│   │       │   ├── RolePanel.vue    # 角色 Agent 卡片列表
+│   │       │   ├── RoleConfigDialog.vue # 角色 Agent 配置对话框
+│   │       │   ├── DrawerPanel.vue  # [废弃] 旧版右侧抽屉面板
 │   │       │   ├── ContextCards.vue # 对话历史卡片
 │   │       │   ├── ChatInput.vue    # 消息输入框
 │   │       │   ├── SettingsDialog.vue # 设置对话框
@@ -67,7 +70,10 @@ ModuleAgent/
 │   │   ├── AgentLauncher.ts         # 启动 Agent 子进程，建立 ClientSideConnection
 │   │   ├── AgentManager.ts          # 管理 Agent 生命周期（CLI 路径使用）
 │   │   ├── AgentRouter.ts           # 消息路由（CLI 路径使用）
-│   │   ├── AgentOrchestrator.ts     # Electron 路径 Agent 编排
+│   │   ├── AgentOrchestrator.ts     # Electron 路径 Agent 编排（模块 Agent）
+│   │   ├── RoleAgentManager.ts      # 角色 Agent 生命周期管理
+│   │   ├── RoleWorkspace.ts         # 角色 Agent 工作空间准备
+│   │   ├── AgentStateManager.ts     # Agent 状态持久化
 │   │   ├── McpBackend.ts            # MCP HTTP 后端
 │   │   ├── McpServerBuilder.ts      # MCP Server 配置构建
 │   │   ├── PromptBuilder.ts         # 系统提示 + 模块上下文构建
@@ -79,9 +85,13 @@ ModuleAgent/
 │   │   │       ├── fs.ts            # FsHandler — 工作区限制的文件读写
 │   │   │       └── terminal.ts      # TerminalHandler — 终端子进程管理
 │   │   ├── mcp/
-│   │   │   ├── MCPServer.ts         # MCP Server（暴露 3 个工具）
+│   │   │   ├── MCPServer.ts         # MCP Server（模块 Agent 用：4 个工具）
+│   │   │   ├── RoleMCPServer.ts     # MCP Server（角色 Agent 用：2 个文件工具）
 │   │   │   ├── CommunicationBus.ts  # 消息路由总线
-│   │   │   └── server-entry.ts      # MCP Server 独立入口（由 Agent 子进程启动）
+│   │   │   ├── server-entry.ts      # 模块 MCP Server 独立入口
+│   │   │   ├── role-server-entry.ts # 角色 MCP Server 独立入口
+│   │   │   └── tools/
+│   │   │       └── ModuleTools.ts   # 工具类定义
 │   │   └── index.ts                 # 统一导出
 │   ├── core/
 │   │   ├── ModuleScanner.ts         # 递归扫描 module.md
@@ -93,8 +103,8 @@ ModuleAgent/
 │   │   └── PathUtils.ts             # 跨平台路径处理
 │   ├── config/
 │   │   ├── ConfigLoader.ts          # 加载 .module-agent.json
-│   │   ├── defaults.ts              # 默认配置
-│   │   └── schema.ts                # Zod schema
+│   │   ├── defaults.ts              # 默认配置（含 RoleConfig 类型）
+│   │   └── schema.ts                # Zod schema（含 roles 字段）
 │   ├── cli/
 │   │   └── index.ts                 # CLI 入口（`module-agent serve` / `tui`）
 │   └── types/
@@ -107,11 +117,14 @@ ModuleAgent/
 │   │   └── index.cjs               # 预加载 CJS bundle
 │   └── renderer/                   # 渲染进程 (Vite 产物)
 ├── dist/
-│   ├── mcp-server.cjs               # MCP Server 打包产物（自包含）
+│   ├── mcp-server.cjs               # MCP Server 打包产物（模块 Agent 用）
+│   ├── mcp-role-server.cjs          # MCP Server 打包产物（角色 Agent 用）
 │   └── cli.cjs                      # CLI 打包产物（自包含）
 ├── config/
 │   ├── mainagentprompt.md           # 主 Agent 系统提示
-│   └── subagentprompt.md            # 子 Agent 系统提示
+│   ├── subagentprompt.md            # 子 Agent 系统提示
+│   ├── roleagentprompt.md           # 角色 Agent 系统提示
+│   └── MODULE_FORMAT.md             # 模块格式规范
 ├── electron.vite.config.ts          # electron-vite 配置（main + preload + renderer）
 ├── electron-builder.yml             # electron-builder 打包配置
 ├── vitest.config.ts                 # Vitest 测试配置
@@ -212,25 +225,60 @@ interface Client {
 
 ### 4.2 MCPServer 工具
 
+**模块 Agent 工具**（`dist/mcp-server.cjs`）：
+
 | 工具 | 参数 | 说明 |
 |------|------|------|
-| `module_list` | 无 | 列出所有模块及描述 |
-| `module_call` | targetModule, task, context? | 向目标模块发任务 |
-| `module_query` | targetModule, query | 查询目标模块 |
+| `module_list` | 无 | 列出所有可访问模块及描述 |
+| `module_call` | targetModule, goal, background, expectedOutput, constraints | 向目标模块发任务 |
+| `module_query` | targetModule, query, background | 查询目标模块 |
+| `create_module` | name, parentPath?, description? | 新建模块 |
+
+**角色 Agent 工具**（`dist/mcp-role-server.cjs`）：
+
+| 工具 | 参数 | 说明 |
+|------|------|------|
+| `workrole_read_file` | path | 读取工作目录中的文件（路径相对于 workspace） |
+| `workrole_write_file` | path, content | 写入文件到工作目录 |
+
+角色 Agent **不提供**模块工具（`module_list`、`module_call`、`module_query`、`create_module`）。
 
 ### 4.3 IPC 通道 (Electron)
+
+**模块 Agent 通道**：
 
 | 通道 | 方向 | 说明 |
 |------|------|------|
 | `project:scan` | Renderer → Main | 扫描项目，返回模块树 |
 | `project:getTree` | Renderer → Main | 获取当前模块树 |
+| `project:generateModules` | Renderer → Main | 调用 Agent 自动生成模块 |
 | `agent:start` | Renderer → Main | 启动模块 Agent |
-| `agent:send` | Renderer → Main | 发送消息 |
+| `agent:send` | Renderer → Main | 发送消息给模块 Agent |
 | `agent:cancel` | Renderer → Main | 取消当前请求 |
 | `agent:stop` | Renderer → Main | 停止 Agent |
-| `agent:isRunning` | Renderer → Main | 检查 Agent 状态 |
 | `agent:stream` | Main → Renderer | 流式更新推送 |
+| `agent:status` | Main → Renderer | Agent 状态变化推送 |
+| `agent:cross-context` | Main → Renderer | 跨模块通信推送 |
+| `config:save` / `config:get` | Renderer → Main | 读写项目配置 |
+| `context:get` / `context:clear` | Renderer → Main | 对话上下文持久化 |
 | `dialog:selectDir` | Renderer → Main | 打开目录选择对话框 |
+
+**角色 Agent 通道**：
+
+| 通道 | 方向 | 说明 |
+|------|------|------|
+| `role:list` | Renderer → Main | 获取角色列表 |
+| `role:save` | Renderer → Main | 保存角色配置 |
+| `role:delete` | Renderer → Main | 删除角色 |
+| `role:start` | Renderer → Main | 启动角色 Agent |
+| `role:send` | Renderer → Main | 发送消息给角色 Agent |
+| `role:cancel` | Renderer → Main | 取消角色 Agent 当前操作 |
+| `role:stop` | Renderer → Main | 停止角色 Agent |
+| `role:isRunning` | Renderer → Main | 检查角色 Agent 状态 |
+| `role:getContext` | Renderer → Main | 获取角色对话上下文 |
+| `role:clearContext` | Renderer → Main | 清除角色对话上下文 |
+| `role:stream` | Main → Renderer | 角色 Agent 流式更新推送 |
+| `role:status` | Main → Renderer | 角色 Agent 状态变化推送 |
 
 ### 4.4 Preload API (window.moduleAgent)
 
@@ -254,32 +302,38 @@ interface ModuleAgentApi {
 
 ```
 SetupView.vue: 设置页面（首次使用）
-  ├─ Element Plus 表单控件（agent 命令、参数、工作目录、模块目录、代码源）
+  ├─ Element Plus 表单控件（agent 命令、参数、项目目录）
   └─ 开始扫描按钮
 
 MainView.vue: 主界面
-  ├─ SVGTree.vue: 交互式 SVG 模块依赖图（缩放/拖拽/折叠）
-  ├─ DrawerPanel.vue: 模块详情抽屉（Element Plus Drawer）
-  │   ├─ 模块信息（路径、来源、子模块数）
-  │   ├─ StreamArea.vue: 流式 Agent 输出
-  │   │   ├─ 思考内容（灰色斜体，agent_thought_chunk）
-  │   │   ├─ 工具调用（橙色高亮，tool_call）
-  │   │   └─ 回复文本（正常文本，agent_message_chunk）
-  │   ├─ 取消按钮（流式输出时显示）
-  │   └─ 对话上下文区域
-  │       ├─ ContextCards.vue: 历史消息卡片（分页）
-  │       │   ├─ 思考标签（灰色）
-  │       │   ├─ 工具标签（橙色）
-  │       │   ├─ 跨模块消息标签（蓝色，'cross' 角色）
-  │       │   └─ 回复预览
-  │       └─ ChatInput.vue: 输入框 + 发送按钮
+  ├─ 工具栏（扫描 / 清空 / 设置 / 主题切换）
+  ├─ LeftSidebar.vue: 左侧页签栏（48px）
+  │   ├─ 节点树页签 → 打开树抽屉
+  │   └─ 角色 Agent 页签 → 打开角色抽屉
+  ├─ 抽屉（从左侧滑出，可拖拽调节宽度，默认 2/3 可用宽度）
+  │   ├─ 树抽屉（activeTab='tree'）:
+  │   │   └─ SVGTree.vue: 交互式 SVG 模块依赖图
+  │   └─ 角色抽屉（activeTab='roles'）:
+  │       └─ RolePanel.vue: 角色卡片列表 + 添加/编辑/删除
+  └─ 主区域（始终可见，占据剩余空间）
+      ├─ NodeDetailPanel.vue: 选中节点时 — 模块信息 + ContextCards + ChatInput
+      ├─ 角色详情（选中角色时）: 角色信息 + ContextCards(contextType='role') + ChatInput
+      └─ 占位提示（未选中时）: 引导用户选择模块或角色
+
   ├─ SettingsDialog.vue: 设置对话框（Element Plus Dialog）
-  ├─ MessageModal.vue: 消息详情弹窗（Element Plus Dialog）
-  │   ├─ 思考过程 section
-  │   ├─ 工具调用 section
-  │   └─ 回复 section
+  ├─ RoleConfigDialog.vue: 角色配置对话框（Element Plus Dialog）
+  │   ├─ 角色名称、描述
+  │   ├─ 可见模块路径多选（从模块树获取选项）
+  │   └─ Agent 命令、参数
   └─ ThemeToggle.vue: 暗色/亮色主题切换
 ```
+
+**交互逻辑**：
+- 点击左侧页签 → 抽屉从左侧滑出（点击相同页签或遮罩层关闭）
+- 在树中选择节点 → 抽屉关闭，主区域显示节点详情和对话
+- 在角色列表中选择角色 → 抽屉关闭，主区域显示角色信息和对话
+- 选中节点和选中角色互斥（选一个会清除另一个）
+- 抽屉宽度可拖拽调节，上次宽度保存到 localStorage (`sideDrawerWidth`)
 
 ### ChatMsg 数据结构
 
@@ -341,7 +395,8 @@ npx tsx test_acp.ts [workspace_dir]
 - 配置在 `electron.vite.config.ts` 中统一管理
 
 **esbuild** (后续步骤):
-- `build:mcp-server` → `dist/mcp-server.cjs`（自包含 CJS，Agent 直接 `node dist/mcp-server.cjs` 启动）
+- `build:mcp-server` → `dist/mcp-server.cjs`（模块 Agent 用 MCP Server）
+- `build:mcp-role-server` → `dist/mcp-role-server.cjs`（角色 Agent 用 MCP Server）
 - `build:cli` → `dist/cli.cjs`（自包含 CJS，external: @opentui/*）
 
 `npm run dev` 时 electron-vite 以 Vite HMR 模式运行，渲染进程和主进程均支持热重载，无需手动重启。
@@ -371,7 +426,77 @@ npx tsx test_acp.ts [workspace_dir]
 
 ---
 
-## 8. 已知问题与注意事项
+## 8. 角色 Agent
+
+### 8.1 概述
+
+角色 Agent 是一种特殊的 Agent，拥有特定职责和对特定模块路径的可见性。与模块 Agent 不同，角色 Agent 会拉取所有可见模块的目录到自己的隔离工作空间，主要用途是文档管理和跨模块分析。
+
+### 8.2 与模块 Agent 的区别
+
+| 特性 | 模块 Agent | 角色 Agent |
+|------|-----------|-----------|
+| 工作目录 | `.module-agent/workspace/<module-path>/` | `.module-agent/workspace/workrole/<name>/` |
+| 工作空间内容 | 仅本模块源码 | 所有可见模块的副本 |
+| MCP 工具 | module_list, module_call, module_query, create_module | workrole_read_file, workrole_write_file |
+| 系统提示 | mainagentprompt.md / subagentprompt.md | roleagentprompt.md |
+| 生命周期管理 | AgentOrchestrator | RoleAgentManager |
+| 上下文 key | `<moduleName>` | `workrole:<roleName>` |
+
+### 8.3 配置格式
+
+`.module-agent.json` 中的 `roles` 字段：
+
+```json
+{
+  "roles": [
+    {
+      "name": "architect",
+      "description": "架构审查 Agent",
+      "visibleModulePaths": ["src/core", "src/agents"],
+      "agents": {
+        "default": {
+          "command": "opencode",
+          "args": ["acp"]
+        }
+      }
+    }
+  ]
+}
+```
+
+### 8.4 工作空间初始化流程
+
+```
+RoleAgentManager.startRoleAgent(role)
+  → RoleWorkspace.prepareRoleWorkspace()
+    → 创建 workrole/<name>/ 目录
+    → 遍历 visibleModulePaths，复制每个模块源码到工作空间（排除 node_modules, .git）
+  → AgentLauncher.launch() → spawn 子进程
+  → 构建 role-specific MCP servers (dist/mcp-role-server.cjs --workspace <path>)
+  → connection.newSession({ cwd, mcpServers })
+```
+
+### 8.5 角色 Agent IPC 流
+
+```
+Renderer                              Main Process
+  ├─ role:save ──────────────────────→ 写入 .module-agent.json roles 数组
+  ├─ role:delete ────────────────────→ 删除角色 + cleanupRoleWorkspace()
+  ├─ role:start ─────────────────────→ RoleAgentManager.startRoleAgent()
+  ├─ role:send ──────────────────────→ 首次: 注入 roleagentprompt.md
+  │                                    后续: 仅用户消息
+  │                                    → entry.launched.connection.prompt()
+  ├─ role:cancel ────────────────────→ connection.cancel()
+  ├─ role:stop ─────────────────────→ kill 子进程
+  ├─ role:getContext ────────────────→ stateManager.loadContext("workrole:<name>")
+  ← role:stream ────────────────────── 流式更新推送
+  ← role:status ────────────────────── 状态变化推送
+```
+
+---
+
+## 9. 已知问题与注意事项
 
 ### 构建与工具链
 - **electron-vite**: 渲染进程（Vue 3）用 Vite 打包，主进程和 preload 用 esbuild。三者在 `electron.vite.config.ts` 统一配置。
@@ -406,10 +531,18 @@ npx tsx test_acp.ts [workspace_dir]
 - 对话历史以 `ctx_<moduleName>` 键存入 localStorage
 - `saveContext()` 在消息发送/回复完成后自动调用
 - `loadContext()` 在抽屉打开时自动恢复
+- 角色 Agent 上下文以 `workrole:<roleName>` 为 key 存储，与模块 Agent 上下文分离
+
+### 角色 Agent
+- 角色 Agent 使用独立的 MCP Server (`dist/mcp-role-server.cjs`)，工具集与模块 Agent 完全不同
+- `RoleAgentManager` 与 `AgentOrchestrator` 并行运行，互不干扰
+- 角色工作空间在 `prepareRoleWorkspace()` 中被复制创建，在 `cleanupRoleWorkspace()` 中被清理
+- 角色 Agent 的 stream/status 事件通过 `role:stream` / `role:status` IPC 通道推送，与模块 Agent 的 `agent:stream` / `agent:status` 分离
+- IPC 传输数据前需确保是纯对象（Vue reactive proxy 不能被结构化克隆）
 
 ---
 
-## 9. 待完成
+## 10. 待完成
 
 - [ ] `module_call` 的 HTTP 后端需要处理超时和大响应
 - [ ] AgentManager/AgentRouter 与 Electron 路径整合（目前两套并行代码，Electron 用 AgentOrchestrator，CLI 用 AgentManager/AgentRouter）

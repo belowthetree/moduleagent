@@ -28,9 +28,9 @@ They share `AgentLauncher`, `ModuleScanner`, `ModuleGraph`, and the protocol lay
 
 ### Renderer architecture (Vue 3)
 
-- **Views**: `SetupView.vue` (project config), `MainView.vue` (main workspace with module tree + agent chat)
-- **Key components**: `SVGTree.vue` (interactive module dependency graph), `DrawerPanel.vue` (side drawer), `StreamArea.vue` (streaming agent output), `ChatInput.vue` (message input), `ContextCards.vue` (module context cards), `SettingsDialog.vue`, `ThemeToggle.vue`, `MessageModal.vue`
-- **State management**: Pinia stores in `src/renderer/src/stores/` — `configStore`, `projectStore`, `agentStore`
+- **Views**: `SetupView.vue` (project config), `MainView.vue` (main workspace: left sidebar + drawer-selected tree/roles + central chat panel)
+- **Key components**: `SVGTree.vue` (interactive module tree), `LeftSidebar.vue` (tab bar), `NodeDetailPanel.vue` (inline module detail + chat), `RolePanel.vue` (role agent cards), `RoleConfigDialog.vue` (role create/edit), `ContextCards.vue` (chat history, supports module/role context types), `ChatInput.vue`, `SettingsDialog.vue`, `ThemeToggle.vue`
+- **State management**: Pinia stores in `src/renderer/src/stores/` — `configStore`, `projectStore`, `agentStore` (includes role agent state)
 - **UI library**: Element Plus for dialogs, buttons, forms, notifications
 - **Routing**: Vue Router with setup and main workspace routes
 
@@ -55,8 +55,10 @@ They share `AgentLauncher`, `ModuleScanner`, `ModuleGraph`, and the protocol lay
 | Field | Purpose |
 |-------|---------|
 | `agents.default.command` / `args` | Agent executable and arguments |
+| `agents.modules` | Per-module agent command overrides |
 | `exclude` | Directory/pattern list to skip during module scanning |
-| `projectPath` | Root project directory. `.module-agent/module/` (module docs) and `.module-agent/workspace/` (isolated runtime copies) are always created under this directory |
+| `projectPath` | Root project directory |
+| `roles` | Array of role agent configs (name, description, visibleModulePaths, agents.default) |
 
 When changing the schema, update both `src/config/schema.ts` (Zod) and `src/config/defaults.ts` (TypeScript interface + `DEFAULT_CONFIG`). Then ensure all config consumers are updated:
 - `src/tui/services/AgentService.ts` (TUI path)
@@ -67,16 +69,20 @@ When changing the schema, update both `src/config/schema.ts` (Zod) and `src/conf
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/main/index.ts` | Electron main process — all IPC, agent lifecycle, MCP backend |
+| `src/main/index.ts` | Electron main process — all IPC, agent lifecycle, MCP backend, role agent lifecycle |
 | `src/renderer/src/` | Vue 3 renderer — views, components, Pinia stores, router |
 | `src/preload/index.ts` | `contextBridge` API (`window.moduleAgent`) |
 | `src/core/` | ModuleScanner, ModuleGraph, ModuleParser, Logger, PathUtils |
 | `src/agents/AgentLauncher.ts` | Spawns agent subprocess, wraps in ACP ClientSideConnection |
+| `src/agents/AgentOrchestrator.ts` | Module agent lifecycle orchestrator |
+| `src/agents/RoleAgentManager.ts` | Role agent lifecycle manager (parallel to AgentOrchestrator) |
+| `src/agents/RoleWorkspace.ts` | Role workspace preparation |
 | `src/protocol/acp/` | ACP connection + FsHandler + TerminalHandler |
-| `src/protocol/mcp/` | MCP server + CommunicationBus + server-entry.ts |
+| `src/protocol/mcp/` | MCPServer + RoleMCPServer + CommunicationBus + server entries |
 | `src/config/` | ConfigLoader, schema (Zod), defaults |
-| `config/` | System prompt markdown files |
-| `dist/mcp-server.cjs` | Self-contained MCP server bundle (spawned by agents) |
+| `config/` | System prompt markdown files (mainagent, subagent, roleagent) |
+| `dist/mcp-server.cjs` | MCP server bundle for module agents |
+| `dist/mcp-role-server.cjs` | MCP server bundle for role agents |
 
 ### Runtime directories (created under user's project root)
 
@@ -85,6 +91,7 @@ When changing the schema, update both `src/config/schema.ts` (Zod) and `src/conf
 | `.module-agent/` | All runtime data for a project |
 | `.module-agent/module/` | Module `.md` files — the definitive location for all module documentation |
 | `.module-agent/workspace/` | Isolated runtime copies of source code for agent execution |
+| `.module-agent/workspace/workrole/` | Role agent workspaces (copies of visible module dirs) |
 | `.module-agent/context/` | Agent conversation context storage |
 | `.module-agent.json` | Project configuration file |
 
@@ -93,6 +100,7 @@ When changing the schema, update both `src/config/schema.ts` (Zod) and `src/conf
 - **Renderer**: `electron-vite` (Vite + Vue plugin) → `out/renderer/`
 - **Main**: `electron-vite` → CJS to `out/main/`, externals: `electron`, `fs-extra`, `gray-matter`, `marked`, `simple-git`, `zod`, `@agentclientprotocol/sdk`, etc.
 - **Preload**: `electron-vite` → CJS to `out/preload/`, external: `electron`
-- **MCP server**: `esbuild` → self-contained CJS bundle (all deps inlined) → `dist/mcp-server.cjs`
+- **MCP server (module agents)**: `esbuild` → self-contained CJS bundle → `dist/mcp-server.cjs`
+- **MCP server (role agents)**: `esbuild` → self-contained CJS bundle → `dist/mcp-role-server.cjs`
 - **CLI**: `esbuild` → CJS bundle → `dist/cli.cjs`
 - Output files in `out/` and `dist/` are gitignored
