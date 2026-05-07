@@ -5,6 +5,7 @@ import { useAgentStore } from '../stores/agent'
 
 const props = defineProps<{
   moduleName: string
+  contextType?: 'module' | 'role'
 }>()
 
 const emit = defineEmits<{
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const agentStore = useAgentStore()
+const cardListRef = ref<HTMLElement | null>(null)
 const expandedThinking = ref(new Set<string>())
 
 // ── Helpers ──
@@ -51,7 +53,12 @@ function roleLabel(role: string): string {
 }
 
 // ── Messages (all, no pagination) ──
-const msgs = computed<ChatMsg[]>(() => agentStore.getMsgs(props.moduleName))
+const msgs = computed<ChatMsg[]>(() => {
+  if (props.contextType === 'role') {
+    return agentStore.getRoleMsgs(props.moduleName)
+  }
+  return agentStore.getMsgs(props.moduleName)
+})
 
 const isEmpty = computed(() => msgs.value.length === 0)
 
@@ -93,7 +100,11 @@ function onClear() {
 }
 
 function onCancelStream() {
-  agentStore.cancelAgent(props.moduleName)
+  if (props.contextType === 'role') {
+    agentStore.cancelRoleAgent(props.moduleName)
+  } else {
+    agentStore.cancelAgent(props.moduleName)
+  }
 }
 </script>
 

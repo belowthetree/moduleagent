@@ -1,6 +1,6 @@
 import { ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
-import type { AgentStatus, ChatMsg } from '../../../types/preload'
+import type { AgentStatus, ChatMsg, RoleConfigData } from '../../../types/preload'
 
 export const useAgentStore = defineStore('agent', () => {
   // ── State ──
@@ -10,8 +10,16 @@ export const useAgentStore = defineStore('agent', () => {
   const crossContextCleanup = ref<(() => void) | null>(null)
   const selectedModuleName = ref<string | null>(null)
 
+  // ── Role agent state ──
+  const roles = ref<RoleConfigData[]>([])
+  const selectedRoleAgent = ref<string | null>(null)
+  const roleContextMap = ref(new Map<string, ChatMsg[]>())
+  const roleRunningAgents = shallowRef(new Map<string, AgentStatus>())
+  const roleSendingLock = ref(false)
+
   // ── Internal cleanup refs (not exposed) ──
   let statusListenerCleanup: (() => void) | null = null
+  let roleStatusListenerCleanup: (() => void) | null = null
 
   // ── Helpers ──
   function now(): string {
@@ -164,7 +172,158 @@ export const useAgentStore = defineStore('agent', () => {
     runningAgents.value = new Map()
   }
 
+  // ── Role agent helpers ──
+  function getRoleMsgs(name: string): ChatMsg[] {
+    if (!roleContextMap.value.has(name)) {
+      roleContextMap.value.set(name, [])
+    }
+    return roleContextMap.value.get(name)!
+  }
+
+  // ── Role agent lifecycle ──
+  async function fetchRoles(): Promise<void> {
+    try {
+      roles.value = await window.moduleAgent.getRoles()
+    } catch {
+      roles.value = []
+    }
+  }
+
+  async function saveRole(role: RoleConfigData): Promise<void> {
+    // Deep-clone to plain object: Vue reactive proxies are not IPC-cloneable
+    const plain = JSON.parse(JSON.stringify(role))
+    await window.moduleAgent.saveRole(plain)
+    await fetchRoles()
+  }
+
+  async function deleteRole(name: string): Promise<void> {
+    await window.moduleAgent.deleteRole(name)
+    if (selectedRoleAgent.value === name) {
+      selectedRoleAgent.value = null
+    }
+    await fetchRoles()
+  }
+
+  async function startRoleAgent(roleName: string): Promise<void> {
+    const result = await window.moduleAgent.startRoleAgent(roleName)
+    if (result.error) {
+      console.error(`Failed to start role agent ${roleName}: ${result.error}`)
+    }
+  }
+
+  async function selectRoleAgentAndStart(name: string): Promise<void> {
+    selectedRoleAgent.value = name
+    await restoreRoleContext(name)
+    await startRoleAgent(name)
+  }
+
+  async function sendRoleMessage(roleName: string, text: string): Promise<void> {
+    if (roleSendingLock.value) return
+    roleSendingLock.value = true
+
+    getRoleMsgs(roleName).push({
+      id: 'r' + Date.now(),
+      role: 'user',
+      content: text,
+      thinking: '',
+      tools: '',
+      time: now(),
+      status: 'sent',
+      moduleName: `workrole:${roleName}`,
+      agentCmd: '',
+    })
+
+    try {
+      const result = await window.moduleAgent.sendRoleMessage(roleName, text)
+      if (result.result) {
+        getRoleMsgs(roleName).push({
+          id: 'r' + Date.now(),
+          role: 'agent',
+          content: result.result.reply || '',
+          thinking: result.result.thinking || '',
+          tools: result.result.tools || '',
+          time: now(),
+          status: 'completed',
+          moduleName: `workrole:${roleName}`,
+          agentCmd: '',
+        })
+      } else if (result.error) {
+        console.error(`发送失败: ${result.error}`)
+      }
+    } catch (err) {
+      console.error(`通信错误: ${(err as Error).message}`)
+    } finally {
+      roleSendingLock.value = false
+    }
+  }
+
+  async function cancelRoleAgent(roleName: string): Promise<void> {
+    const result = await window.moduleAgent.cancelRoleAgent(roleName).catch(() => undefined)
+    const msgs = getRoleMsgs(roleName)
+    const idx = msgs.findLastIndex(m => m.role === 'agent' && m.status === 'executing')
+    if (idx !== -1) {
+      const acc = result?.accumulated
+      if (acc) {
+        if (acc.reply) msgs[idx]!.content = acc.reply
+        if (acc.thinking) msgs[idx]!.thinking = acc.thinking
+        if (acc.tools) msgs[idx]!.tools = acc.tools
+      }
+      msgs[idx]!.status = 'interrupted'
+      msgs[idx]!.time = now()
+    }
+  }
+
+  async function stopRoleAgent(roleName: string): Promise<void> {
+    await window.moduleAgent.stopRoleAgent(roleName)
+  }
+
+  async function restoreRoleContext(roleName: string): Promise<void> {
+    if (roleContextMap.value.has(roleName) && (roleContextMap.value.get(roleName)?.length ?? 0) > 0) {
+      return
+    }
+    try {
+      const msgs = await window.moduleAgent.getRoleContext(roleName)
+      if (msgs.length > 0) {
+        for (const msg of msgs) {
+          if (msg.status === 'executing') {
+            msg.status = 'interrupted'
+          }
+        }
+        roleContextMap.value.set(roleName, msgs)
+      }
+    } catch {
+      // Silently ignore — context may not exist yet
+    }
+  }
+
+  async function clearRoleContext(roleName: string): Promise<void> {
+    await window.moduleAgent.clearRoleContext(roleName)
+    roleContextMap.value.set(roleName, [])
+  }
+
+  function ensureRoleStatusListener(): void {
+    if (roleStatusListenerCleanup) return
+    roleStatusListenerCleanup = window.moduleAgent.onRoleAgentStatus(({ name, status }) => {
+      const next = new Map(roleRunningAgents.value)
+      if (status === 'stopped') {
+        next.delete(name)
+      } else {
+        next.set(name, status)
+      }
+      roleRunningAgents.value = next
+    })
+  }
+
+  function stopRoleRunningPoll(): void {
+    if (roleStatusListenerCleanup) {
+      roleStatusListenerCleanup()
+      roleStatusListenerCleanup = null
+    }
+    roleRunningAgents.value = new Map()
+  }
+
   return {
+    // Module agent
     runningAgents,
     contextMap,
     sendingLock,
@@ -178,5 +337,23 @@ export const useAgentStore = defineStore('agent', () => {
     sendMessage,
     ensureStatusListener,
     stopRunningPoll,
+    // Role agent
+    roles,
+    selectedRoleAgent,
+    roleContextMap,
+    roleRunningAgents,
+    roleSendingLock,
+    getRoleMsgs,
+    fetchRoles,
+    saveRole,
+    deleteRole,
+    selectRoleAgentAndStart,
+    sendRoleMessage,
+    cancelRoleAgent,
+    stopRoleAgent,
+    restoreRoleContext,
+    clearRoleContext,
+    ensureRoleStatusListener,
+    stopRoleRunningPoll,
   }
 })

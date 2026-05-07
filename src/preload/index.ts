@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData } from '../types/preload.js';
+import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData } from '../types/preload.js';
 
 const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke('dialog:selectDir', title) as Promise<string | null>,
@@ -63,6 +63,48 @@ const api: ModuleAgentApi = {
     const handler = (_event: Electron.IpcRendererEvent, data: CrossContextData) => callback(data);
     ipcRenderer.on('agent:cross-context', handler);
     return () => ipcRenderer.removeListener('agent:cross-context', handler);
+  },
+
+  // ── Role Agent APIs ──
+  getRoles: () => ipcRenderer.invoke('role:list') as Promise<RoleConfigData[]>,
+
+  saveRole: (role: RoleConfigData) =>
+    ipcRenderer.invoke('role:save', role) as Promise<{ success: boolean }>,
+
+  deleteRole: (name: string) =>
+    ipcRenderer.invoke('role:delete', name) as Promise<{ success: boolean }>,
+
+  startRoleAgent: (roleName: string) =>
+    ipcRenderer.invoke('role:start', roleName) as Promise<{ sessionId?: string; error?: string }>,
+
+  sendRoleMessage: (roleName: string, text: string) =>
+    ipcRenderer.invoke('role:send', roleName, text) as Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason?: string }; error?: string }>,
+
+  cancelRoleAgent: (roleName: string) =>
+    ipcRenderer.invoke('role:cancel', roleName) as Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>,
+
+  stopRoleAgent: (roleName: string) =>
+    ipcRenderer.invoke('role:stop', roleName) as Promise<{}>,
+
+  isRoleAgentRunning: (roleName: string) =>
+    ipcRenderer.invoke('role:isRunning', roleName) as Promise<boolean>,
+
+  getRoleContext: (roleName: string) =>
+    ipcRenderer.invoke('role:getContext', roleName) as Promise<ChatMsg[]>,
+
+  clearRoleContext: (roleName: string) =>
+    ipcRenderer.invoke('role:clearContext', roleName) as Promise<void>,
+
+  onRoleAgentStream: (callback: (data: AgentStreamData) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: AgentStreamData) => callback(data);
+    ipcRenderer.on('role:stream', handler);
+    return () => ipcRenderer.removeListener('role:stream', handler);
+  },
+
+  onRoleAgentStatus: (callback: (data: AgentStatusData) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: AgentStatusData) => callback(data);
+    ipcRenderer.on('role:status', handler);
+    return () => ipcRenderer.removeListener('role:status', handler);
   },
 };
 

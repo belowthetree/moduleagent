@@ -6,11 +6,13 @@ import os from 'os';
 import { ModuleScanner } from '../core/ModuleScanner.js';
 import { ModuleGraph } from '../core/ModuleGraph.js';
 import { ConfigLoader } from '../config/ConfigLoader.js';
-import { DEFAULT_CONFIG, type ProjectConfig } from '../config/defaults.js';
+import { DEFAULT_CONFIG, type ProjectConfig, type RoleConfig } from '../config/defaults.js';
 import { Logger, LogLevel, defaultLogger } from '../core/Logger.js';
 import { AgentLauncher } from '../agents/AgentLauncher.js';
 import { AgentOrchestrator } from '../agents/AgentOrchestrator.js';
 import { AgentStateManager } from '../agents/AgentStateManager.js';
+import { RoleAgentManager } from '../agents/RoleAgentManager.js';
+import { cleanupRoleWorkspace } from '../agents/RoleWorkspace.js';
 import { McpBackendServer } from '../agents/McpBackend.js';
 import {
   workspacePathForModule,
@@ -29,6 +31,7 @@ import {
 } from '../agents/McpServerBuilder.js';
 import type { ModuleGraphNode, ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { ChatMsg } from '../types/preload.js';
+import type { ContentBlock } from '@agentclientprotocol/sdk';
 
 defaultLogger.configure('logs', LogLevel.INFO);
 defaultLogger.info('ModuleAgent starting...');
@@ -47,11 +50,16 @@ const launcher = new AgentLauncher();
 let mcpBackendPort = 0;
 let mcpGraphFile = '';
 
-let prompts = { mainPrompt: '', subPrompt: '' };
+let prompts = { mainPrompt: '', subPrompt: '', rolePrompt: '' };
 let orchestrator: AgentOrchestrator | null = null;
 let stateManager: AgentStateManager | null = null;
 const sendLock = new Map<string, Promise<void>>();
 let mcpBackend: McpBackendServer | null = null;
+
+// Role agent state
+let roleAgentManager: RoleAgentManager | null = null;
+const roleSessionPrompted = new Set<string>();
+const roleSendLock = new Map<string, Promise<void>>();
 
 function createWindow() {
   console.log('[main] Creating window...');
@@ -98,6 +106,23 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => mainWindow?.show());
 }
 
+function buildRolePromptBlocks(roleName: string, userText: string): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  const isFirst = !roleSessionPrompted.has(roleName);
+
+  if (isFirst) {
+    roleSessionPrompted.add(roleName);
+
+    if (prompts.rolePrompt) {
+      blocks.push({ type: 'text', text: prompts.rolePrompt + '\n\n---\n\n' });
+      defaultLogger.info(`[workrole:${roleName}] system prompt injected (${prompts.rolePrompt.length} chars)`);
+    }
+  }
+
+  blocks.push({ type: 'text', text: userText });
+  return blocks;
+}
+
 function registerIpcHandlers() {
   ipcMain.handle('dialog:selectDir', async (_event, title: string) => {
     const result = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory'], title });
@@ -121,6 +146,15 @@ function registerIpcHandlers() {
       currentWorkspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
 
       prompts = loadSystemPrompts(app.getAppPath());
+      // Load role agent prompt
+      try {
+        const rolePromptPath = path.join(app.getAppPath(), 'config', 'roleagentprompt.md');
+        prompts.rolePrompt = fs.readFileSync(rolePromptPath, 'utf-8');
+        defaultLogger.info(`Loaded role agent prompt (${prompts.rolePrompt.length} chars)`);
+      } catch {
+        prompts.rolePrompt = '';
+        defaultLogger.warn('Failed to read role agent prompt');
+      }
       mcpGraphFile = writeMcpGraphFile(graph);
 
       stateManager = new AgentStateManager(path.join(projectRoot, '.module-agent', 'context'));
@@ -224,6 +258,33 @@ function registerIpcHandlers() {
 
       orchestrator.mcpBackendPort = port;
       orchestrator.mcpGraphFile = mcpGraphFile;
+
+      // Initialize role agent manager
+      roleAgentManager = new RoleAgentManager({
+        launcher,
+        basePath: app.getAppPath(),
+        projectPath: config.projectPath,
+        workspaceRoot: currentWorkspaceRoot,
+        callbacks: {
+          onSessionUpdate(roleName, sessionId, notification) {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              const ctxKey = `workrole:${roleName}`;
+              stateManager?.appendChunk(ctxKey, notification.update.sessionUpdate, notification.update);
+              const acc = stateManager?.getStreamState(ctxKey);
+              mainWindow.webContents.send('role:stream', {
+                moduleName: roleName,
+                sessionId,
+                update: notification.update.sessionUpdate,
+                data: notification.update,
+                reply: acc?.reply,
+                thinking: acc?.thinking,
+                tools: acc?.tools,
+                sections: acc?.sections,
+              });
+            }
+          },
+        },
+      });
 
       defaultLogger.info(`MCP setup complete: graph=${mcpGraphFile} port=${mcpBackendPort}`);
 
@@ -604,6 +665,200 @@ Start with the root module, then work through each sub-module.`,
       return { command: DEFAULT_CONFIG.agents.default.command, args: DEFAULT_CONFIG.agents.default.args || [], projectPath: DEFAULT_CONFIG.projectPath };
     }
   });
+
+  // ── Role Agent IPC ──
+
+  ipcMain.handle('role:list', async () => {
+    if (!currentProjectRoot) return [];
+    try {
+      const workspaceConfig = await ConfigLoader.load(currentProjectRoot);
+      return workspaceConfig.roles || [];
+    } catch {
+      return [];
+    }
+  });
+
+  ipcMain.handle('role:save', async (_event, role: RoleConfig) => {
+    if (!currentProjectRoot) return { success: false };
+    try {
+      const configPath = path.join(currentProjectRoot, '.module-agent.json');
+      let workspaceConfig = await ConfigLoader.load(currentProjectRoot);
+      if (!workspaceConfig.roles) workspaceConfig.roles = [];
+
+      const idx = workspaceConfig.roles.findIndex(r => r.name === role.name);
+      if (idx >= 0) {
+        workspaceConfig.roles[idx] = role;
+      } else {
+        workspaceConfig.roles.push(role);
+      }
+
+      await fs.promises.writeFile(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
+      defaultLogger.info(`role:save [${role.name}]`);
+      return { success: true };
+    } catch (err) {
+      defaultLogger.error(`role:save failed: ${(err as Error).message}`);
+      return { success: false };
+    }
+  });
+
+  ipcMain.handle('role:delete', async (_event, name: string) => {
+    if (!currentProjectRoot) return { success: false };
+    try {
+      const configPath = path.join(currentProjectRoot, '.module-agent.json');
+      let workspaceConfig = await ConfigLoader.load(currentProjectRoot);
+      if (workspaceConfig.roles) {
+        workspaceConfig.roles = workspaceConfig.roles.filter(r => r.name !== name);
+      }
+      await fs.promises.writeFile(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
+
+      // Cleanup workspace
+      await cleanupRoleWorkspace(name, currentWorkspaceRoot);
+
+      // Stop agent if running
+      await roleAgentManager?.stopRoleAgent(name);
+
+      defaultLogger.info(`role:delete [${name}]`);
+      return { success: true };
+    } catch (err) {
+      defaultLogger.error(`role:delete failed: ${(err as Error).message}`);
+      return { success: false };
+    }
+  });
+
+  ipcMain.handle('role:start', async (_event, roleName: string) => {
+    if (!roleAgentManager) return { error: 'no role agent manager' };
+
+    const existing = roleAgentManager.getAgent(roleName);
+    if (existing) return { sessionId: existing.sessionId };
+
+    try {
+      const workspaceConfig = await ConfigLoader.load(currentProjectRoot);
+      const role = workspaceConfig.roles?.find(r => r.name === roleName);
+      if (!role) return { error: `role not found: ${roleName}` };
+
+      const entry = await roleAgentManager.startRoleAgent(role);
+      return { sessionId: entry.sessionId };
+    } catch (err) {
+      defaultLogger.error(`role:start failed [${roleName}]: ${(err as Error).message}`);
+      return { error: (err as Error).message };
+    }
+  });
+
+  ipcMain.handle('role:send', async (_event, roleName: string, text: string) => {
+    if (!roleAgentManager) return { error: 'no role agent manager' };
+
+    // Per-role sending mutex
+    const prevLock = roleSendLock.get(roleName);
+    if (prevLock) {
+      try { await prevLock; } catch { /* previous send failed, proceed */ }
+    }
+
+    let resolveLock: () => void;
+    const lockPromise = new Promise<void>(resolve => { resolveLock = resolve; });
+    roleSendLock.set(roleName, lockPromise);
+
+    try {
+      let entry = roleAgentManager.getAgent(roleName);
+      if (!entry) {
+        const workspaceConfig = await ConfigLoader.load(currentProjectRoot);
+        const role = workspaceConfig.roles?.find(r => r.name === roleName);
+        if (!role) return { error: `role not found: ${roleName}` };
+        entry = await roleAgentManager.startRoleAgent(role);
+      }
+
+      // Build prompt blocks for role agent
+      const promptBlocks = buildRolePromptBlocks(roleName, text);
+
+      const ctxKey = `workrole:${roleName}`;
+      stateManager?.startStream(ctxKey);
+
+      defaultLogger.info(`role:send [${roleName}] len=${text.length}`);
+      const result = await entry.launched.connection.prompt({
+        sessionId: entry.sessionId,
+        prompt: promptBlocks,
+      });
+
+      const acc = stateManager?.finishStream(ctxKey);
+
+      // Save role context
+      const timeStr = new Date().toLocaleTimeString();
+      const agentCmd = entry.config.command || '';
+      const userMsg: ChatMsg = {
+        id: 'r' + Date.now().toString(36),
+        role: 'user',
+        content: text,
+        thinking: '',
+        tools: '',
+        time: timeStr,
+        status: 'sent',
+        moduleName: `workrole:${roleName}`,
+        agentCmd,
+      };
+      const agentMsg: ChatMsg = {
+        id: 'r' + (Date.now() + 1).toString(36),
+        role: 'agent',
+        content: acc?.reply || '',
+        thinking: acc?.thinking || '',
+        tools: acc?.tools || '',
+        time: timeStr,
+        status: 'completed',
+        moduleName: `workrole:${roleName}`,
+        agentCmd,
+      };
+      const existingMsgs = await stateManager?.loadContext(ctxKey) ?? [];
+      existingMsgs.push(userMsg, agentMsg);
+      await stateManager?.saveContext(ctxKey, existingMsgs);
+
+      return {
+        result: {
+          reply: acc?.reply || '',
+          thinking: acc?.thinking || '',
+          tools: acc?.tools || '',
+          stopReason: result.stopReason,
+        },
+      };
+    } catch (err) {
+      defaultLogger.error(`role:send failed [${roleName}]: ${(err as Error).message}`);
+      const ctxKey = `workrole:${roleName}`;
+      stateManager?.stopStream(ctxKey);
+      return { error: (err as Error).message };
+    } finally {
+      resolveLock();
+      roleSendLock.delete(roleName);
+    }
+  });
+
+  ipcMain.handle('role:cancel', async (_event, roleName: string) => {
+    const entry = roleAgentManager?.getAgent(roleName);
+    if (entry) {
+      try { await entry.launched.connection.cancel({ sessionId: entry.sessionId }); } catch {}
+      defaultLogger.info(`role:cancel [${roleName}]`);
+    }
+    const ctxKey = `workrole:${roleName}`;
+    const acc = stateManager?.cancelStream(ctxKey);
+    return { accumulated: acc };
+  });
+
+  ipcMain.handle('role:stop', async (_event, roleName: string) => {
+    await roleAgentManager?.stopRoleAgent(roleName);
+    const ctxKey = `workrole:${roleName}`;
+    stateManager?.stopStream(ctxKey);
+    return {};
+  });
+
+  ipcMain.handle('role:isRunning', (_event, roleName: string) => {
+    return roleAgentManager?.getAgent(roleName) !== undefined;
+  });
+
+  ipcMain.handle('role:getContext', async (_event, roleName: string) => {
+    const ctxKey = `workrole:${roleName}`;
+    return stateManager?.loadContext(ctxKey) ?? [];
+  });
+
+  ipcMain.handle('role:clearContext', async (_event, roleName: string) => {
+    const ctxKey = `workrole:${roleName}`;
+    await stateManager?.clearContext(ctxKey);
+  });
 }
 
 app.whenReady().then(() => {
@@ -620,6 +875,9 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (orchestrator) {
     orchestrator.stopAll().catch(() => {});
+  }
+  if (roleAgentManager) {
+    roleAgentManager.stopAll().catch(() => {});
   }
   try { mcpBackend?.stop(); } catch {}
   if (mcpGraphFile) { try { fs.unlinkSync(mcpGraphFile); } catch {} }

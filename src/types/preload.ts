@@ -70,6 +70,18 @@ export interface CrossContextData {
   time: string;
 }
 
+export interface RoleConfigData {
+  name: string;
+  description: string;
+  visibleModulePaths: string[];
+  agents: {
+    default: {
+      command: string;
+      args?: string[];
+    };
+  };
+}
+
 export interface ModuleAgentApi {
   selectDir(title: string): Promise<string | null>;
 
@@ -119,6 +131,23 @@ export interface ModuleAgentApi {
   clearAllContexts(): Promise<void>;
 
   onCrossContext(callback: (data: CrossContextData) => void): () => void;
+
+  // ── Role agent APIs ──
+  getRoles(): Promise<RoleConfigData[]>;
+  saveRole(role: RoleConfigData): Promise<{ success: boolean }>;
+  deleteRole(name: string): Promise<{ success: boolean }>;
+
+  startRoleAgent(roleName: string): Promise<{ sessionId?: string; error?: string }>;
+  sendRoleMessage(roleName: string, text: string): Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason?: string }; error?: string }>;
+  cancelRoleAgent(roleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>;
+  stopRoleAgent(roleName: string): Promise<{}>;
+  isRoleAgentRunning(roleName: string): Promise<boolean>;
+
+  getRoleContext(roleName: string): Promise<ChatMsg[]>;
+  clearRoleContext(roleName: string): Promise<void>;
+
+  onRoleAgentStream(callback: (data: AgentStreamData) => void): () => void;
+  onRoleAgentStatus(callback: (data: AgentStatusData) => void): () => void;
 }
 
 declare global {

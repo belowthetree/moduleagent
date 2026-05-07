@@ -41,7 +41,7 @@
           :x="node.x + 10"
           :y="node.y + 20"
           class="node-text"
-        >{{ node.data.name }}</text>
+        >{{ shortName(node.data.name) }}</text>
         <text
           :x="node.x + 10"
           :y="node.y + 36"
@@ -124,6 +124,11 @@ const panStartTY = ref(0)
 // ── Helpers ──
 function sanitizeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_')
+}
+
+function shortName(name: string): string {
+  const idx = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'))
+  return idx >= 0 ? name.substring(idx + 1) : name
 }
 
 function isCollapsedAncestor(node?: LayoutNode): boolean {

@@ -17,9 +17,24 @@ export interface ConfigEntry extends ProjectConfig {
   name: string;
 }
 
+export interface RoleAgentConfig {
+  command: string;
+  args?: string[];
+}
+
+export interface RoleConfig {
+  name: string;
+  description: string;
+  visibleModulePaths: string[];
+  agents: {
+    default: RoleAgentConfig;
+  };
+}
+
 export interface WorkspaceConfig {
   configs: ConfigEntry[];
   defaultConfig: string;
+  roles?: RoleConfig[];
 }
 
 export const DEFAULT_CONFIG_ENTRY: ConfigEntry = {

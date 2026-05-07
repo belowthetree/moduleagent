@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
 import SVGTree from '../components/SVGTree.vue'
-import DrawerPanel from '../components/DrawerPanel.vue'
+import NodeDetailPanel from '../components/NodeDetailPanel.vue'
+import LeftSidebar from '../components/LeftSidebar.vue'
+import RolePanel from '../components/RolePanel.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
 import { useProjectStore } from '../stores/project'
 import { useAgentStore } from '../stores/agent'
 import { useConfigStore } from '../stores/config'
 
-const router = useRouter()
 const projectStore = useProjectStore()
 const agentStore = useAgentStore()
 const configStore = useConfigStore()
@@ -18,6 +18,59 @@ const configStore = useConfigStore()
 const showSettings = ref(false)
 const scanning = ref(false)
 const generating = ref(false)
+
+// ── Sidebar tab ('' = no drawer open) ──
+const activeTab = ref('')
+
+// ── Drawer resize ──
+const SIDEBAR_WIDTH = 52
+const DRAWER_MIN = 280
+const DRAWER_MAX_RATIO = 0.85
+
+function defaultDrawerWidth(): number {
+  const avail = window.innerWidth - SIDEBAR_WIDTH
+  return Math.floor(avail * 2 / 3)
+}
+
+function loadDrawerWidth(): number {
+  const saved = localStorage.getItem('sideDrawerWidth')
+  if (saved) {
+    const n = parseInt(saved, 10)
+    if (n >= DRAWER_MIN) return n
+  }
+  return defaultDrawerWidth()
+}
+
+const drawerWidth = ref(loadDrawerWidth())
+const resizeDragging = ref(false)
+let resizeStartX = 0
+let resizeStartWidth = 0
+
+function onResizeMousedown(e: MouseEvent) {
+  e.preventDefault()
+  resizeDragging.value = true
+  resizeStartX = e.clientX
+  resizeStartWidth = drawerWidth.value
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function onWindowMousemove(e: MouseEvent) {
+  if (!resizeDragging.value) return
+  const delta = e.clientX - resizeStartX
+  const avail = window.innerWidth - SIDEBAR_WIDTH
+  const max = Math.floor(avail * DRAWER_MAX_RATIO)
+  const newWidth = Math.min(max, Math.max(DRAWER_MIN, resizeStartWidth + delta))
+  drawerWidth.value = newWidth
+}
+
+function onWindowMouseup() {
+  if (!resizeDragging.value) return
+  resizeDragging.value = false
+  localStorage.setItem('sideDrawerWidth', String(drawerWidth.value))
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
 
 // ── Computed ──
 const statusText = computed(() => {
@@ -32,6 +85,9 @@ const statusClass = computed(() => {
   for (const status of agentStore.runningAgents.values()) {
     if (status === 'streaming') return 'streaming'
   }
+  for (const status of agentStore.roleRunningAgents.values()) {
+    if (status === 'streaming') return 'streaming'
+  }
   return 'idle'
 })
 
@@ -41,23 +97,38 @@ const projectName = computed(() => {
   return p.split(/[/\\]/).pop() || p
 })
 
+const drawerOpen = computed(() => activeTab.value !== '')
+
+// ── Tab toggle ──
+function onTabChange(tabId: string): void {
+  if (activeTab.value === tabId) {
+    activeTab.value = '' // close drawer
+  } else {
+    activeTab.value = tabId // open drawer
+  }
+}
+
+function closeDrawer(): void {
+  activeTab.value = ''
+}
+
 async function rescan(): Promise<void> {
   if (!configStore.projectPath) return
 
   agentStore.stopRunningPoll()
+  agentStore.stopRoleRunningPoll()
   projectStore.treeRoot = null
   projectStore.flattenedNodes = []
   projectStore.selectedNode = null
 
-  // Re-scan
   try {
     await projectStore.scanProject(configStore.projectPath)
   } catch (err) {
     console.error('重新扫描失败:', (err as Error).message)
   }
 
-  // Re-start status listener
   agentStore.ensureStatusListener()
+  agentStore.ensureRoleStatusListener()
 }
 
 async function generateModules(): Promise<void> {
@@ -84,9 +155,10 @@ function clearAll(): void {
 // ── Tree events ──
 function onSelectNode(node: Parameters<typeof projectStore.selectNode>[0]): void {
   projectStore.selectNode(node)
+  closeDrawer() // auto-close drawer after selecting a node
 }
 
-function onCloseDrawer(): void {
+function onCloseNodeDetail(): void {
   projectStore.selectedNode = null
 }
 
@@ -94,8 +166,11 @@ function onCloseDrawer(): void {
 onMounted(async () => {
   agentStore.ensureStatusListener()
   agentStore.ensureCrossContextListener()
+  agentStore.ensureRoleStatusListener()
 
-  // Auto-scan if tree not loaded yet (e.g., came directly from setup-skip)
+  window.addEventListener('mousemove', onWindowMousemove)
+  window.addEventListener('mouseup', onWindowMouseup)
+
   if (!projectStore.treeRoot && configStore.projectPath) {
     scanning.value = true
     try {
@@ -110,6 +185,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   agentStore.stopRunningPoll()
+  agentStore.stopRoleRunningPoll()
+  window.removeEventListener('mousemove', onWindowMousemove)
+  window.removeEventListener('mouseup', onWindowMouseup)
 })
 </script>
 
@@ -132,30 +210,63 @@ onUnmounted(() => {
 
     <!-- ── 主内容区 ── -->
     <div class="main-content">
-      <div class="tree-area">
-        <!-- Empty state: no modules found -->
-        <div v-if="!projectStore.treeRoot && !scanning" class="empty-state">
-          <div class="empty-icon">📁</div>
-          <p class="empty-text">未发现模块文件</p>
-          <p class="empty-hint">项目目录中尚无 module.md 文件</p>
-          <el-button type="primary" :loading="generating" @click="generateModules">
-            🤖 调用 Agent 生成模块
-          </el-button>
+      <LeftSidebar
+        :active-tab="activeTab"
+        @tab-change="onTabChange"
+      />
+
+      <!-- Drawer overlay (click to close) -->
+      <div
+        class="drawer-overlay"
+        :class="{ open: drawerOpen }"
+        @click="closeDrawer"
+      />
+
+      <!-- Tree drawer (slides from left) -->
+      <div
+        class="drawer"
+        :class="{ open: activeTab === 'tree' }"
+        :style="{ width: drawerWidth + 'px' }"
+      >
+        <div class="drawer-resize-handle" @mousedown="onResizeMousedown" />
+        <div class="drawer-inner">
+          <div v-if="!projectStore.treeRoot && !scanning" class="empty-state">
+            <div class="empty-icon">📁</div>
+            <p class="empty-text">未发现模块文件</p>
+            <p class="empty-hint">项目目录中尚无 module.md 文件</p>
+            <el-button type="primary" :loading="generating" @click="generateModules">
+              🤖 调用 Agent 生成模块
+            </el-button>
+          </div>
+          <SVGTree
+            v-else
+            :root="projectStore.treeRoot"
+            :selected-node="projectStore.selectedNode"
+            :running-agents="agentStore.runningAgents"
+            @select="onSelectNode"
+          />
         </div>
-        <SVGTree
-          :root="projectStore.treeRoot"
-          :selected-node="projectStore.selectedNode"
-          :running-agents="agentStore.runningAgents"
-          @select="onSelectNode"
-        />
       </div>
 
-      <DrawerPanel
-        v-if="projectStore.selectedNode"
-        :node="projectStore.selectedNode"
-        :visible="true"
-        @close="onCloseDrawer"
-      />
+      <!-- Role drawer (slides from left) -->
+      <div
+        class="drawer"
+        :class="{ open: activeTab === 'roles' }"
+        :style="{ width: drawerWidth + 'px' }"
+      >
+        <div class="drawer-resize-handle" @mousedown="onResizeMousedown" />
+        <div class="drawer-inner">
+          <RolePanel />
+        </div>
+      </div>
+
+      <!-- Main detail area (always visible) -->
+      <div class="detail-area">
+        <NodeDetailPanel
+          :node="projectStore.selectedNode"
+          @close="onCloseNodeDetail"
+        />
+      </div>
     </div>
 
     <!-- ── 状态栏 ── -->
@@ -224,13 +335,76 @@ onUnmounted(() => {
   display: flex;
   overflow: hidden;
   min-height: 0;
+  position: relative;
 }
 
-.tree-area {
+/* ── Drawer overlay ── */
+.drawer-overlay {
+  position: absolute;
+  top: 0;
+  left: 52px;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.15);
+  z-index: 50;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+
+.drawer-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Drawer ── */
+.drawer {
+  position: absolute;
+  top: 0;
+  left: 52px;
+  height: 100%;
+  background: var(--el-bg-color);
+  border-right: 1px solid var(--el-border-color);
+  z-index: 60;
+  transform: translateX(calc(-100% - 52px));
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer.open {
+  transform: translateX(0);
+}
+
+.drawer-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.drawer-resize-handle:hover {
+  background: var(--el-color-primary);
+  opacity: 0.3;
+}
+
+.drawer-inner {
   flex: 1;
-  position: relative;
   overflow: hidden;
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Detail area (fills remaining space) ── */
+.detail-area {
+  flex: 1;
+  overflow: hidden;
+  margin-left: 0;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ── 状态栏 ── */
@@ -280,6 +454,7 @@ onUnmounted(() => {
   justify-content: center;
   height: 100%;
   gap: 12px;
+  padding: 16px;
 }
 .empty-icon { font-size: 48px; }
 .empty-text { font-size: 16px; color: var(--el-text-color-primary); margin: 0; }

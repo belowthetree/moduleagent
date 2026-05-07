@@ -7,8 +7,9 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build:mcp-server": "esbuild src/protocol/mcp/server-entry.ts --bundle --outfile=dist/mcp-server.cjs --platform=node --format=cjs",
+    "build:mcp-role-server": "esbuild src/protocol/mcp/role-server-entry.ts --bundle --outfile=dist/mcp-role-server.cjs --platform=node --format=cjs",
     "build:cli": "esbuild src/cli/index.ts --bundle --outfile=dist/cli.cjs --platform=node --format=cjs --external:@opentui/core --external:@opentui/solid --external:@opentui/keymap",
-    "build:electron": "electron-vite build && npm run build:mcp-server && npm run build:cli",
+    "build:electron": "electron-vite build && npm run build:mcp-server && npm run build:mcp-role-server && npm run build:cli",
     "electron": "npm run build:electron && electron .",
     "dist": "npm run build:electron && electron-builder build --win portable",
     "typecheck": "tsc --noEmit",

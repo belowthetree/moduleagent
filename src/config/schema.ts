@@ -24,10 +24,31 @@ export const ConfigEntrySchema = ProjectConfigSchema.extend({
 
 export type ConfigEntry = z.infer<typeof ConfigEntrySchema>;
 
+// Role agent config (per-role agent command override)
+export const RoleAgentConfigSchema = z.object({
+  command: z.string(),
+  args: z.array(z.string()).optional(),
+});
+
+export type RoleAgentConfig = z.infer<typeof RoleAgentConfigSchema>;
+
+// Single role definition
+export const RoleConfigSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().default(''),
+  visibleModulePaths: z.array(z.string()).default([]),
+  agents: z.object({
+    default: RoleAgentConfigSchema,
+  }),
+});
+
+export type RoleConfig = z.infer<typeof RoleConfigSchema>;
+
 // Top-level workspace config containing an array of named configs
 export const WorkspaceConfigSchema = z.object({
   configs: z.array(ConfigEntrySchema),
   defaultConfig: z.string(),
+  roles: z.array(RoleConfigSchema).optional(),
 });
 
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
