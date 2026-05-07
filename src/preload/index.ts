@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData } from '../types/preload.js';
+import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem } from '../types/preload.js';
 
 const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke('dialog:selectDir', title) as Promise<string | null>,
@@ -106,6 +106,22 @@ const api: ModuleAgentApi = {
     ipcRenderer.on('role:status', handler);
     return () => ipcRenderer.removeListener('role:status', handler);
   },
+
+  // ── Knowledge APIs ──
+  knowledgeList: () =>
+    ipcRenderer.invoke('knowledge:list') as Promise<KnowledgeListItem[]>,
+
+  knowledgeRead: (filename: string) =>
+    ipcRenderer.invoke('knowledge:read', filename) as Promise<KnowledgeEntry | null>,
+
+  knowledgeSave: (entry: KnowledgeEntry) =>
+    ipcRenderer.invoke('knowledge:save', entry) as Promise<{ success: boolean }>,
+
+  knowledgeCreate: (name: string) =>
+    ipcRenderer.invoke('knowledge:create', name) as Promise<KnowledgeEntry | { error: string }>,
+
+  knowledgeDelete: (filename: string) =>
+    ipcRenderer.invoke('knowledge:delete', filename) as Promise<{ success: boolean }>,
 };
 
 contextBridge.exposeInMainWorld('moduleAgent', api);

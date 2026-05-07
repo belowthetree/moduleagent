@@ -10,6 +10,7 @@ defineEmits<{
 const tabs = [
   { id: 'tree', label: '节点树', icon: '🌳' },
   { id: 'roles', label: '角色 Agent', icon: '👤' },
+  { id: 'knowledge', label: '知识', icon: '📚' },
 ]
 </script>
 

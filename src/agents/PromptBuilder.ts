@@ -9,8 +9,8 @@ import { defaultLogger } from '../core/Logger.js';
  * Returns empty strings (with warning) if files are missing.
  */
 export function loadSystemPrompts(configDir: string): { mainPrompt: string; subPrompt: string } {
-  const mainPath = path.join(configDir, 'mainagentprompt.md');
-  const subPath = path.join(configDir, 'subagentprompt.md');
+  const mainPath = path.join(configDir, 'knowledge', 'mainagentprompt.md');
+  const subPath = path.join(configDir, 'knowledge', 'subagentprompt.md');
 
   let mainPrompt = '';
   let subPrompt = '';

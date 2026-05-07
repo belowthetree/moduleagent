@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { marked } from 'marked'
 import SVGTree from '../components/SVGTree.vue'
 import NodeDetailPanel from '../components/NodeDetailPanel.vue'
 import LeftSidebar from '../components/LeftSidebar.vue'
 import RolePanel from '../components/RolePanel.vue'
+import KnowledgePanel from '../components/KnowledgePanel.vue'
 import ContextCards from '../components/ContextCards.vue'
 import ChatInput from '../components/ChatInput.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
@@ -11,10 +13,12 @@ import SettingsDialog from '../components/SettingsDialog.vue'
 import { useProjectStore } from '../stores/project'
 import { useAgentStore } from '../stores/agent'
 import { useConfigStore } from '../stores/config'
+import { useKnowledgeStore } from '../stores/knowledge'
 
 const projectStore = useProjectStore()
 const agentStore = useAgentStore()
 const configStore = useConfigStore()
+const knowledgeStore = useKnowledgeStore()
 
 // ── Settings dialog toggle ──
 const showSettings = ref(false)
@@ -189,10 +193,29 @@ async function handleRoleSendMessage(text: string): Promise<void> {
   await agentStore.sendRoleMessage(agentStore.selectedRoleAgent, text)
 }
 
+// ── Knowledge selection (from drawer) ──
+async function onSelectKnowledge(filename: string): Promise<void> {
+  projectStore.selectedNode = null
+  agentStore.selectedRoleAgent = null
+  await knowledgeStore.selectByFilename(filename)
+  closeDrawer()
+}
+
+function onCloseKnowledgeDetail(): void {
+  knowledgeStore.clearSelection()
+}
+
 // ── Computed: selected role info ──
 const selectedRoleInfo = computed(() => {
   if (!agentStore.selectedRoleAgent) return null
   return agentStore.roles.find(r => r.name === agentStore.selectedRoleAgent) || null
+})
+
+const selectedKnowledge = computed(() => knowledgeStore.selectedEntry)
+
+const renderedKnowledge = computed(() => {
+  if (!knowledgeStore.selectedContent) return ''
+  return marked.parse(knowledgeStore.selectedContent) as string
 })
 
 // ── Lifecycle ──
@@ -301,6 +324,18 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <!-- Knowledge drawer (slides from left) -->
+      <div
+        class="drawer"
+        :class="{ open: activeTab === 'knowledge' }"
+        :style="{ width: drawerWidth + 'px' }"
+      >
+        <div class="drawer-resize-handle" @mousedown="onResizeMousedown" />
+        <div class="drawer-inner">
+          <KnowledgePanel @select="onSelectKnowledge" />
+        </div>
+      </div>
+
       <!-- Main detail area (always visible) -->
       <div class="detail-area">
         <!-- Node detail -->
@@ -342,10 +377,18 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
+        <!-- Knowledge detail -->
+        <div v-else-if="selectedKnowledge" class="knowledge-detail">
+          <div class="knowledge-detail-header">
+            <span class="knowledge-detail-title">{{ selectedKnowledge.name }}</span>
+            <button class="btn-close" @click="onCloseKnowledgeDetail">✕</button>
+          </div>
+          <div class="knowledge-detail-body" v-html="renderedKnowledge" />
+        </div>
         <!-- Placeholder -->
         <div v-else class="detail-placeholder">
           <div class="placeholder-icon">📋</div>
-          <p class="placeholder-text">从左侧节点树选择模块，或从角色面板选择角色 Agent</p>
+          <p class="placeholder-text">从左侧节点树选择模块，从角色面板选择角色 Agent，或从知识面板选择知识条目</p>
         </div>
       </div>
     </div>
@@ -637,6 +680,60 @@ onUnmounted(() => {
   padding: 12px 0 0;
   border-top: 1px solid var(--el-border-color);
   flex-shrink: 0;
+}
+
+/* ── Knowledge detail (main area) ── */
+.knowledge-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--el-fill-color);
+}
+
+.knowledge-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--el-border-color);
+  flex-shrink: 0;
+}
+
+.knowledge-detail-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--el-color-primary);
+}
+
+.knowledge-detail .btn-close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.knowledge-detail .btn-close:hover {
+  background: var(--el-color-danger);
+  color: var(--el-color-white);
+  border-color: var(--el-color-danger);
+}
+
+.knowledge-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  line-height: 1.6;
+  color: var(--el-text-color-primary);
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* ── Detail placeholder ── */

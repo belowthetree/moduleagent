@@ -42,7 +42,7 @@ export class RoleAgentSubsystem {
 
     // Load role agent prompt
     const resolvedConfigDir = options.configDir || path.join(options.basePath, 'config');
-    const rolePromptPath = path.join(resolvedConfigDir, 'roleagentprompt.md');
+    const rolePromptPath = path.join(resolvedConfigDir, 'knowledge', 'roleagentprompt.md');
     try {
       this.rolePrompt = fs.readFileSync(rolePromptPath, 'utf-8');
       this.logger.info(`Loaded role agent prompt (${this.rolePrompt.length} chars)`);

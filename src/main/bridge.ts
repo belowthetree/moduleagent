@@ -26,7 +26,7 @@ import {
   getSubModuleDirs,
   prepareModuleWorkspace,
 } from '../agents/WorkspaceIsolator.js';
-import { getPromptConfigDir, ensureConfigFiles } from '../core/ConfigPaths.js';
+import { getPromptConfigDir, ensureConfigFiles, getUserConfigRoot } from '../core/ConfigPaths.js';
 import type { ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../types/module.js';
 import type { ChatMsg } from '../types/preload.js';
 import type { CoreCallbacks } from '../core/CoreTypes.js';
@@ -116,6 +116,7 @@ export class ElectronBridge {
     this._registerConfigHandlers();
     this._registerRoleHandlers();
     this._registerMigrationHandlers();
+    this._registerKnowledgeHandlers();
   }
 
   // -----------------------------------------------------------------------
@@ -200,7 +201,7 @@ export class ElectronBridge {
         // Load prompts from resolved config dir
         self.prompts = { ...loadSystemPrompts(self.configDir), rolePrompt: '' };
         try {
-          const rpPath = path.join(self.configDir, 'roleagentprompt.md');
+          const rpPath = path.join(self.configDir, 'knowledge', 'roleagentprompt.md');
           self.prompts.rolePrompt = fs.readFileSync(rpPath, 'utf-8');
         } catch { /* optional */ }
 
@@ -801,6 +802,149 @@ DO NOT overwrite existing module.md files.`,
     ipcMain.handle('migrate:data', async (_event, payload: { moduleName: string; msgs: ChatMsg[] }) => {
       if (!self.stateManager) return;
       await self.stateManager.saveContext(payload.moduleName, payload.msgs);
+    });
+  }
+
+  private _registerKnowledgeHandlers(): void {
+    const self = this;
+
+    function extractTitle(content: string, filename: string): string {
+      const match = content.match(/^#\s+(.+)$/m);
+      if (match) return match[1].trim();
+      return filename.replace(/\.md$/, '');
+    }
+
+    function sanitizeFilename(name: string): string {
+      return name.replace(/[<>:"/\\|?*]/g, '_') + '.md';
+    }
+
+    function getKnowledgeDirs(): string[] {
+      const dirs: string[] = [];
+      const projectRoot = self.core.getProjectRoot();
+      if (projectRoot) {
+        dirs.push(path.join(projectRoot, '.module-agent', 'knowledge'));
+      }
+      // Global config knowledge directory
+      dirs.push(path.join(getUserConfigRoot(), 'config', 'knowledge'));
+      return dirs;
+    }
+
+    function findKnowledgeFile(filename: string): string | null {
+      for (const dir of getKnowledgeDirs()) {
+        const filePath = path.join(dir, filename);
+        if (fs.existsSync(filePath)) return filePath;
+      }
+      return null;
+    }
+
+    async function readKnowledgeDir(dir: string): Promise<{ name: string; filename: string; source: string }[]> {
+      const items: { name: string; filename: string; source: string }[] = [];
+      try {
+        fs.ensureDirSync(dir);
+        const files = await fs.promises.readdir(dir);
+        const mdFiles = files.filter(f => f.endsWith('.md'));
+        for (const file of mdFiles) {
+          const filePath = path.join(dir, file);
+          try {
+            const content = fs.readFileSync(filePath, 'utf-8');
+            items.push({ name: extractTitle(content, file), filename: file, source: dir });
+          } catch {
+            items.push({ name: file.replace(/\.md$/, ''), filename: file, source: dir });
+          }
+        }
+      } catch { /* directory may not exist */ }
+      return items;
+    }
+
+    ipcMain.handle('knowledge:list', async () => {
+      try {
+        const dirs = getKnowledgeDirs();
+        const seen = new Set<string>();
+        const items: { name: string; filename: string }[] = [];
+        for (const dir of dirs) {
+          const dirItems = await readKnowledgeDir(dir);
+          for (const item of dirItems) {
+            if (seen.has(item.filename)) continue;
+            seen.add(item.filename);
+            items.push({ name: item.name, filename: item.filename });
+          }
+        }
+        items.sort((a, b) => a.name.localeCompare(b.name));
+        return items;
+      } catch (err) {
+        self.logger.error(`knowledge:list failed: ${(err as Error).message}`);
+        return [];
+      }
+    });
+
+    ipcMain.handle('knowledge:read', async (_event, filename: string) => {
+      try {
+        const filePath = findKnowledgeFile(filename);
+        if (!filePath) return null;
+        const content = await fs.promises.readFile(filePath, 'utf-8');
+        return { name: extractTitle(content, filename), filename, content };
+      } catch (err) {
+        self.logger.error(`knowledge:read failed [${filename}]: ${(err as Error).message}`);
+        return null;
+      }
+    });
+
+    ipcMain.handle('knowledge:save', async (_event, entry: { name: string; filename: string; content: string }) => {
+      try {
+        // Save to project knowledge dir, fall back to first available dir
+        const projectRoot = self.core.getProjectRoot();
+        if (!projectRoot) return { success: false };
+        const knowledgeDir = path.join(projectRoot, '.module-agent', 'knowledge');
+        fs.ensureDirSync(knowledgeDir);
+        const filePath = path.join(knowledgeDir, entry.filename);
+        let content = entry.content;
+        // Update the first # title line to match entry.name, or prepend one
+        if (/^#\s+/m.test(content)) {
+          content = content.replace(/^#\s+.*$/m, `# ${entry.name}`);
+        } else {
+          content = `# ${entry.name}\n\n${content}`;
+        }
+        await fs.promises.writeFile(filePath, content, 'utf-8');
+        return { success: true };
+      } catch (err) {
+        self.logger.error(`knowledge:save failed [${entry.filename}]: ${(err as Error).message}`);
+        return { success: false };
+      }
+    });
+
+    ipcMain.handle('knowledge:create', async (_event, name: string) => {
+      try {
+        const projectRoot = self.core.getProjectRoot();
+        if (!projectRoot) return { error: 'no project root' };
+        const knowledgeDir = path.join(projectRoot, '.module-agent', 'knowledge');
+        fs.ensureDirSync(knowledgeDir);
+        const filename = sanitizeFilename(name || '新知识条目');
+        const filePath = path.join(knowledgeDir, filename);
+        if (fs.existsSync(filePath)) return { error: '文件已存在' };
+        const content = `# ${name || '新知识条目'}\n\n`;
+        await fs.promises.writeFile(filePath, content, 'utf-8');
+        return { name: name || '新知识条目', filename, content };
+      } catch (err) {
+        self.logger.error(`knowledge:create failed: ${(err as Error).message}`);
+        return { error: (err as Error).message };
+      }
+    });
+
+    ipcMain.handle('knowledge:delete', async (_event, filename: string) => {
+      try {
+        const projectRoot = self.core.getProjectRoot();
+        if (!projectRoot) return { success: false };
+        const knowledgeDir = path.join(projectRoot, '.module-agent', 'knowledge');
+        const filePath = path.join(knowledgeDir, filename);
+        if (fs.existsSync(filePath)) {
+          await fs.promises.unlink(filePath);
+          return { success: true };
+        }
+        return { success: true }; // Already gone
+      } catch (err) {
+        self.logger.error(`knowledge:delete failed [${filename}]: ${(err as Error).message}`);
+        return { success: false };
+      }
     });
   }
 

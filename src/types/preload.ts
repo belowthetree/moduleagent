@@ -82,6 +82,17 @@ export interface RoleConfigData {
   };
 }
 
+export interface KnowledgeEntry {
+  name: string;
+  filename: string;
+  content: string;
+}
+
+export interface KnowledgeListItem {
+  name: string;
+  filename: string;
+}
+
 export interface ModuleAgentApi {
   selectDir(title: string): Promise<string | null>;
 
@@ -148,6 +159,13 @@ export interface ModuleAgentApi {
 
   onRoleAgentStream(callback: (data: AgentStreamData) => void): () => void;
   onRoleAgentStatus(callback: (data: AgentStatusData) => void): () => void;
+
+  // ── Knowledge APIs ──
+  knowledgeList(): Promise<KnowledgeListItem[]>;
+  knowledgeRead(filename: string): Promise<KnowledgeEntry | null>;
+  knowledgeSave(entry: KnowledgeEntry): Promise<{ success: boolean }>;
+  knowledgeCreate(name: string): Promise<KnowledgeEntry | { error: string }>;
+  knowledgeDelete(filename: string): Promise<{ success: boolean }>;
 }
 
 declare global {

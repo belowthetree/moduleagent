@@ -47,16 +47,33 @@ export function ensureConfigFiles(bundledConfigDir: string): void {
   fs.mkdirSync(promptTargetDir, { recursive: true });
   fs.mkdirSync(configRoot, { recursive: true });
 
-  // Copy .md prompt files from bundled config/
+  // Copy .md prompt files from bundled config/ (including knowledge/ subdirectory)
   try {
     const files = fs.readdirSync(bundledConfigDir);
     for (const file of files) {
-      if (!file.endsWith('.md')) continue;
-      const src = path.join(bundledConfigDir, file);
-      const dest = path.join(promptTargetDir, file);
-      if (!fs.existsSync(dest)) {
-        fs.copyFileSync(src, dest);
-        defaultLogger.info(`[config] Initialized: ${dest}`);
+      if (file.endsWith('.md')) {
+        const src = path.join(bundledConfigDir, file);
+        const dest = path.join(promptTargetDir, file);
+        if (!fs.existsSync(dest)) {
+          fs.copyFileSync(src, dest);
+          defaultLogger.info(`[config] Initialized: ${dest}`);
+        }
+      }
+    }
+    // Also copy knowledge/ subdirectory
+    const knowledgeSrc = path.join(bundledConfigDir, 'knowledge');
+    const knowledgeDest = path.join(promptTargetDir, 'knowledge');
+    if (fs.existsSync(knowledgeSrc)) {
+      fs.mkdirSync(knowledgeDest, { recursive: true });
+      const knowledgeFiles = fs.readdirSync(knowledgeSrc);
+      for (const file of knowledgeFiles) {
+        if (!file.endsWith('.md')) continue;
+        const src = path.join(knowledgeSrc, file);
+        const dest = path.join(knowledgeDest, file);
+        if (!fs.existsSync(dest)) {
+          fs.copyFileSync(src, dest);
+          defaultLogger.info(`[config] Initialized: ${dest}`);
+        }
       }
     }
   } catch (err) {

@@ -106,7 +106,7 @@ async function handleSend(text: string): Promise<void> {
 async function handleGenerateModules(): Promise<void> {
   generatingModules.value = true
 
-  const { content: formatContent, error } = await window.moduleAgent.readProjectFile('config/MODULE_FORMAT.md')
+  const { content: formatContent, error } = await window.moduleAgent.readProjectFile('config/knowledge/MODULE_FORMAT.md')
 
   let instruction: string
   if (formatContent && !error) {
