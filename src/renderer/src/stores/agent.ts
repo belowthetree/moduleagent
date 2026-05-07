@@ -20,6 +20,8 @@ export const useAgentStore = defineStore('agent', () => {
   // ── Internal cleanup refs (not exposed) ──
   let statusListenerCleanup: (() => void) | null = null
   let roleStatusListenerCleanup: (() => void) | null = null
+  let streamCleanup: (() => void) | null = null
+  let roleStreamCleanup: (() => void) | null = null
 
   // ── Helpers ──
   function now(): string {
@@ -112,6 +114,8 @@ export const useAgentStore = defineStore('agent', () => {
     if (sendingLock.value) return
     sendingLock.value = true
 
+    ensureStreamListener()
+
     // Push user message immediately for instant UI feedback
     getMsgs(moduleName).push({
       id: 'm' + Date.now(),
@@ -125,26 +129,41 @@ export const useAgentStore = defineStore('agent', () => {
       agentCmd: '',
     })
 
+    // Push agent placeholder — updated in real time by stream listener
+    const agentIdx = getMsgs(moduleName).length
+    getMsgs(moduleName).push({
+      id: 'm' + Date.now(),
+      role: 'agent',
+      content: '',
+      thinking: '',
+      tools: '',
+      time: now(),
+      status: 'executing',
+      moduleName,
+      agentCmd: '',
+    })
+
     try {
       const result = await window.moduleAgent.sendMessage(moduleName, text, cwd)
-      if (result.result) {
-        // Push agent message from consolidated IPC result
-        getMsgs(moduleName).push({
-          id: 'm' + Date.now(),
-          role: 'agent',
-          content: result.result.reply || '',
-          thinking: result.result.thinking || '',
-          tools: result.result.tools || '',
-          time: now(),
-          status: 'completed',
-          moduleName,
-          agentCmd: '',
-        })
-      } else if (result.error) {
-        console.error(`发送失败: ${result.error}`)
+      const agentMsg = getMsgs(moduleName)[agentIdx]
+      if (agentMsg) {
+        if (result.result) {
+          agentMsg.content = result.result.reply || ''
+          agentMsg.thinking = result.result.thinking || ''
+          agentMsg.tools = result.result.tools || ''
+          agentMsg.status = 'completed'
+          agentMsg.time = now()
+        } else if (result.error) {
+          agentMsg.status = 'error'
+          agentMsg.content = result.error
+        }
       }
     } catch (err) {
-      console.error(`通信错误: ${(err as Error).message}`)
+      const agentMsg = getMsgs(moduleName)[agentIdx]
+      if (agentMsg) {
+        agentMsg.status = 'error'
+        agentMsg.content = `通信错误: ${(err as Error).message}`
+      }
     } finally {
       sendingLock.value = false
     }
@@ -164,10 +183,41 @@ export const useAgentStore = defineStore('agent', () => {
     })
   }
 
+  // ── Stream listeners for real-time agent output ──
+  function ensureStreamListener(): void {
+    if (streamCleanup) return
+    streamCleanup = window.moduleAgent.onAgentStream((data) => {
+      const msgs = contextMap.value.get(data.moduleName)
+      if (!msgs || msgs.length === 0) return
+      const last = msgs[msgs.length - 1]
+      if (!last || last.role !== 'agent' || last.status !== 'executing') return
+      if (data.reply !== undefined) last.content = data.reply
+      if (data.thinking !== undefined) last.thinking = data.thinking
+      if (data.tools !== undefined) last.tools = data.tools
+    })
+  }
+
+  function ensureRoleStreamListener(): void {
+    if (roleStreamCleanup) return
+    roleStreamCleanup = window.moduleAgent.onRoleAgentStream((data) => {
+      const msgs = roleContextMap.value.get(data.moduleName)
+      if (!msgs || msgs.length === 0) return
+      const last = msgs[msgs.length - 1]
+      if (!last || last.role !== 'agent' || last.status !== 'executing') return
+      if (data.reply !== undefined) last.content = data.reply
+      if (data.thinking !== undefined) last.thinking = data.thinking
+      if (data.tools !== undefined) last.tools = data.tools
+    })
+  }
+
   function stopRunningPoll(): void {
     if (statusListenerCleanup) {
       statusListenerCleanup()
       statusListenerCleanup = null
+    }
+    if (streamCleanup) {
+      streamCleanup()
+      streamCleanup = null
     }
     runningAgents.value = new Map()
   }
@@ -221,6 +271,8 @@ export const useAgentStore = defineStore('agent', () => {
     if (roleSendingLock.value) return
     roleSendingLock.value = true
 
+    ensureRoleStreamListener()
+
     getRoleMsgs(roleName).push({
       id: 'r' + Date.now(),
       role: 'user',
@@ -233,25 +285,41 @@ export const useAgentStore = defineStore('agent', () => {
       agentCmd: '',
     })
 
+    // Push agent placeholder — updated in real time by stream listener
+    const agentIdx = getRoleMsgs(roleName).length
+    getRoleMsgs(roleName).push({
+      id: 'r' + Date.now(),
+      role: 'agent',
+      content: '',
+      thinking: '',
+      tools: '',
+      time: now(),
+      status: 'executing',
+      moduleName: `workrole:${roleName}`,
+      agentCmd: '',
+    })
+
     try {
       const result = await window.moduleAgent.sendRoleMessage(roleName, text)
-      if (result.result) {
-        getRoleMsgs(roleName).push({
-          id: 'r' + Date.now(),
-          role: 'agent',
-          content: result.result.reply || '',
-          thinking: result.result.thinking || '',
-          tools: result.result.tools || '',
-          time: now(),
-          status: 'completed',
-          moduleName: `workrole:${roleName}`,
-          agentCmd: '',
-        })
-      } else if (result.error) {
-        console.error(`发送失败: ${result.error}`)
+      const agentMsg = getRoleMsgs(roleName)[agentIdx]
+      if (agentMsg) {
+        if (result.result) {
+          agentMsg.content = result.result.reply || ''
+          agentMsg.thinking = result.result.thinking || ''
+          agentMsg.tools = result.result.tools || ''
+          agentMsg.status = 'completed'
+          agentMsg.time = now()
+        } else if (result.error) {
+          agentMsg.status = 'error'
+          agentMsg.content = result.error
+        }
       }
     } catch (err) {
-      console.error(`通信错误: ${(err as Error).message}`)
+      const agentMsg = getRoleMsgs(roleName)[agentIdx]
+      if (agentMsg) {
+        agentMsg.status = 'error'
+        agentMsg.content = `通信错误: ${(err as Error).message}`
+      }
     } finally {
       roleSendingLock.value = false
     }
@@ -318,6 +386,10 @@ export const useAgentStore = defineStore('agent', () => {
     if (roleStatusListenerCleanup) {
       roleStatusListenerCleanup()
       roleStatusListenerCleanup = null
+    }
+    if (roleStreamCleanup) {
+      roleStreamCleanup()
+      roleStreamCleanup = null
     }
     roleRunningAgents.value = new Map()
   }
