@@ -15,16 +15,22 @@ npm run test:e2e          # Playwright end-to-end tests
 
 Type-check (`npm run typecheck`) is the primary guardrail. No linter or formatter configured.
 
-## Architecture: two parallel code paths
+## Architecture: unified Core layer with UI bridges
 
-The codebase has **two parallel implementations** for the same concepts:
+The codebase has been refactored into a layered architecture:
 
-- **Electron path** (primary): `src/main/index.ts` does agent management inline via `AgentOrchestrator`/`McpBackendServer`. Renderer is Vue 3 SFC components with Pinia state management and Element Plus UI library. Used by the real app.
-- **CLI path** (secondary): `src/agents/AgentManager.ts` + `src/agents/AgentRouter.ts` + `src/cli/`. Used by `module-agent serve` / `tui`.
+- **Core layer** (`src/core/`): `ModuleAgentCore` is the unified entry point for all agent orchestration. It composes `ModuleAgentSubsystem` (module agent lifecycle: scan → graph → agent → MCP) and `RoleAgentSubsystem` (role agent lifecycle). Core is 100% UI-agnostic — no Electron, Vue, SolidJS, or TUI dependencies.
+- **Bridge layer**: Thin adapters that connect Core to UI frameworks:
+  - `src/main/bridge.ts` — `ElectronBridge`: translates CoreCallbacks → IPC events, registers all `ipcMain.handle()` handlers
+  - `src/tui/bridge.ts` — `TuiBridge`: translates CoreCallbacks → SolidJS signals
+- **UI layer**: Pure presentation
+  - Electron: `src/main/index.ts` (window creation only), Vue 3 renderer in `src/renderer/src/`
+  - TUI: `src/tui/renderer.tsx` (OpenTUI startup), SolidJS components in `src/tui/components/`
+- **Underlying modules** (shared by all layers): `src/agents/`, `src/protocol/`, `src/config/`, `src/context/`, `src/types/`
 
-They share `AgentLauncher`, `ModuleScanner`, `ModuleGraph`, and the protocol layer. But agent lifecycle management is duplicated. When changing one path, check if the other needs the same change.
+The old duplication between `AgentOrchestrator` (Electron) and `AgentManager`/`AgentRouter` (CLI/TUI) has been eliminated. Both paths now share the same `ModuleAgentCore` instance via their respective bridges.
 
-`docs/DEVELOPMENT.md` claims CLI was removed — this is **stale**. `src/cli/` still exists and is actively built via `npm run build:cli`.
+Communication pattern: Core exposes `CoreCallbacks` interface (callback injection). Bridges implement callbacks and translate them to framework-specific signals. Core has zero knowledge of IPC, SolidJS, Vue, or any transport mechanism.
 
 ### Renderer architecture (Vue 3)
 
@@ -61,28 +67,41 @@ They share `AgentLauncher`, `ModuleScanner`, `ModuleGraph`, and the protocol lay
 | `roles` | Array of role agent configs (`name`, `description`, `visibleModulePaths`, `agents.default`) |
 
 When changing the schema, update both `src/config/schema.ts` (Zod) and `src/config/defaults.ts` (TypeScript interface + `DEFAULT_CONFIG`). Then ensure all config consumers are updated:
-- `src/tui/services/AgentService.ts` (TUI path)
-- `src/main/index.ts` `config:save` / `config:get` / `project:scan` (Electron path)
+- `src/core/ModuleAgentSubsystem.ts` (unified config loading)
+- `src/main/bridge.ts` `config:save` / `config:get` / `project:scan` (Electron path)
+- `src/tui/bridge.ts` + `src/tui/config.ts` (TUI path)
 - `src/cli/commands/setup.ts` (CLI interactive setup)
 
 ## Key directories
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/main/index.ts` | Electron main process — all IPC, agent lifecycle, MCP backend, role agent lifecycle |
+| `src/core/ModuleAgentCore.ts` | **Unified entry point** — composes ModuleAgentSubsystem + RoleAgentSubsystem. CoreCallbacks-based API for bridge layers. |
+| `src/core/ModuleAgentSubsystem.ts` | Module agent lifecycle: init (scan+graph+MCP), start, send, cancel, routing. Merges old AgentOrchestrator + AgentManager + AgentRouter. |
+| `src/core/RoleAgentSubsystem.ts` | Role agent lifecycle wrapper around RoleAgentManager. |
+| `src/core/CoreTypes.ts` | `CoreCallbacks`, `CoreStatus`, `CoreMessage`, `InitResult`, `AgentInfo` — shared interfaces. |
+| `src/core/` (other) | ModuleScanner, ModuleGraph, ModuleParser, ModuleGenerator, Logger, PathUtils, ExclusionRules |
+| `src/main/index.ts` | Electron main process — window creation only. All agent logic delegated to `ElectronBridge`. |
+| `src/main/bridge.ts` | **ElectronBridge** — connects `ModuleAgentCore` to Electron IPC. Handles McpBackend, AgentStateManager, all `ipcMain.handle()` registration. |
+| `src/tui/bridge.ts` | **TuiBridge** — connects `ModuleAgentCore` to TUI SolidJS state via CoreCallbacks. |
+| `src/tui/renderer.tsx` | TUI entry point — creates TuiBridge, wires `globalThis.__tui*` hooks. |
 | `src/renderer/src/` | Vue 3 renderer — views, components, Pinia stores, router |
 | `src/preload/index.ts` | `contextBridge` API (`window.moduleAgent`) |
-| `src/core/` | ModuleScanner, ModuleGraph, ModuleParser, Logger, PathUtils |
 | `src/agents/AgentLauncher.ts` | Spawns agent subprocess, wraps in ACP ClientSideConnection |
-| `src/agents/AgentOrchestrator.ts` | Module agent lifecycle orchestrator |
-| `src/agents/RoleAgentManager.ts` | Role agent lifecycle manager (parallel to AgentOrchestrator, no module graph) |
+| `src/agents/RoleAgentManager.ts` | Role agent lifecycle manager (used by RoleAgentSubsystem) |
 | `src/agents/RoleWorkspace.ts` | Role workspace preparation: copies visible modules into `workrole/<name>/` |
+| `src/agents/PromptBuilder.ts` | System prompt loading + ContentBlock building + dedup |
+| `src/agents/McpServerBuilder.ts` | MCP server config building + graph file writing |
+| `src/agents/WorkspaceIsolator.ts` | Module workspace isolation: prepare, resolve paths, sub-module discovery |
+| `src/agents/McpBackend.ts` | MCP HTTP backend server for cross-module agent communication |
+| `src/agents/AgentStateManager.ts` | Stream accumulation (reply/thinking/tools) + context file persistence |
 | `src/protocol/acp/` | ACP connection + FsHandler + TerminalHandler |
 | `src/protocol/mcp/` | MCP server (module agents) + RoleMCPServer (role agents) + CommunicationBus + server-entry |
 | `src/config/` | ConfigLoader, schema (Zod), defaults |
+| `src/context/` | ContextManager (in-memory cache) + FileStore (JSON persistence) |
 | `config/` | System prompt markdown files: `mainagentprompt.md`, `subagentprompt.md`, `roleagentprompt.md` |
 | `dist/mcp-server.cjs` | Self-contained MCP server bundle (module agents) |
-| `dist/mcp-role-server.cjs` | Self-contained MCP server bundle (role agents — workrole_read_file / workrole_write_file) |
+| `dist/mcp-role-server.cjs` | Self-contained MCP server bundle (role agents) |
 
 ## Build details
 
