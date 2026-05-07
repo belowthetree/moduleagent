@@ -80,6 +80,9 @@ function selectRole(name: string): void {
         <div class="role-card-paths">
           {{ role.visibleModulePaths.length > 0 ? role.visibleModulePaths.join(', ') : '全部模块可见' }}
         </div>
+        <div v-if="role.knowledgeRefs?.length" class="role-card-knowledge">
+          知识: {{ role.knowledgeRefs.map(k => k.name).join(', ') }}
+        </div>
       </div>
 
       <div v-if="agentStore.roles.length === 0" class="role-empty">
@@ -215,6 +218,12 @@ function selectRole(name: string): void {
 .role-card-paths {
   font-size: 10px;
   color: var(--el-text-color-placeholder);
+}
+
+.role-card-knowledge {
+  font-size: 10px;
+  color: var(--el-color-primary);
+  margin-top: 2px;
 }
 
 .role-empty {

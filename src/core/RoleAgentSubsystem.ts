@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { AgentLauncher } from '../agents/AgentLauncher.js';
 import { RoleAgentManager, type RoleAgentEntry } from '../agents/RoleAgentManager.js';
 import type { RoleConfig } from '../config/defaults.js';
@@ -30,6 +31,7 @@ export class RoleAgentSubsystem {
   private callbacks: CoreCallbacks;
   private logger: Logger;
   private manager: RoleAgentManager;
+  private projectPath: string;
   private rolePrompt = '';
   private sessionPrompted = new Set<string>();
   private sendLock = new Map<string, Promise<void>>();
@@ -38,6 +40,7 @@ export class RoleAgentSubsystem {
   constructor(options: RoleAgentSubsystemOptions) {
     this.callbacks = options.callbacks;
     this.logger = options.logger || defaultLogger;
+    this.projectPath = options.projectPath;
     this._onSessionUpdate = options.onSessionUpdate;
 
     // Load role agent prompt
@@ -125,7 +128,7 @@ export class RoleAgentSubsystem {
         throw new Error(`Role agent "${roleName}" not started. Call startRole() first.`);
       }
 
-      const blocks = this._buildPromptBlocks(roleName, text);
+      const blocks = this.buildPromptBlocks(roleName, text);
 
       this.callbacks.onStatusChange('streaming');
       this.logger.info(`role:send [${roleName}] len=${text.length} blocks=${blocks.length}`);
@@ -182,7 +185,8 @@ export class RoleAgentSubsystem {
   // Internal
   // -----------------------------------------------------------------------
 
-  private _buildPromptBlocks(roleName: string, userText: string): ContentBlock[] {
+  /** Build prompt blocks for a role agent, including knowledge on first message per session. */
+  buildPromptBlocks(roleName: string, userText: string): ContentBlock[] {
     const blocks: ContentBlock[] = [];
     const isFirst = !this.sessionPrompted.has(roleName);
 
@@ -191,9 +195,70 @@ export class RoleAgentSubsystem {
       if (this.rolePrompt) {
         blocks.push({ type: 'text', text: this.rolePrompt + '\n\n---\n\n' });
       }
+
+      // Inject knowledge references on first message
+      const entry = this.manager.getAgent(roleName);
+      const refs = entry?.roleConfig.knowledgeRefs;
+      if (refs && refs.length > 0) {
+        this.logger.info(`role:buildPrompt [${roleName}] injecting ${refs.length} knowledge ref(s): ${refs.map(r => r.name).join(', ')}`);
+        const knowledgeBlock = this._buildKnowledgeBlock(refs);
+        if (knowledgeBlock) {
+          blocks.push({ type: 'text', text: knowledgeBlock });
+          this.logger.info(`role:buildPrompt [${roleName}] knowledge injected (${knowledgeBlock.length} chars)`);
+        } else {
+          this.logger.warn(`role:buildPrompt [${roleName}] knowledge block empty — no files resolved`);
+        }
+      }
     }
 
     blocks.push({ type: 'text', text: userText });
     return blocks;
+  }
+
+  /**
+   * Build a prompt block containing referenced knowledge files,
+   * formatted for AI consumption.
+   */
+  private _buildKnowledgeBlock(refs: { filename: string; name: string }[]): string | null {
+    const sections: string[] = [];
+
+    for (const ref of refs) {
+      const filePath = this._resolveKnowledgePath(ref.filename);
+      if (!filePath) {
+        this.logger.warn(`Knowledge file not found: ${ref.filename}`);
+        continue;
+      }
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        sections.push(`## ${ref.name}\n\n${content}`);
+        this.logger.info(`role:buildPrompt knowledge file loaded: ${ref.filename} (${content.length} chars) from ${filePath}`);
+      } catch (err) {
+        this.logger.warn(`Failed to read knowledge file ${ref.filename}: ${(err as Error).message}`);
+      }
+    }
+
+    if (sections.length === 0) return null;
+
+    return (
+      '# 参考知识\n\n' +
+      '以下是与你职责相关的参考知识，请在回答问题时参考这些内容：\n\n' +
+      sections.join('\n\n---\n\n') +
+      '\n\n---\n\n'
+    );
+  }
+
+  /**
+   * Look up a knowledge file across all knowledge directories.
+   */
+  private _resolveKnowledgePath(filename: string): string | null {
+    const dirs = [
+      path.join(this.projectPath, '.module-agent', 'knowledge'),
+      path.join(os.homedir(), '.module-agent', 'config', 'knowledge'),
+    ];
+    for (const dir of dirs) {
+      const filePath = path.join(dir, filename);
+      if (fs.existsSync(filePath)) return filePath;
+    }
+    return null;
   }
 }

@@ -80,6 +80,7 @@ export interface RoleConfigData {
       args?: string[];
     };
   };
+  knowledgeRefs?: { filename: string; name: string }[];
 }
 
 export interface KnowledgeEntry {

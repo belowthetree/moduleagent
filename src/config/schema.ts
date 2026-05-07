@@ -40,6 +40,10 @@ export const RoleConfigSchema = z.object({
   agents: z.object({
     default: RoleAgentConfigSchema,
   }),
+  knowledgeRefs: z.array(z.object({
+    filename: z.string(),
+    name: z.string(),
+  })).optional(),
 });
 
 export type RoleConfig = z.infer<typeof RoleConfigSchema>;

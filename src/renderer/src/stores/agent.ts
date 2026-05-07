@@ -12,6 +12,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ── Role agent state ──
   const roles = ref<RoleConfigData[]>([])
+  const rolesLoaded = ref(false)
   const selectedRoleAgent = ref<string | null>(null)
   const roleContextMap = ref(new Map<string, ChatMsg[]>())
   const roleRunningAgents = shallowRef(new Map<string, AgentStatus>())
@@ -232,8 +233,14 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ── Role agent lifecycle ──
   async function fetchRoles(): Promise<void> {
+    if (rolesLoaded.value) return
+    await refreshRoles()
+  }
+
+  async function refreshRoles(): Promise<void> {
     try {
       roles.value = await window.moduleAgent.getRoles()
+      rolesLoaded.value = true
     } catch {
       roles.value = []
     }
@@ -243,7 +250,7 @@ export const useAgentStore = defineStore('agent', () => {
     // Deep-clone to plain object: Vue reactive proxies are not IPC-cloneable
     const plain = JSON.parse(JSON.stringify(role))
     await window.moduleAgent.saveRole(plain)
-    await fetchRoles()
+    await refreshRoles()
   }
 
   async function deleteRole(name: string): Promise<void> {
@@ -251,7 +258,7 @@ export const useAgentStore = defineStore('agent', () => {
     if (selectedRoleAgent.value === name) {
       selectedRoleAgent.value = null
     }
-    await fetchRoles()
+    await refreshRoles()
   }
 
   async function startRoleAgent(roleName: string): Promise<void> {
@@ -411,12 +418,14 @@ export const useAgentStore = defineStore('agent', () => {
     stopRunningPoll,
     // Role agent
     roles,
+    rolesLoaded,
     selectedRoleAgent,
     roleContextMap,
     roleRunningAgents,
     roleSendingLock,
     getRoleMsgs,
     fetchRoles,
+    refreshRoles,
     saveRole,
     deleteRole,
     selectRoleAgentAndStart,

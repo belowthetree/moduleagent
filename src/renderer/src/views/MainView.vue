@@ -147,6 +147,22 @@ async function rescan(): Promise<void> {
 
 async function generateModules(): Promise<void> {
   if (!configStore.projectPath) return
+
+  // Try to use the "模块生成角色" role agent
+  await agentStore.fetchRoles()
+  const genRole = agentStore.roles.find(r => r.name === '模块生成角色')
+  if (genRole) {
+    projectStore.selectedNode = null
+    await agentStore.selectRoleAgentAndStart(genRole.name)
+    closeDrawer()
+    await agentStore.sendRoleMessage(
+      genRole.name,
+      '请根据 Module.md 文件规范，扫描当前项目源码目录结构，为每个需要模块化的目录生成对应的 module.md 文件到 .module-agent/module/ 下。生成完成后请调用 finishSession 结束。',
+    )
+    return
+  }
+
+  // Fallback: legacy agent-based generation
   generating.value = true
   try {
     const result = await window.moduleAgent.generateModules(configStore.projectPath)

@@ -29,6 +29,7 @@ export interface RoleConfig {
   agents: {
     default: RoleAgentConfig;
   };
+  knowledgeRefs?: { filename: string; name: string }[];
 }
 
 export interface WorkspaceConfig {
@@ -59,6 +60,9 @@ export const DEFAULT_MODULE_GEN_ROLE: RoleConfig = {
       args: ['acp'],
     },
   },
+  knowledgeRefs: [
+    { filename: 'MODULE_FORMAT.md', name: 'Module.md 文件规范' },
+  ],
 };
 
 export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {

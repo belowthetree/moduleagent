@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, watch, onMounted } from 'vue'
 import { useProjectStore } from '../stores/project'
+import { useKnowledgeStore } from '../stores/knowledge'
 import type { RoleConfigData } from '../../../types/preload'
 
 const props = defineProps<{
@@ -14,6 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const projectStore = useProjectStore()
+const knowledgeStore = useKnowledgeStore()
 
 const form = reactive({
   name: '',
@@ -21,6 +23,7 @@ const form = reactive({
   visibleModulePaths: [] as string[],
   command: 'opencode',
   args: 'acp',
+  knowledgeRefs: [] as { filename: string; name: string }[],
 })
 
 watch(() => props.role, (r) => {
@@ -30,6 +33,7 @@ watch(() => props.role, (r) => {
     form.visibleModulePaths = [...r.visibleModulePaths]
     form.command = r.agents.default.command
     form.args = (r.agents.default.args || ['acp']).join(' ')
+    form.knowledgeRefs = r.knowledgeRefs ? [...r.knowledgeRefs] : []
   }
 }, { immediate: true })
 
@@ -37,6 +41,22 @@ const modulePathOptions = computed(() => {
   return projectStore.flattenedNodes
     .filter(n => n.data.path !== '.')
     .map(n => n.data.path)
+})
+
+const knowledgeOptions = computed(() => {
+  return knowledgeStore.entries.map(e => ({
+    filename: e.filename,
+    name: e.name,
+  }))
+})
+
+onMounted(() => {
+  knowledgeStore.fetchList()
+})
+
+// Refresh knowledge list when dialog opens
+watch(() => props.visible, (v) => {
+  if (v) knowledgeStore.fetchList()
 })
 
 function handleSave(): void {
@@ -51,6 +71,7 @@ function handleSave(): void {
         args: form.args.split(/\s+/).filter(Boolean),
       },
     },
+    knowledgeRefs: form.knowledgeRefs.length > 0 ? [...form.knowledgeRefs] : undefined,
   })
 }
 </script>
@@ -82,6 +103,22 @@ function handleSave(): void {
             :key="p"
             :label="p"
             :value="p"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="关联知识">
+        <el-select
+          v-model="form.knowledgeRefs"
+          multiple
+          value-key="filename"
+          placeholder="选择关联的知识条目（可选，将在对话时作为参考上下文）"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="k in knowledgeOptions"
+            :key="k.filename"
+            :label="k.name"
+            :value="{ filename: k.filename, name: k.name }"
           />
         </el-select>
       </el-form-item>

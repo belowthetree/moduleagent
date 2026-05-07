@@ -4,7 +4,7 @@ import os from 'os';
 import { ipcMain, dialog, type BrowserWindow } from 'electron';
 import { ModuleAgentCore } from '../core/ModuleAgentCore.js';
 import { ConfigLoader } from '../config/ConfigLoader.js';
-import { DEFAULT_CONFIG, type RoleConfig } from '../config/defaults.js';
+import { DEFAULT_CONFIG, DEFAULT_MODULE_GEN_ROLE, type RoleConfig } from '../config/defaults.js';
 import { defaultLogger, type Logger } from '../core/Logger.js';
 import { AgentStateManager } from '../agents/AgentStateManager.js';
 import { McpBackendServer } from '../agents/McpBackend.js';
@@ -26,7 +26,7 @@ import {
   getSubModuleDirs,
   prepareModuleWorkspace,
 } from '../agents/WorkspaceIsolator.js';
-import { getPromptConfigDir, ensureConfigFiles, getUserConfigRoot } from '../core/ConfigPaths.js';
+import { getPromptConfigDir, ensureConfigFiles, getUserConfigRoot, configExplorer } from '../core/ConfigPaths.js';
 import type { ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../types/module.js';
 import type { ChatMsg } from '../types/preload.js';
 import type { CoreCallbacks } from '../core/CoreTypes.js';
@@ -186,16 +186,18 @@ export class ElectronBridge {
     ipcMain.handle('project:scan', async (_event, projectRoot: string, _workspaceRoot: string) => {
       try {
         const workspaceConfig = await ConfigLoader.loadOrCreate(projectRoot);
+
+        // Ensure default module-gen role exists
+        if (!workspaceConfig.roles) workspaceConfig.roles = [];
+        const hasDefaultRole = workspaceConfig.roles.some(r => r.name === DEFAULT_MODULE_GEN_ROLE.name);
+        if (!hasDefaultRole) {
+          workspaceConfig.roles.push({ ...DEFAULT_MODULE_GEN_ROLE });
+          const configPath = path.join(projectRoot, '.module-agent.json');
+          await fs.promises.writeFile(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
+          self.logger.info('Added default role: 模块生成角色');
+        }
+
         const config = ConfigLoader.getDefaultConfig(workspaceConfig);
-
-        const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
-        fs.mkdirSync(moduleScanPath, { recursive: true });
-        const descriptors = await ModuleScanner.scan({
-          projectRoot: moduleScanPath,
-          extraExclude: config.exclude,
-        });
-
-        const graph = new ModuleGraph().build(descriptors, projectRoot);
         const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
 
         // Load prompts from resolved config dir
@@ -205,8 +207,18 @@ export class ElectronBridge {
           self.prompts.rolePrompt = fs.readFileSync(rpPath, 'utf-8');
         } catch { /* optional */ }
 
-        // Init core
+        // Init core & roles (before module scan, so roles are available even if scan fails)
         const result = await self.core.init(projectRoot);
+        self.core.initRoles(config.projectPath, workspaceRoot);
+
+        const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
+        fs.mkdirSync(moduleScanPath, { recursive: true });
+        const descriptors = await ModuleScanner.scan({
+          projectRoot: moduleScanPath,
+          extraExclude: config.exclude,
+        });
+
+        const graph = new ModuleGraph().build(descriptors, projectRoot);
 
         // Set MCP backend port on core.modules
         self.core.modules.mcpBackendPort = 0; // Will be set after backend starts
@@ -216,9 +228,6 @@ export class ElectronBridge {
         self.stateManager = new AgentStateManager(
           path.join(projectRoot, '.module-agent', 'context'),
         );
-
-        // Init role subsystem
-        self.core.initRoles(config.projectPath, workspaceRoot);
 
         // Create MCP backend
         self.mcpBackend = new McpBackendServer({
@@ -635,6 +644,7 @@ DO NOT overwrite existing module.md files.`,
           workspaceConfig.roles.push(role);
         }
         await fs.promises.writeFile(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
+        configExplorer.clearCaches();
         return { success: true };
       } catch (err) {
         self.logger.error(`role:save failed: ${(err as Error).message}`);
@@ -652,6 +662,7 @@ DO NOT overwrite existing module.md files.`,
           workspaceConfig.roles = workspaceConfig.roles.filter(r => r.name !== name);
         }
         await fs.promises.writeFile(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
+        configExplorer.clearCaches();
 
         const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
         await cleanupRoleWorkspace(name, workspaceRoot);
@@ -701,9 +712,10 @@ DO NOT overwrite existing module.md files.`,
         self.stateManager?.startStream(ctxKey);
 
         self.logger.info(`role:send [${roleName}] len=${text.length}`);
+        const promptBlocks = self.core.roles!.buildPromptBlocks(roleName, text);
         const result = await entry.launched.connection.prompt({
           sessionId: entry.sessionId,
-          prompt: self._buildRolePromptBlocks(roleName, text),
+          prompt: promptBlocks,
         });
 
         const acc = self.stateManager?.finishStream(ctxKey);

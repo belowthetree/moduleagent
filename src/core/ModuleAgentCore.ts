@@ -71,9 +71,15 @@ export class ModuleAgentCore {
 
   async init(projectRoot: string): Promise<InitResult> {
     this.projectRoot = projectRoot;
-    const result = await this.modules.init(projectRoot);
-    this.initialized = true;
-    return result;
+    try {
+      const result = await this.modules.init(projectRoot);
+      this.initialized = true;
+      return result;
+    } catch (err) {
+      this.logger.warn(`Core init: module scan failed (no modules?): ${(err as Error).message}`);
+      this.initialized = true; // Still mark as initialized so roles can work
+      return { moduleNames: [], rootAgent: '' };
+    }
   }
 
   /**
