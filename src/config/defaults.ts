@@ -49,9 +49,22 @@ export const DEFAULT_CONFIG_ENTRY: ConfigEntry = {
   projectPath: '.',
 };
 
+export const DEFAULT_MODULE_GEN_ROLE: RoleConfig = {
+  name: '模块生成角色',
+  description: '负责根据项目需求生成新模块，识别代码边界并创建模块定义。对项目所有模块具有可见性，能够分析现有模块结构并生成符合项目规范的新模块。',
+  visibleModulePaths: [],
+  agents: {
+    default: {
+      command: 'opencode',
+      args: ['acp'],
+    },
+  },
+};
+
 export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {
   configs: [DEFAULT_CONFIG_ENTRY],
   defaultConfig: 'default',
+  roles: [DEFAULT_MODULE_GEN_ROLE],
 };
 
 // Keep backward compat: legacy code that expects the single-entry format

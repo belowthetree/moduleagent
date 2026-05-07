@@ -131,6 +131,14 @@ async function rescan(): Promise<void> {
 
   agentStore.ensureStatusListener()
   agentStore.ensureRoleStatusListener()
+
+  // Auto-select first role if no module nodes found
+  if (!projectStore.treeRoot) {
+    await agentStore.fetchRoles()
+    if (agentStore.roles.length > 0) {
+      await agentStore.selectRoleAgentAndStart(agentStore.roles[0].name)
+    }
+  }
 }
 
 async function generateModules(): Promise<void> {
@@ -204,6 +212,14 @@ onMounted(async () => {
       console.error('自动扫描失败:', (err as Error).message)
     } finally {
       scanning.value = false
+    }
+  }
+
+  // Auto-select first role if no module nodes found
+  if (!projectStore.treeRoot) {
+    await agentStore.fetchRoles()
+    if (agentStore.roles.length > 0) {
+      await agentStore.selectRoleAgentAndStart(agentStore.roles[0].name)
     }
   }
 })
