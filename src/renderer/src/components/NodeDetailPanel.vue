@@ -71,10 +71,6 @@ watch(() => props.node?.name, (newName) => {
     </div>
   </div>
 
-  <div v-else class="detail-placeholder">
-    <div class="placeholder-icon">📋</div>
-    <p class="placeholder-text">点击节点树中的模块节点查看详情和对话</p>
-  </div>
 </template>
 
 <style scoped>
@@ -179,22 +175,4 @@ watch(() => props.node?.name, (newName) => {
   flex-shrink: 0;
 }
 
-.detail-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  gap: 12px;
-  color: var(--el-text-color-secondary);
-}
-
-.placeholder-icon {
-  font-size: 48px;
-}
-
-.placeholder-text {
-  font-size: 14px;
-  margin: 0;
-}
 </style>

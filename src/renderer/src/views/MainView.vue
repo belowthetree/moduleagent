@@ -4,6 +4,8 @@ import SVGTree from '../components/SVGTree.vue'
 import NodeDetailPanel from '../components/NodeDetailPanel.vue'
 import LeftSidebar from '../components/LeftSidebar.vue'
 import RolePanel from '../components/RolePanel.vue'
+import ContextCards from '../components/ContextCards.vue'
+import ChatInput from '../components/ChatInput.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
 import { useProjectStore } from '../stores/project'
@@ -154,6 +156,7 @@ function clearAll(): void {
 
 // ── Tree events ──
 function onSelectNode(node: Parameters<typeof projectStore.selectNode>[0]): void {
+  agentStore.selectedRoleAgent = null // clear role selection
   projectStore.selectNode(node)
   closeDrawer() // auto-close drawer after selecting a node
 }
@@ -161,6 +164,28 @@ function onSelectNode(node: Parameters<typeof projectStore.selectNode>[0]): void
 function onCloseNodeDetail(): void {
   projectStore.selectedNode = null
 }
+
+// ── Role selection (from drawer) ──
+function onSelectRole(name: string): void {
+  projectStore.selectedNode = null // clear node selection
+  agentStore.selectRoleAgentAndStart(name)
+  closeDrawer()
+}
+
+function onCloseRoleDetail(): void {
+  agentStore.selectedRoleAgent = null
+}
+
+async function handleRoleSendMessage(text: string): Promise<void> {
+  if (!agentStore.selectedRoleAgent) return
+  await agentStore.sendRoleMessage(agentStore.selectedRoleAgent, text)
+}
+
+// ── Computed: selected role info ──
+const selectedRoleInfo = computed(() => {
+  if (!agentStore.selectedRoleAgent) return null
+  return agentStore.roles.find(r => r.name === agentStore.selectedRoleAgent) || null
+})
 
 // ── Lifecycle ──
 onMounted(async () => {
@@ -256,16 +281,56 @@ onUnmounted(() => {
       >
         <div class="drawer-resize-handle" @mousedown="onResizeMousedown" />
         <div class="drawer-inner">
-          <RolePanel />
+          <RolePanel @select="onSelectRole" />
         </div>
       </div>
 
       <!-- Main detail area (always visible) -->
       <div class="detail-area">
+        <!-- Node detail -->
         <NodeDetailPanel
+          v-if="projectStore.selectedNode"
           :node="projectStore.selectedNode"
           @close="onCloseNodeDetail"
         />
+        <!-- Role agent detail -->
+        <div v-else-if="selectedRoleInfo" class="role-detail">
+          <div class="role-detail-header">
+            <span class="role-detail-title">{{ selectedRoleInfo.name }}</span>
+            <button class="btn-close" @click="onCloseRoleDetail">✕</button>
+          </div>
+          <div class="role-detail-body">
+            <div class="role-info">
+              <div class="role-desc">{{ selectedRoleInfo.description || '无描述' }}</div>
+              <div class="role-paths">
+                <span class="paths-label">可见模块:</span>
+                <span class="paths-value">{{ selectedRoleInfo.visibleModulePaths.join(', ') || '(全部)' }}</span>
+              </div>
+              <div class="role-cmd">
+                Agent: {{ selectedRoleInfo.agents.default.command }} {{ (selectedRoleInfo.agents.default.args || []).join(' ') }}
+              </div>
+            </div>
+            <div class="role-ctx-area">
+              <ContextCards
+                v-if="agentStore.selectedRoleAgent"
+                :module-name="agentStore.selectedRoleAgent"
+                context-type="role"
+              />
+            </div>
+            <div class="role-chat">
+              <ChatInput
+                v-if="agentStore.selectedRoleAgent"
+                :module-name="agentStore.selectedRoleAgent"
+                @send="handleRoleSendMessage"
+              />
+            </div>
+          </div>
+        </div>
+        <!-- Placeholder -->
+        <div v-else class="detail-placeholder">
+          <div class="placeholder-icon">📋</div>
+          <p class="placeholder-text">从左侧节点树选择模块，或从角色面板选择角色 Agent</p>
+        </div>
       </div>
     </div>
 
@@ -459,4 +524,123 @@ onUnmounted(() => {
 .empty-icon { font-size: 48px; }
 .empty-text { font-size: 16px; color: var(--el-text-color-primary); margin: 0; }
 .empty-hint { font-size: 13px; color: var(--el-text-color-secondary); margin: 0; }
+
+/* ── Role detail (main area) ── */
+.role-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--el-fill-color);
+}
+
+.role-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--el-border-color);
+  flex-shrink: 0;
+}
+
+.role-detail-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--el-color-primary);
+}
+
+.role-detail .btn-close {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.role-detail .btn-close:hover {
+  background: var(--el-color-danger);
+  color: var(--el-color-white);
+  border-color: var(--el-color-danger);
+}
+
+.role-detail-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px 16px;
+}
+
+.role-info {
+  flex-shrink: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+.role-desc {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 8px;
+}
+
+.role-paths {
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.paths-label {
+  color: var(--el-text-color-secondary);
+  font-weight: 600;
+}
+
+.paths-value {
+  color: var(--el-text-color-primary);
+}
+
+.role-cmd {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+
+.role-ctx-area {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding-bottom: 12px;
+}
+
+.role-chat {
+  display: flex;
+  gap: 6px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--el-border-color);
+  flex-shrink: 0;
+}
+
+/* ── Detail placeholder ── */
+.detail-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.placeholder-icon {
+  font-size: 48px;
+}
+
+.placeholder-text {
+  font-size: 14px;
+  margin: 0;
+  text-align: center;
+}
 </style>
