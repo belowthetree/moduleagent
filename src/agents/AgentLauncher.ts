@@ -57,7 +57,7 @@ export class AgentLauncher {
         const u = params.update;
         if (u.sessionUpdate === 'agent_message_chunk' || u.sessionUpdate === 'agent_thought_chunk') {
           const block = (u as { content: { type?: string; text?: string } }).content;
-          log.debug(`[${name}] stream chunk type=${block?.type} len=${block?.text?.length || 0}`);
+          log.debug(`[${name}] ${u.sessionUpdate} type=${block?.type} len=${block?.text?.length || 0}`);
         } else if (u.sessionUpdate === 'tool_call') {
           log.info(`[${name}] tool_call: ${(u as { title?: string }).title || 'unknown'}`);
         }
@@ -99,7 +99,7 @@ export class AgentLauncher {
     });
 
     launched.agentCapabilities = initResult.agentCapabilities;
-    log.info(`Agent initialized: ${name} capabilities={ loadSession: ${initResult.agentCapabilities?.loadSession ?? false}, fs: true }`);
+    log.info(`Agent initialized: ${name} capabilities=${JSON.stringify(initResult.agentCapabilities)}`);
 
     launched.connection = connection;
     launched.process = process;

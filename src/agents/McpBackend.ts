@@ -158,8 +158,9 @@ export class McpBackendServer {
           if (sid === entry.sessionId) {
             const u = notification.update;
             if (u.sessionUpdate === 'agent_message_chunk') {
-              const block = (u as { content?: { type?: string; text?: string } }).content;
-              if (block?.type === 'text' && block.text) chunks.push(block.text);
+              const block = (u as { content?: { type?: string; text?: string; thinking?: string } }).content;
+              const text = block?.type === 'text' ? block.text : block?.type === 'thinking' ? block.thinking : undefined;
+              if (text) chunks.push(text);
             }
           }
         };
@@ -175,10 +176,13 @@ export class McpBackendServer {
 
           res.writeHead(200);
           const responseText = chunks.join('').trim();
+          const isQuery = !!msg.query && !msg.task;
           res.end(
             JSON.stringify({
               success: true,
-              result: responseText || `Agent response (stopReason: ${result.stopReason})`,
+              ...(isQuery
+                ? { answer: responseText || `Agent response (stopReason: ${result.stopReason})` }
+                : { result: responseText || `Agent response (stopReason: ${result.stopReason})` }),
             }),
           );
 

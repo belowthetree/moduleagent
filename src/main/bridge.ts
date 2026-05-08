@@ -213,6 +213,12 @@ export class ElectronBridge {
         const result = await self.core.init(projectRoot);
         self.core.initRoles(config.projectPath, workspaceRoot);
 
+        // Init state manager early — must be before any streaming starts, and before
+        // module scan which may throw and skip remaining init
+        self.stateManager = new AgentStateManager(
+          path.join(projectRoot, '.module-agent', 'context'),
+        );
+
         const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
         fs.mkdirSync(moduleScanPath, { recursive: true });
         const descriptors = await ModuleScanner.scan({
@@ -225,11 +231,6 @@ export class ElectronBridge {
         // Set MCP backend port on core.modules
         self.core.modules.mcpBackendPort = 0; // Will be set after backend starts
         self.core.modules.mcpGraphFile = writeMcpGraphFile(graph, os.tmpdir());
-
-        // Init state manager
-        self.stateManager = new AgentStateManager(
-          path.join(projectRoot, '.module-agent', 'context'),
-        );
 
         // Create MCP backend
         self.mcpBackend = new McpBackendServer({
@@ -255,6 +256,29 @@ export class ElectronBridge {
             });
           },
           sendCrossContext(source, target, direction, phase, content) {
+            // Update stateManager timeline so cross-module metadata is persisted
+            const st = self.stateManager?.getStreamState(source);
+            if (st && st.timeline) {
+              for (let i = st.timeline.length - 1; i >= 0; i--) {
+                const ev = st.timeline[i]!;
+                if (ev.type === 'tool_call' && (ev.content.includes('module_call') || ev.content.includes('module_query'))) {
+                  // Only set cross-module metadata on the first event (request); response appends detail
+                  if (!ev.crossModule) {
+                    ev.crossDirection = direction;
+                    ev.crossModule = target;
+                    ev.crossPhase = phase;
+                    ev.detail = content;
+                  } else {
+                    // Response: append to existing detail, keep original direction/module
+                    ev.crossPhase = phase;
+                    if (ev.detail) {
+                      ev.detail = ev.detail + '\n\n---\n\n' + content;
+                    }
+                  }
+                  break;
+                }
+              }
+            }
             if (self.mainWindow && !self.mainWindow.isDestroyed()) {
               self.mainWindow.webContents.send('agent:cross-context', {
                 moduleName: source,
@@ -704,6 +728,7 @@ DO NOT overwrite existing module.md files.`,
       self.roleSendLock.set(roleName, lockPromise);
 
       try {
+        // Ensure agent is started (normally started via role:start, but guard here)
         let entry = self.core.roles.getAgent(roleName);
         if (!entry) {
           const workspaceConfig = await ConfigLoader.load(self.core.getProjectRoot());
@@ -715,8 +740,8 @@ DO NOT overwrite existing module.md files.`,
         const ctxKey = `workrole:${roleName}`;
         self.stateManager?.startStream(ctxKey);
 
-        self.logger.info(`role:send [${roleName}] len=${text.length}`);
         const promptBlocks = self.core.roles!.buildPromptBlocks(roleName, text);
+        self.logger.info(`role:send [${roleName}] len=${text.length}`);
         const result = await entry.launched.connection.prompt({
           sessionId: entry.sessionId,
           prompt: promptBlocks,

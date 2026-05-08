@@ -111,6 +111,13 @@ function isTimelineItemExpanded(msgId: string, idx: number): boolean {
   return expandedTimelineItems.value.has(timelineItemKey(msgId, idx))
 }
 
+// ── Tool classification ──
+const CROSS_MODULE_TOOLS = ['module_call', 'module_query']
+
+function isCrossModuleTool(ev: TimelineEvent): boolean {
+  return CROSS_MODULE_TOOLS.some(name => ev.content.includes(name))
+}
+
 // ── Card click ──
 function onCardClick(msg: ChatMsg) {
   emit('showDetail', msg)
@@ -183,8 +190,38 @@ function onCancelStream() {
               >{{ ev.content }}</div>
             </template>
             <div v-else class="tl-tool-line">
-              <span class="ctx-tag tag-tools">工具</span>
-              <span>{{ ev.content }}</span>
+              <!-- Cross-module tool: detected by tool name -->
+              <template v-if="isCrossModuleTool(ev)">
+                <div class="tl-tool-header" @click.stop="toggleTimelineItem(msg.id, idx)">
+                  <span class="tl-arrow">{{ isTimelineItemExpanded(msg.id, idx) ? '▼' : '▶' }}</span>
+                  <span class="ctx-tag tag-cross">跨模块</span>
+                  <span>
+                    <template v-if="ev.crossDirection">{{ ev.crossDirection === 'sent' ? '📤 发送至' : '📥 来自' }} <b>{{ ev.crossModule }}</b> ({{ ev.crossPhase === 'request' ? '请求' : '响应' }})</template>
+                    <template v-else>{{ ev.content }}</template>
+                  </span>
+                </div>
+                <div
+                  v-if="isTimelineItemExpanded(msg.id, idx) && ev.detail"
+                  class="tl-tool-detail"
+                >{{ ev.detail }}</div>
+              </template>
+              <!-- Regular tool with detail -->
+              <template v-else-if="ev.detail">
+                <div class="tl-tool-header" @click.stop="toggleTimelineItem(msg.id, idx)">
+                  <span class="tl-arrow">{{ isTimelineItemExpanded(msg.id, idx) ? '▼' : '▶' }}</span>
+                  <span class="ctx-tag tag-tools">工具</span>
+                  <span>{{ ev.content }}</span>
+                </div>
+                <div
+                  v-if="isTimelineItemExpanded(msg.id, idx)"
+                  class="tl-tool-detail"
+                >{{ ev.detail }}</div>
+              </template>
+              <!-- Simple tool -->
+              <template v-else>
+                <span class="ctx-tag tag-tools">工具</span>
+                <span>{{ ev.content }}</span>
+              </template>
             </div>
           </div>
         </div>
@@ -447,12 +484,42 @@ function onCancelStream() {
 
 .tl-tool-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   font-size: 11px;
   font-family: monospace;
   color: var(--el-text-color-secondary);
   padding: 1px 0;
+}
+
+.tl-tool-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  flex: 1;
+}
+
+.tl-tool-header:hover {
+  color: var(--el-text-color-primary);
+}
+
+.tl-tool-detail {
+  width: 100%;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.4;
+  padding: 4px 8px;
+  margin: 2px 0 4px 14px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+  font-family: inherit;
 }
 
 /* ── Thinking toggle ── */
@@ -542,6 +609,11 @@ function onCancelStream() {
 .tag-tools {
   background: var(--el-color-warning-light-8);
   color: var(--el-color-warning);
+}
+
+.tag-cross {
+  background: var(--el-color-success-light-7);
+  color: var(--el-color-success);
 }
 
 /* ── Blinking cursor for streaming messages ── */

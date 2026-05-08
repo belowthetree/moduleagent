@@ -21,6 +21,11 @@ export interface ScanResult {
 export interface TimelineEvent {
   type: 'thinking' | 'tool_call';
   content: string;
+  detail?: string;
+  toolCallId?: string;
+  crossDirection?: 'sent' | 'received';
+  crossModule?: string;
+  crossPhase?: 'request' | 'response';
 }
 
 export interface LayoutNode {

@@ -45,12 +45,14 @@ export class ModuleAgentCore {
 
   private projectRoot = '';
   private initialized = false;
+  private onRoleSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
 
   constructor(options: ModuleAgentCoreOptions) {
     this.callbacks = options.callbacks;
     this.basePath = options.basePath;
     this.configDir = options.configDir || path.join(options.basePath, 'config');
     this.logger = options.logger || defaultLogger;
+    this.onRoleSessionUpdate = options.onRoleSessionUpdate;
 
     this.modules = new ModuleAgentSubsystem({
       callbacks: this.callbacks,
@@ -100,7 +102,7 @@ export class ModuleAgentCore {
       projectPath,
       workspaceRoot,
       logger: this.logger,
-      onSessionUpdate,
+      onSessionUpdate: onSessionUpdate || this.onRoleSessionUpdate,
     });
   }
 

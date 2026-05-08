@@ -72,17 +72,26 @@ export class AgentStateManager {
 
     switch (updateType) {
       case 'agent_message_chunk': {
-        const block = (data as { content?: { type?: string; text?: string } }).content;
-        const text = block?.type === 'text' ? block.text : undefined;
-        if (text) {
-          st.reply += text;
+        const block = (data as { content?: { type?: string; text?: string; thinking?: string } }).content;
+        // Route thinking-typed blocks into the thinking accumulator, not reply
+        if (block?.type === 'thinking' && block.thinking) {
+          st.thinking += block.thinking;
+          if (!st.sections.thinking) st.sections.thinking = true;
+          const last = st.timeline[st.timeline.length - 1];
+          if (last && last.type === 'thinking') {
+            last.content += block.thinking;
+          } else {
+            st.timeline.push({ type: 'thinking', content: block.thinking });
+          }
+        } else if (block?.type === 'text' && block.text) {
+          st.reply += block.text;
           if (!st.sections.reply) st.sections.reply = true;
         }
         break;
       }
       case 'agent_thought_chunk': {
-        const block = (data as { content?: { type?: string; text?: string } }).content;
-        const text = block?.type === 'text' ? block.text : undefined;
+        const block = (data as { content?: { type?: string; text?: string; thinking?: string } }).content;
+        const text = block?.type === 'text' ? block.text : block?.type === 'thinking' ? block.thinking : undefined;
         if (text) {
           st.thinking += text;
           if (!st.sections.thinking) st.sections.thinking = true;
@@ -100,15 +109,30 @@ export class AgentStateManager {
         const tc = data as {
           title?: string;
           toolCallId: string;
-          kind?: 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'think' | 'fetch' | 'switch_mode' | 'other';
+          kind?: string;
           status?: 'pending' | 'in_progress' | 'completed' | 'failed';
         };
-        const kindLabel = tc.kind ? `[${tc.kind}]` : '';
         const name = tc.title || tc.toolCallId || 'unknown';
-        const line = `${kindLabel} ${name} ${tc.status ? `(${tc.status})` : ''}`.trim();
+        const kindLabel = tc.kind ? `[${tc.kind}]` : '';
+        const statusStr = tc.status ? `(${tc.status})` : '';
+        const line = `${kindLabel} ${name} ${statusStr}`.trim();
+
         st.tools += line + '\n';
         if (!st.sections.tools) st.sections.tools = true;
-        st.timeline.push({ type: 'tool_call', content: line });
+
+        // Update existing timeline item by toolCallId, or push new
+        let existing: TimelineEvent | undefined;
+        for (let i = st.timeline.length - 1; i >= 0; i--) {
+          if (st.timeline[i]!.type === 'tool_call' && st.timeline[i]!.toolCallId === tc.toolCallId) {
+            existing = st.timeline[i];
+            break;
+          }
+        }
+        if (existing) {
+          existing.content = line;
+        } else {
+          st.timeline.push({ type: 'tool_call', content: line, toolCallId: tc.toolCallId });
+        }
         break;
       }
       case 'plan': {

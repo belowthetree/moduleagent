@@ -204,6 +204,12 @@ function onCloseRoleDetail(): void {
   agentStore.selectedRoleAgent = null
 }
 
+async function handleClearRoleContext(): Promise<void> {
+  if (agentStore.selectedRoleAgent) {
+    await agentStore.clearRoleContext(agentStore.selectedRoleAgent)
+  }
+}
+
 async function handleRoleSendMessage(text: string): Promise<void> {
   if (!agentStore.selectedRoleAgent) return
   await agentStore.sendRoleMessage(agentStore.selectedRoleAgent, text)
@@ -382,6 +388,7 @@ onUnmounted(() => {
                 v-if="agentStore.selectedRoleAgent"
                 :module-name="agentStore.selectedRoleAgent"
                 context-type="role"
+                @clear="handleClearRoleContext"
               />
             </div>
             <div class="role-chat">

@@ -76,21 +76,30 @@ export const useAgentStore = defineStore('agent', () => {
   function ensureCrossContextListener(): void {
     if (crossContextCleanup.value) return
     crossContextCleanup.value = window.moduleAgent.onCrossContext(({ moduleName, crossModule, direction, phase, content, time }) => {
-      const msg: ChatMsg = {
-        id: 'x' + Date.now() + Math.random().toString(36).slice(2, 6),
-        role: 'cross',
-        content,
-        thinking: '',
-        tools: '',
-        time,
-        status: 'completed',
-        moduleName,
-        agentCmd: '',
-        crossDirection: direction,
-        crossModule,
-        crossPhase: phase,
+      const msgs = getMsgs(moduleName)
+      const last = msgs[msgs.length - 1]
+      if (!last || last.role !== 'agent' || last.status !== 'executing') return
+      if (!last.timeline || last.timeline.length === 0) return
+
+      // Find the matching cross-module tool_call and attach metadata + detail
+      for (let i = last.timeline.length - 1; i >= 0; i--) {
+        const ev = last.timeline[i]!
+        if (ev.type === 'tool_call' && (ev.content.includes('module_call') || ev.content.includes('module_query'))) {
+          // Only set cross-module metadata on the first event; response appends detail
+          if (!ev.crossModule) {
+            ev.crossDirection = direction
+            ev.crossModule = crossModule
+            ev.crossPhase = phase
+            ev.detail = content
+          } else {
+            ev.crossPhase = phase
+            if (ev.detail) {
+              ev.detail = ev.detail + '\n\n---\n\n' + content
+            }
+          }
+          return
+        }
       }
-      getMsgs(moduleName).push(msg)
     })
   }
 
@@ -154,7 +163,7 @@ export const useAgentStore = defineStore('agent', () => {
           agentMsg.content = result.result.reply || ''
           agentMsg.thinking = result.result.thinking || ''
           agentMsg.tools = result.result.tools || ''
-          agentMsg.timeline = result.result.timeline || []
+          agentMsg.timeline = mergeTimeline(agentMsg.timeline, result.result.timeline)
           agentMsg.status = 'completed'
           agentMsg.time = now()
         } else if (result.error) {
@@ -187,6 +196,24 @@ export const useAgentStore = defineStore('agent', () => {
     })
   }
 
+  // ── Preserve cross-context modifications across timeline replacements
+  function mergeTimeline(oldTimeline: ChatMsg['timeline'], newTimeline: ChatMsg['timeline']): ChatMsg['timeline'] {
+    if (!newTimeline) return newTimeline
+    if (!oldTimeline) return newTimeline
+    const oldMap = new Map<string, (typeof oldTimeline)[number]>()
+    for (const t of oldTimeline) {
+      if (t.toolCallId && (t.detail || t.crossModule)) oldMap.set(t.toolCallId, t)
+    }
+    if (oldMap.size === 0) return newTimeline
+    return newTimeline.map(t => {
+      if (t.toolCallId && oldMap.has(t.toolCallId)) {
+        const old = oldMap.get(t.toolCallId)!
+        return { ...t, detail: old.detail, crossDirection: old.crossDirection, crossModule: old.crossModule, crossPhase: old.crossPhase }
+      }
+      return t
+    })
+  }
+
   // ── Stream listeners for real-time agent output ──
   function ensureStreamListener(): void {
     if (streamCleanup) return
@@ -198,7 +225,7 @@ export const useAgentStore = defineStore('agent', () => {
       if (data.reply !== undefined) last.content = data.reply
       if (data.thinking !== undefined) last.thinking = data.thinking
       if (data.tools !== undefined) last.tools = data.tools
-      if (data.timeline !== undefined) last.timeline = data.timeline
+      if (data.timeline !== undefined) last.timeline = mergeTimeline(last.timeline, data.timeline)
     })
   }
 
@@ -212,7 +239,7 @@ export const useAgentStore = defineStore('agent', () => {
       if (data.reply !== undefined) last.content = data.reply
       if (data.thinking !== undefined) last.thinking = data.thinking
       if (data.tools !== undefined) last.tools = data.tools
-      if (data.timeline !== undefined) last.timeline = data.timeline
+      if (data.timeline !== undefined) last.timeline = mergeTimeline(last.timeline, data.timeline)
     })
   }
 
@@ -320,7 +347,7 @@ export const useAgentStore = defineStore('agent', () => {
           agentMsg.content = result.result.reply || ''
           agentMsg.thinking = result.result.thinking || ''
           agentMsg.tools = result.result.tools || ''
-          agentMsg.timeline = result.result.timeline || []
+          agentMsg.timeline = mergeTimeline(agentMsg.timeline, result.result.timeline)
           agentMsg.status = 'completed'
           agentMsg.time = now()
         } else if (result.error) {

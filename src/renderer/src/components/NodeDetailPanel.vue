@@ -24,6 +24,11 @@ const agentCwd = computed(() => {
   return base + '/' + props.node.path.replace(/^\.\//, '')
 })
 
+async function handleClearContext(): Promise<void> {
+  if (!props.node) return
+  await agentStore.clearContext(props.node.name)
+}
+
 async function handleSendMessage(text: string): Promise<void> {
   if (!props.node) return
   await agentStore.sendMessage(props.node.name, text, agentCwd.value)
@@ -62,7 +67,7 @@ watch(() => props.node?.name, (newName) => {
       <div class="desc">{{ node.description || '无描述' }}</div>
 
       <div class="ctx-list-area">
-        <ContextCards :module-name="node.name" />
+        <ContextCards :module-name="node.name" @clear="handleClearContext" />
       </div>
 
       <div class="ctx-chat">
