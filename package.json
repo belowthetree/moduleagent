@@ -1,6 +1,6 @@
 {
   "name": "@belowthetree/module-agent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "模块化 Agent 编排框架",
   "type": "module",
   "main": "out/main/index.cjs",
