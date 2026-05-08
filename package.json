@@ -14,7 +14,11 @@
     "build:cli": "esbuild src/cli/index.ts --bundle --outfile=dist/cli.cjs --platform=node --format=cjs --external:@opentui/core --external:@opentui/solid --external:@opentui/keymap",
     "build:electron": "electron-vite build && npm run build:mcp-server && npm run build:mcp-role-server && npm run build:cli",
     "electron": "npm run build:electron && electron .",
-    "dist": "npm run build:electron && electron-builder build --win portable",
+    "dist": "npm run build:electron && electron-builder build",
+    "dist:win": "npm run build:electron && electron-builder build --win",
+    "dist:mac": "npm run build:electron && electron-builder build --mac",
+    "dist:linux": "npm run build:electron && electron-builder build --linux",
+    "dist:publish": "npm run build:electron && electron-builder build --publish always",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -36,8 +40,18 @@
       "package.json"
     ],
     "win": {
-      "target": "portable",
+      "target": ["portable", "nsis"],
       "icon": null
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"]
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
     }
   },
   "dependencies": {

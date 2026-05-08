@@ -13,19 +13,48 @@
 - **流式对话** — 实时展示 Agent 的思考过程、工具调用和回复内容
 - **自动模块生成** — 调用 Agent 分析源码目录，自动生成 `module.md` 文件
 
-## 快速开始
+## 安装
+
+### 桌面应用（GUI）
+
+从 [GitHub Releases](https://github.com/belowthetree/module-agent/releases) 下载安装包：
+
+| 平台 | 包类型 |
+|------|--------|
+| Windows | `.exe` (portable) / `.exe` (NSIS 安装程序) |
+| macOS | `.dmg` |
+| Linux | `.AppImage` / `.deb` |
+
+Windows 用户推荐使用 NSIS 安装程序，安装后会在开始菜单和桌面创建快捷方式。
+
+### CLI 命令行
+
+```bash
+npm install -g @belowthetree/module-agent
+```
+
+安装后即可在终端使用 `module-agent` 命令：
+
+```bash
+module-agent serve    # 持久化 stdio 模式
+module-agent config   # 交互式配置向导
+```
+
+> **注意：** `module-agent tui` 终端 UI 仍在开发中，推荐使用[桌面应用（GUI）](#桌面应用gui)获得完整功能。
+
+## 开发
 
 ### 前置条件
 
 - Node.js >= 20
 - 支持 ACP 协议的 Agent 客户端（如 [opencode](https://github.com/opencode-ai/opencode) 或 Claude CLI）
 
-### 安装与运行
+### 启动开发环境
 
 ```bash
 # 克隆项目
-git clone <repo-url>
-cd ModuleAgent
+git clone https://github.com/belowthetree/module-agent.git
+cd module-agent
 
 # 安装依赖
 npm install
@@ -137,6 +166,39 @@ npm run test:e2e          # E2E 测试
 npm run build:electron    # 完整生产构建
 npm run dev               # 开发模式（热重载）
 ```
+
+## 发布
+
+发布流程完全自动化，只需两步：
+
+```bash
+# 1. 升级版本号并打 tag
+npm version minor        # 0.3.0 → 0.4.0  （自动 commit + tag）
+# npm version patch      # 0.3.0 → 0.3.1
+# npm version major      # 0.3.0 → 1.0.0
+
+# 2. 推送代码和 tag
+git push && git push --tags
+```
+
+推送 `v*` 格式的 tag 后，GitHub Actions 自动：
+
+1. **构建** — Windows / macOS / Linux 三平台并行构建
+2. **打包** — electron-builder 生成安装包
+3. **发布** — 上传到 GitHub Releases，生成 Release 页面
+
+用户从 Release 页面下载安装包即可。
+
+**本地打包**（不发布）：
+
+```bash
+npm run dist:win         # 仅构建 Windows 包
+npm run dist:mac         # 仅构建 macOS 包
+npm run dist:linux       # 仅构建 Linux 包
+npm run dist             # 构建当前平台
+```
+
+打包产物输出到 `release/` 目录。
 
 ## 许可
 
