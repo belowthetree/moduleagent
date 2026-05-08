@@ -4,6 +4,9 @@
   "description": "模块化 Agent 编排框架",
   "type": "module",
   "main": "out/main/index.cjs",
+  "bin": {
+    "module-agent": "./dist/cli.cjs"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build:mcp-server": "esbuild src/protocol/mcp/server-entry.ts --bundle --outfile=dist/mcp-server.cjs --platform=node --format=cjs",
@@ -15,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "prepublishOnly": "npm run build:cli"
   },
   "build": {
     "appId": "com.moduleagent.app",
