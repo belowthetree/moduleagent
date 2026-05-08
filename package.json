@@ -1,6 +1,6 @@
 {
   "name": "@belowthetree/module-agent",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "模块化 Agent 编排框架",
   "type": "module",
   "main": "out/main/index.cjs",
@@ -40,14 +40,20 @@
       "package.json"
     ],
     "win": {
-      "target": ["portable", "nsis"],
+      "target": [
+        "portable",
+        "nsis"
+      ],
       "icon": null
     },
     "mac": {
       "target": "dmg"
     },
     "linux": {
-      "target": ["AppImage", "deb"]
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     },
     "publish": {
       "provider": "github",
