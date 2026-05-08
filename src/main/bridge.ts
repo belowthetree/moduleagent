@@ -256,6 +256,33 @@ export class ElectronBridge {
             });
           },
           sendCrossContext(source, target, direction, phase, content) {
+            // Manage stateManager lifecycle for target module of cross-module requests.
+            // The target module gets these unique direction/phase pairs:
+            //   received+request → request arrived, start streaming accumulation
+            //   sent+response    → response ready, finish and persist context
+            if (direction === 'received' && phase === 'request') {
+              self.stateManager?.startStream(source);
+            } else if (direction === 'sent' && phase === 'response') {
+              const acc = self.stateManager?.finishStream(source);
+              if (acc) {
+                const timeStr = new Date().toLocaleTimeString();
+                const agentMsg: ChatMsg = {
+                  id: 'x' + Date.now().toString(36),
+                  role: 'agent',
+                  content: acc.reply || '',
+                  thinking: acc.thinking || '',
+                  timeline: acc.timeline || [],
+                  time: timeStr,
+                  status: 'completed',
+                  moduleName: source,
+                };
+                self.stateManager?.loadContext(source).then(existing => {
+                  existing.push(agentMsg);
+                  self.stateManager?.saveContext(source, existing);
+                }).catch(() => {});
+              }
+            }
+
             // Update stateManager timeline so cross-module metadata is persisted
             const st = self.stateManager?.getStreamState(source);
             if (st && st.timeline) {

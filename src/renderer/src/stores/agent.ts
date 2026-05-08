@@ -78,14 +78,42 @@ export const useAgentStore = defineStore('agent', () => {
     crossContextCleanup.value = window.moduleAgent.onCrossContext(({ moduleName, crossModule, direction, phase, content, time }) => {
       const msgs = getMsgs(moduleName)
       const last = msgs[msgs.length - 1]
+
+      // Target module receiving a cross-module request: push an executing placeholder
+      // so the stream listener has an agent message to update
+      if (direction === 'received' && phase === 'request') {
+        if (last && last.role === 'agent' && last.status === 'executing') return // already streaming
+        msgs.push({
+          id: 'x' + Date.now() + Math.random().toString(36).slice(2, 6),
+          role: 'agent',
+          content: '',
+          thinking: '',
+          tools: '',
+          timeline: [],
+          time,
+          status: 'executing',
+          moduleName,
+          agentCmd: '',
+        })
+        return
+      }
+
+      // Response for target module: mark the placeholder as completed
+      if (direction === 'sent' && phase === 'response') {
+        if (last && last.role === 'agent' && last.status === 'executing') {
+          last.status = 'completed'
+          last.time = time
+        }
+        return
+      }
+
+      // Requesting module: enhance the matching cross-module tool_call
       if (!last || last.role !== 'agent' || last.status !== 'executing') return
       if (!last.timeline || last.timeline.length === 0) return
 
-      // Find the matching cross-module tool_call and attach metadata + detail
       for (let i = last.timeline.length - 1; i >= 0; i--) {
         const ev = last.timeline[i]!
         if (ev.type === 'tool_call' && (ev.content.includes('module_call') || ev.content.includes('module_query'))) {
-          // Only set cross-module metadata on the first event; response appends detail
           if (!ev.crossModule) {
             ev.crossDirection = direction
             ev.crossModule = crossModule
