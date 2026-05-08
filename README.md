@@ -167,29 +167,7 @@ npm run build:electron    # 完整生产构建
 npm run dev               # 开发模式（热重载）
 ```
 
-## 发布
-
-发布流程完全自动化，只需两步：
-
-```bash
-# 1. 升级版本号并打 tag
-npm version minor        # 0.3.0 → 0.4.0  （自动 commit + tag）
-# npm version patch      # 0.3.0 → 0.3.1
-# npm version major      # 0.3.0 → 1.0.0
-
-# 2. 推送代码和 tag
-git push && git push --tags
-```
-
-推送 `v*` 格式的 tag 后，GitHub Actions 自动：
-
-1. **构建** — Windows / macOS / Linux 三平台并行构建
-2. **打包** — electron-builder 生成安装包
-3. **发布** — 上传到 GitHub Releases，生成 Release 页面
-
-用户从 Release 页面下载安装包即可。
-
-**本地打包**（不发布）：
+**本地打包**：
 
 ```bash
 npm run dist:win         # 仅构建 Windows 包
