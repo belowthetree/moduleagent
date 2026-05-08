@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-import type { ChatMsg } from '../types/preload.js';
+import type { ChatMsg, TimelineEvent } from '../types/preload.js';
 
 // ── Types ──
 
@@ -15,6 +15,7 @@ export interface StreamAccumulator {
   reply: string;
   thinking: string;
   tools: string;
+  timeline: TimelineEvent[];
   finished?: boolean;
   sections: StreamSection;
 }
@@ -26,6 +27,7 @@ function createStreamAccumulator(): StreamAccumulator {
     reply: '',
     thinking: '',
     tools: '',
+    timeline: [],
     sections: { thinking: false, tools: false, reply: false },
   };
 }
@@ -84,6 +86,13 @@ export class AgentStateManager {
         if (text) {
           st.thinking += text;
           if (!st.sections.thinking) st.sections.thinking = true;
+          // Merge consecutive thinking chunks into one timeline event
+          const last = st.timeline[st.timeline.length - 1];
+          if (last && last.type === 'thinking') {
+            last.content += text;
+          } else {
+            st.timeline.push({ type: 'thinking', content: text });
+          }
         }
         break;
       }
@@ -99,6 +108,7 @@ export class AgentStateManager {
         const line = `${kindLabel} ${name} ${tc.status ? `(${tc.status})` : ''}`.trim();
         st.tools += line + '\n';
         if (!st.sections.tools) st.sections.tools = true;
+        st.timeline.push({ type: 'tool_call', content: line });
         break;
       }
       case 'plan': {

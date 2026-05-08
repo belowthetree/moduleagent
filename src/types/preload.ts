@@ -18,6 +18,11 @@ export interface ScanResult {
   error?: string;
 }
 
+export interface TimelineEvent {
+  type: 'thinking' | 'tool_call';
+  content: string;
+}
+
 export interface LayoutNode {
   data: TreeNode;
   x: number;
@@ -35,6 +40,7 @@ export interface ChatMsg {
   content: string;
   thinking: string;
   tools: string;
+  timeline?: TimelineEvent[];
   time: string;
   status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error' | 'interrupted';
   moduleName: string;
@@ -58,6 +64,7 @@ export interface AgentStreamData {
   reply?: string;
   thinking?: string;
   tools?: string;
+  timeline?: TimelineEvent[];
   sections?: { thinking: boolean; tools: boolean; reply: boolean };
 }
 
@@ -105,9 +112,9 @@ export interface ModuleAgentApi {
 
   startAgent(moduleName: string, cmd: string, args: string[], cwd: string): Promise<{ sessionId?: string; error?: string }>;
 
-  sendMessage(moduleName: string, text: string, cwd?: string): Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason?: string }; error?: string }>;
+  sendMessage(moduleName: string, text: string, cwd?: string): Promise<{ result?: { reply: string; thinking: string; tools: string; timeline?: TimelineEvent[]; stopReason?: string }; error?: string }>;
 
-  cancelAgent(moduleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>;
+  cancelAgent(moduleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; timeline?: TimelineEvent[]; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>;
 
   stopAgent(moduleName: string): Promise<{}>;
 
@@ -150,8 +157,8 @@ export interface ModuleAgentApi {
   deleteRole(name: string): Promise<{ success: boolean }>;
 
   startRoleAgent(roleName: string): Promise<{ sessionId?: string; error?: string }>;
-  sendRoleMessage(roleName: string, text: string): Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason?: string }; error?: string }>;
-  cancelRoleAgent(roleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>;
+  sendRoleMessage(roleName: string, text: string): Promise<{ result?: { reply: string; thinking: string; tools: string; timeline?: TimelineEvent[]; stopReason?: string }; error?: string }>;
+  cancelRoleAgent(roleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; timeline?: TimelineEvent[]; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>;
   stopRoleAgent(roleName: string): Promise<{}>;
   isRoleAgentRunning(roleName: string): Promise<boolean>;
 

@@ -105,6 +105,7 @@ export const useAgentStore = defineStore('agent', () => {
         if (acc.reply) msgs[idx]!.content = acc.reply
         if (acc.thinking) msgs[idx]!.thinking = acc.thinking
         if (acc.tools) msgs[idx]!.tools = acc.tools
+        if (acc.timeline) msgs[idx]!.timeline = acc.timeline
       }
       msgs[idx]!.status = 'interrupted'
       msgs[idx]!.time = now()
@@ -138,6 +139,7 @@ export const useAgentStore = defineStore('agent', () => {
       content: '',
       thinking: '',
       tools: '',
+      timeline: [],
       time: now(),
       status: 'executing',
       moduleName,
@@ -152,6 +154,7 @@ export const useAgentStore = defineStore('agent', () => {
           agentMsg.content = result.result.reply || ''
           agentMsg.thinking = result.result.thinking || ''
           agentMsg.tools = result.result.tools || ''
+          agentMsg.timeline = result.result.timeline || []
           agentMsg.status = 'completed'
           agentMsg.time = now()
         } else if (result.error) {
@@ -195,6 +198,7 @@ export const useAgentStore = defineStore('agent', () => {
       if (data.reply !== undefined) last.content = data.reply
       if (data.thinking !== undefined) last.thinking = data.thinking
       if (data.tools !== undefined) last.tools = data.tools
+      if (data.timeline !== undefined) last.timeline = data.timeline
     })
   }
 
@@ -208,6 +212,7 @@ export const useAgentStore = defineStore('agent', () => {
       if (data.reply !== undefined) last.content = data.reply
       if (data.thinking !== undefined) last.thinking = data.thinking
       if (data.tools !== undefined) last.tools = data.tools
+      if (data.timeline !== undefined) last.timeline = data.timeline
     })
   }
 
@@ -300,6 +305,7 @@ export const useAgentStore = defineStore('agent', () => {
       content: '',
       thinking: '',
       tools: '',
+      timeline: [],
       time: now(),
       status: 'executing',
       moduleName: `workrole:${roleName}`,
@@ -314,6 +320,7 @@ export const useAgentStore = defineStore('agent', () => {
           agentMsg.content = result.result.reply || ''
           agentMsg.thinking = result.result.thinking || ''
           agentMsg.tools = result.result.tools || ''
+          agentMsg.timeline = result.result.timeline || []
           agentMsg.status = 'completed'
           agentMsg.time = now()
         } else if (result.error) {
@@ -342,6 +349,7 @@ export const useAgentStore = defineStore('agent', () => {
         if (acc.reply) msgs[idx]!.content = acc.reply
         if (acc.thinking) msgs[idx]!.thinking = acc.thinking
         if (acc.tools) msgs[idx]!.tools = acc.tools
+        if (acc.timeline) msgs[idx]!.timeline = acc.timeline
       }
       msgs[idx]!.status = 'interrupted'
       msgs[idx]!.time = now()

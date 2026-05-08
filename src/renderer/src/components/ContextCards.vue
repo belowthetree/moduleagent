@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import type { ChatMsg } from '../../../types/preload'
+import type { ChatMsg, TimelineEvent } from '../../../types/preload'
 import { useAgentStore } from '../stores/agent'
 
 const props = defineProps<{
@@ -16,6 +16,7 @@ const emit = defineEmits<{
 const agentStore = useAgentStore()
 const cardListRef = ref<HTMLElement | null>(null)
 const expandedThinking = ref(new Set<string>())
+const expandedTimelineItems = ref(new Set<string>())
 
 // ── Helpers ──
 function statusLabel(s: string): string {
@@ -72,7 +73,7 @@ function scrollToBottom() {
 }
 
 watch(() => msgs.value.length, scrollToBottom)
-watch(() => msgs.value.map(m => m.content + m.thinking + m.tools).join(''), scrollToBottom)
+watch(() => msgs.value.map(m => m.content + m.thinking + m.tools + (m.timeline ? JSON.stringify(m.timeline) : '')).join(''), scrollToBottom)
 
 // ── Thinking toggle ──
 function toggleThinking(id: string) {
@@ -88,6 +89,26 @@ function toggleThinking(id: string) {
 
 function isThinkingExpanded(id: string): boolean {
   return expandedThinking.value.has(id)
+}
+
+// ── Timeline item toggle ──
+function timelineItemKey(msgId: string, idx: number): string {
+  return `${msgId}:${idx}`
+}
+
+function toggleTimelineItem(msgId: string, idx: number) {
+  const key = timelineItemKey(msgId, idx)
+  const next = new Set(expandedTimelineItems.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  expandedTimelineItems.value = next
+}
+
+function isTimelineItemExpanded(msgId: string, idx: number): boolean {
+  return expandedTimelineItems.value.has(timelineItemKey(msgId, idx))
 }
 
 // ── Card click ──
@@ -142,19 +163,45 @@ function onCancelStream() {
           <span v-if="msg.role === 'cross'" class="ctx-phase-tag">{{ crossPhaseLabel(msg) }}</span>
         </div>
 
-        <!-- Thinking toggle -->
-        <div v-if="msg.thinking" class="ctx-thinking-toggle" @click.stop="toggleThinking(msg.id)">
+        <!-- Interleaved timeline (new format) -->
+        <div v-if="msg.timeline && msg.timeline.length > 0" class="ctx-timeline">
+          <div
+            v-for="(ev, idx) in msg.timeline"
+            :key="idx"
+            class="ctx-timeline-item"
+            :class="'tl-' + ev.type"
+          >
+            <template v-if="ev.type === 'thinking'">
+              <div class="tl-thinking-header" @click.stop="toggleTimelineItem(msg.id, idx)">
+                <span class="tl-arrow">{{ isTimelineItemExpanded(msg.id, idx) ? '▼' : '▶' }}</span>
+                <span class="ctx-tag tag-thinking">思考</span>
+                <span class="tl-thinking-preview">{{ ev.content.slice(0, 60) }}{{ ev.content.length > 60 ? '...' : '' }}</span>
+              </div>
+              <div
+                v-if="isTimelineItemExpanded(msg.id, idx)"
+                class="tl-thinking-full"
+              >{{ ev.content }}</div>
+            </template>
+            <div v-else class="tl-tool-line">
+              <span class="ctx-tag tag-tools">工具</span>
+              <span>{{ ev.content }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Fallback: separate thinking toggle (for old messages without timeline) -->
+        <div v-if="msg.thinking && (!msg.timeline || msg.timeline.length === 0)" class="ctx-thinking-toggle" @click.stop="toggleThinking(msg.id)">
           <span class="ctx-tag tag-thinking">思考</span>
           <span class="ctx-thinking-arrow">{{ isThinkingExpanded(msg.id) ? '▼' : '▶' }}</span>
           <span class="ctx-thinking-preview">{{ msg.thinking.slice(0, 40) }}...</span>
         </div>
         <div
-          v-if="msg.thinking && isThinkingExpanded(msg.id)"
+          v-if="msg.thinking && (!msg.timeline || msg.timeline.length === 0) && isThinkingExpanded(msg.id)"
           class="ctx-thinking-content"
         >{{ msg.thinking }}</div>
 
-        <!-- Tools summary: show actual tool names -->
-        <div v-if="msg.tools" class="ctx-tools">
+        <!-- Fallback: tools section (for old messages without timeline) -->
+        <div v-if="msg.tools && (!msg.timeline || msg.timeline.length === 0)" class="ctx-tools">
           <span class="ctx-tag tag-tools">工具</span>
           <span class="ctx-tools-count">{{ msg.tools.split('\n').filter(Boolean).length }} 次调用</span>
           <div class="ctx-tools-list">
@@ -343,6 +390,69 @@ function onCancelStream() {
   color: var(--el-text-color-secondary);
   opacity: 0.5;
   margin-top: 4px;
+}
+
+/* ── Timeline ── */
+.ctx-timeline {
+  margin-bottom: 4px;
+}
+
+.ctx-timeline-item {
+  margin-bottom: 2px;
+}
+
+.tl-thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
+}
+
+.tl-thinking-header:hover {
+  color: var(--el-text-color-primary);
+}
+
+.tl-arrow {
+  font-size: 9px;
+  color: var(--el-text-color-secondary);
+  flex-shrink: 0;
+}
+
+.tl-thinking-preview {
+  color: var(--el-text-color-secondary);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.tl-thinking-full {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  font-style: italic;
+  line-height: 1.4;
+  padding: 4px 8px;
+  margin: 2px 0 4px 14px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.tl-tool-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  color: var(--el-text-color-secondary);
+  padding: 1px 0;
 }
 
 /* ── Thinking toggle ── */
