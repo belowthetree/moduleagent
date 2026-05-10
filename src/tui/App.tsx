@@ -30,13 +30,13 @@ export default function App() {
   const screen = () => tuiState.screen();
 
   const handleSend = (text: string) => {
-    // User message is now pushed by __tuiSendMessage before the agent placeholder,
-    // so streaming chunks append to the agent message, not the user message.
+    // 用户消息现在由 __tuiSendMessage 在 Agent 占位消息之前推送，
+    // 这样流数据块会追加到 Agent 消息而非用户消息。
     (globalThis as any).__tuiSendMessage?.(text);
   };
 
   const handleCommand = (text: string) => {
-    // Signal command runner (wired in Task 14)
+    // 触发命令执行器
     (globalThis as any).__tuiRunCommand?.(text);
   };
 

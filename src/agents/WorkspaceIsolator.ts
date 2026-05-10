@@ -46,7 +46,7 @@ export function codeSourcePathForModule(
 }
 
 // ---------------------------------------------------------------------------
-// Module workspace preparation (isolation copy)
+// 模块工作空间准备（隔离拷贝）
 // ---------------------------------------------------------------------------
 
 /**
@@ -92,14 +92,14 @@ export async function prepareModuleWorkspace(
 
   if (!fs.existsSync(srcDir)) {
     defaultLogger.warn(`Module ${node.name}: source dir not found: ${srcDir}, skipping isolation`);
-    // Ensure workspace directory still exists so agent has a valid cwd
+    // 确保工作空间目录存在，以便 Agent 有有效的工作目录
     await fse.ensureDir(destDir);
     return destDir;
   }
 
   if (path.resolve(srcDir) === path.resolve(destDir)) return destDir;
 
-  // Collect submodule relative paths to exclude from root module copy
+  // 收集子模块相对路径以便从根模块拷贝中排除
   const subModulePaths = new Set<string>();
   if (node.relativePath === '.') {
     for (const childName of node.children) {
@@ -134,7 +134,7 @@ export async function prepareModuleWorkspace(
 }
 
 // ---------------------------------------------------------------------------
-// Sub-module directory resolution
+// 子模块目录解析
 // ---------------------------------------------------------------------------
 
 /**

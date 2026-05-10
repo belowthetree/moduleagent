@@ -8,13 +8,13 @@ const H_GAP = 80
 const V_GAP = 16
 
 export const useProjectStore = defineStore('project', () => {
-  // ── State ──
+  // ── 状态 ──
   const treeRoot = ref<TreeNode | null>(null)
   const flattenedNodes = ref<LayoutNode[]>([])
   const selectedNode = ref<TreeNode | null>(null)
   const moduleCount = ref(0)
 
-  // ── Helpers ──
+  // ── 辅助方法 ──
   function findParentName(node: TreeNode): string | null {
     for (const n of flattenedNodes.value) {
       if (n.data.children.some(c => c.name === node.name)) return n.data.name
@@ -30,7 +30,7 @@ export const useProjectStore = defineStore('project', () => {
     return !p ? false : p.collapsed ? true : isCollapsedAncestor(p)
   }
 
-  // ── Layout ──
+  // ── 布局 ──
   function layoutTree(node: TreeNode, depth: number, stY: number, _isRoot: boolean): LayoutNode {
     const x = depth * (NODE_W + H_GAP)
     const y = stY
@@ -58,7 +58,7 @@ export const useProjectStore = defineStore('project', () => {
     layoutTree(treeRoot.value, 0, 0, true)
   }
 
-  // ── Actions ──
+  // ── 操作 ──
   async function scanProject(projectRoot: string, workspaceRoot: string): Promise<void> {
     const result: ScanResult = await window.moduleAgent.scanProject(projectRoot, workspaceRoot)
     if (result.error) throw new Error(result.error)
@@ -84,19 +84,19 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   return {
-    // state
+    // 状态
     treeRoot,
     flattenedNodes,
     selectedNode,
     moduleCount,
-    // actions
+    // 操作
     scanProject,
     getTree,
     selectNode,
     collapseNode,
     layoutAndRender,
     layoutTree,
-    // helpers
+    // 辅助方法
     findParentName,
     isCollapsedAncestor,
   }

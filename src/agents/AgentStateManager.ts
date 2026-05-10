@@ -73,7 +73,7 @@ export class AgentStateManager {
     switch (updateType) {
       case 'agent_message_chunk': {
         const block = (data as { content?: { type?: string; text?: string; thinking?: string } }).content;
-        // Route thinking-typed blocks into the thinking accumulator, not reply
+        // 将 thinking 类型块路由到思考累加器，而不是回复
         if (block?.type === 'thinking' && block.thinking) {
           st.thinking += block.thinking;
           if (!st.sections.thinking) st.sections.thinking = true;
@@ -95,7 +95,7 @@ export class AgentStateManager {
         if (text) {
           st.thinking += text;
           if (!st.sections.thinking) st.sections.thinking = true;
-          // Merge consecutive thinking chunks into one timeline event
+          // 将连续的思考块合并为一个时间线事件
           const last = st.timeline[st.timeline.length - 1];
           if (last && last.type === 'thinking') {
             last.content += text;
@@ -120,7 +120,7 @@ export class AgentStateManager {
         st.tools += line + '\n';
         if (!st.sections.tools) st.sections.tools = true;
 
-        // Update existing timeline item by toolCallId, or push new
+        // 按 toolCallId 更新现有时间线条目，或推送新条目
         let existing: TimelineEvent | undefined;
         for (let i = st.timeline.length - 1; i >= 0; i--) {
           if (st.timeline[i]!.type === 'tool_call' && st.timeline[i]!.toolCallId === tc.toolCallId) {

@@ -62,7 +62,7 @@ export interface MigrationData {
 
 export interface AgentStreamData {
   moduleName: string;
-  // sessionId is sent by main.ts onSessionUpdate but was missing from preload/renderer callback types
+  // sessionId 由 main.ts 在 onSessionUpdate 中发送，但之前缺少在 preload/renderer 回调类型中
   sessionId?: string;
   update: string;
   data: Record<string, unknown>;
@@ -158,7 +158,7 @@ export interface ModuleAgentApi {
 
   onCrossContext(callback: (data: CrossContextData) => void): () => void;
 
-  // ── Role agent APIs ──
+  // ── 角色 Agent API ──
   getRoles(): Promise<RoleConfigData[]>;
   saveRole(role: RoleConfigData): Promise<{ success: boolean }>;
   deleteRole(name: string): Promise<{ success: boolean }>;
@@ -175,7 +175,7 @@ export interface ModuleAgentApi {
   onRoleAgentStream(callback: (data: AgentStreamData) => void): () => void;
   onRoleAgentStatus(callback: (data: AgentStatusData) => void): () => void;
 
-  // ── Knowledge APIs ──
+  // ── 知识 API ──
   knowledgeList(): Promise<KnowledgeListItem[]>;
   knowledgeRead(filename: string): Promise<KnowledgeEntry | null>;
   knowledgeSave(entry: KnowledgeEntry): Promise<{ success: boolean }>;

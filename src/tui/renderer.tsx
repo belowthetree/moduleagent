@@ -17,7 +17,7 @@ export async function startTui(projectRoot: string) {
     autoFocus: false,
   });
 
-  // ── Ctrl+C handling ──
+  // ── Ctrl+C 处理 ──
   renderer.keyInput.on('keypress', (key: { name: string; ctrl: boolean }) => {
     if (key.name === 'c' && key.ctrl) {
       if (tuiState.agentStatus() === 'streaming') {
@@ -30,10 +30,10 @@ export async function startTui(projectRoot: string) {
     }
   });
 
-  // ── Bridge ──
+  // ── 桥接层 ──
   const bridge = new TuiBridge();
 
-  // ── Wire globalThis hooks ──
+  // ── 挂载 globalThis 钩子 ──
   (globalThis as any).__tuiInitAgent = async (root: string) => {
     try {
       await bridge.init(root);
@@ -70,15 +70,15 @@ export async function startTui(projectRoot: string) {
     await bridge.cancel();
   };
 
-  // ── Command execution ──
+  // ── 命令执行 ──
   (globalThis as any).__tuiRunCommand = (cmd: string) => {
     executeCommand(cmd);
   };
 
-  // ── Expose bridge for commands.ts ──
+  // ── 暴露桥接层供 commands.ts 使用 ──
   (globalThis as any).__tuiAgentService = bridge;
 
-  // ── Auto-init or show setup ──
+  // ── 自动初始化或显示设置界面 ──
   import('./config.js').then(async ({ validateModuleAgentJson }) => {
     if (await validateModuleAgentJson(projectRoot)) {
       await (globalThis as any).__tuiInitAgent(projectRoot);

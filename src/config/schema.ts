@@ -5,7 +5,7 @@ export const AgentConfigSchema = z.object({
   args: z.array(z.string()).optional(),
 });
 
-// Single project config entry (without name)
+// 单条项目配置（无名称）
 export const ProjectConfigSchema = z.object({
   agents: z.object({
     default: AgentConfigSchema,
@@ -20,14 +20,14 @@ export const ProjectConfigSchema = z.object({
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 
-// Config entry with name (used in the configs array)
+// 带名称的配置条目（用于 configs 数组）
 export const ConfigEntrySchema = ProjectConfigSchema.extend({
   name: z.string(),
 });
 
 export type ConfigEntry = z.infer<typeof ConfigEntrySchema>;
 
-// Role agent config (per-role agent command override)
+// 角色 Agent 配置（按角色覆写 Agent 命令）
 export const RoleAgentConfigSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).optional(),
@@ -35,7 +35,7 @@ export const RoleAgentConfigSchema = z.object({
 
 export type RoleAgentConfig = z.infer<typeof RoleAgentConfigSchema>;
 
-// Single role definition
+// 单条角色定义
 export const RoleConfigSchema = z.object({
   name: z.string().min(1),
   description: z.string().default(''),
@@ -51,7 +51,7 @@ export const RoleConfigSchema = z.object({
 
 export type RoleConfig = z.infer<typeof RoleConfigSchema>;
 
-// Top-level workspace config containing an array of named configs
+// 顶层工作区配置，包含已命名配置的数组
 export const WorkspaceConfigSchema = z.object({
   configs: z.array(ConfigEntrySchema),
   defaultConfig: z.string(),

@@ -249,7 +249,7 @@ export class CommunicationBus {
     );
   }
 
-  // ── Module doc operations ──
+  // ── 模块文档操作 ──
 
   async updateModuleDoc(moduleName: string, content: string): Promise<{ success: boolean; message: string }> {
     if (!this.moduleGraph) return { success: false, message: 'Module graph not initialized' };
@@ -285,7 +285,7 @@ export class CommunicationBus {
     try {
       await fs.ensureDir(node.absolutePath);
     } catch {
-      // directory exists
+      // 目录已存在
     }
 
     if (type === 'experience') {
@@ -310,7 +310,7 @@ export class CommunicationBus {
 
   private async _appendOrReplaceSection(filePath: string, title: string, content: string): Promise<void> {
     let existing = '';
-    try { existing = await fs.readFile(filePath, 'utf-8'); } catch { /* file may not exist */ }
+    try { existing = await fs.readFile(filePath, 'utf-8'); } catch { /* 文件可能不存在 */ }
 
     const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const sectionRegex = new RegExp(`(^|\\n)## ${escapedTitle}\\n[^#]*?(?=\\n## |\\n*$)`, 's');

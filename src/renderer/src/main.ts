@@ -16,19 +16,18 @@ app.use(pinia)
 app.use(router)
 app.use(ElementPlus, { locale })
 
-// Load saved config BEFORE the router resolves the first route,
-// so the beforeEach guard can check projectPath and skip setup
+// 在路由解析第一条路由之前加载已保存的配置，
+// 以便 beforeEach 守卫检查 projectPath 并跳过设置
 const configStore = useConfigStore()
 configStore.loadFromLocalStorage()
 
-// Validate config file exists at the stored path.
-// loadFromProject falls back to defaults (projectPath = '.') when
-// the config file is missing, corrupt, or empty — clear projectPath
-// so the beforeEach guard redirects to /setup.
+// 验证存储路径下配置文件是否存在。
+// 当配置文件缺失、损坏或为空时，loadFromProject 回退到默认值（projectPath = '.'），
+// 清空 projectPath 以使 beforeEach 守卫重定向到 /setup。
 if (configStore.projectPath) {
   try {
     await configStore.loadFromProject(configStore.projectPath)
-    // Default projectPath is '.' when config file wasn't found
+    // 未找到配置文件时，默认 projectPath 为 '.'
     if (configStore.projectPath === '.') {
       configStore.projectPath = ''
     }

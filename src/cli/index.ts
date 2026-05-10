@@ -78,22 +78,22 @@ async function main() {
         break;
 
       case 'tui': {
-        // In Bun, globalThis.Bun exists. In Node, it doesn't.
+        // 在 Bun 中 globalThis.Bun 存在，在 Node 中不存在。
         const isBun = typeof (globalThis as any).Bun !== 'undefined';
         
         if (!isBun) {
-          // Check if bun CLI is available
+          // 检查 bun CLI 是否可用
           const { execSync } = await import('child_process');
           try {
             execSync('bun --version', { stdio: 'ignore' });
-            // Bun CLI exists — spawn it
+            // Bun CLI 存在 — 启动它
             const { spawn } = await import('child_process');
             const child = spawn('bun', ['run', '--cwd', 'src/tui', '../cli/tui-entry.ts', ...process.argv.slice(2)], {
               stdio: 'inherit',
               shell: true,
               env: { ...process.env, OPENTUI_FORCE_WCWIDTH: 'true' },
             });
-            // Wait for child to exit
+            // 等待子进程退出
             await new Promise<void>((resolve) => child.on('exit', () => resolve()));
             process.exit(0);
           } catch {
@@ -105,10 +105,10 @@ async function main() {
             process.exit(1);
           }
         } else {
-          // Running under Bun — switch cwd to pick up src/tui/tsconfig.json
+          // 在 Bun 下运行 — 切换 cwd 以使用 src/tui/tsconfig.json
           process.chdir('src/tui');
 
-          // Set BEFORE @opentui/core loads — wcwidth corrects CJK cursor position
+          // 在 @opentui/core 加载前设置 — wcwidth 修正 CJK 光标位置
           process.env.OPENTUI_FORCE_WCWIDTH = 'true';
           
           const { startTui } = await import('../tui/renderer.js');

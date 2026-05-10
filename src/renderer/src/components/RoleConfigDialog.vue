@@ -54,7 +54,7 @@ onMounted(() => {
   knowledgeStore.fetchList()
 })
 
-// Refresh knowledge list when dialog opens
+// 对话框打开时刷新知识列表
 watch(() => props.visible, (v) => {
   if (v) knowledgeStore.fetchList()
 })

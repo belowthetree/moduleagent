@@ -18,7 +18,7 @@ const cardListRef = ref<HTMLElement | null>(null)
 const expandedThinking = ref(new Set<string>())
 const expandedTimelineItems = ref(new Set<string>())
 
-// ── Helpers ──
+// ── 辅助方法 ──
 function statusLabel(s: string): string {
   const map: Record<string, string> = {
     sent: '已发送',
@@ -53,7 +53,7 @@ function roleLabel(role: string): string {
   return ''
 }
 
-// ── Messages (all, no pagination) ──
+// ── 消息列表（全部，无分页） ──
 const msgs = computed<ChatMsg[]>(() => {
   if (props.contextType === 'role') {
     return agentStore.getRoleMsgs(props.moduleName)
@@ -63,7 +63,7 @@ const msgs = computed<ChatMsg[]>(() => {
 
 const isEmpty = computed(() => msgs.value.length === 0)
 
-// ── Auto-scroll to bottom ──
+// ── 自动滚动到底部 ──
 function scrollToBottom() {
   nextTick(() => {
     if (cardListRef.value && cardListRef.value.lastElementChild) {
@@ -75,7 +75,7 @@ function scrollToBottom() {
 watch(() => msgs.value.length, scrollToBottom)
 watch(() => msgs.value.map(m => m.content + m.thinking + m.tools + (m.timeline ? JSON.stringify(m.timeline) : '')).join(''), scrollToBottom)
 
-// ── Thinking toggle ──
+// ── 思考过程切换 ──
 function toggleThinking(id: string) {
   const s = expandedThinking.value
   const next = new Set(s)
@@ -91,7 +91,7 @@ function isThinkingExpanded(id: string): boolean {
   return expandedThinking.value.has(id)
 }
 
-// ── Timeline item toggle ──
+// ── 时间线条目切换 ──
 function timelineItemKey(msgId: string, idx: number): string {
   return `${msgId}:${idx}`
 }
@@ -111,14 +111,14 @@ function isTimelineItemExpanded(msgId: string, idx: number): boolean {
   return expandedTimelineItems.value.has(timelineItemKey(msgId, idx))
 }
 
-// ── Tool classification ──
+// ── 工具分类 ──
 const CROSS_MODULE_TOOLS = ['module_call', 'module_query']
 
 function isCrossModuleTool(ev: TimelineEvent): boolean {
   return CROSS_MODULE_TOOLS.some(name => ev.content.includes(name))
 }
 
-// ── Card click ──
+// ── 卡片点击 ──
 function onCardClick(msg: ChatMsg) {
   emit('showDetail', msg)
 }
@@ -138,16 +138,16 @@ function onCancelStream() {
 
 <template>
   <div class="ctx-section">
-    <!-- Header with clear button -->
+    <!-- 标题与清空按钮 -->
     <div class="ctx-top-controls">
       <span class="section-title">上下文历史</span>
       <button class="btn-sm" @click="onClear">清空</button>
     </div>
 
-    <!-- Empty state -->
+    <!-- 空状态 -->
     <div v-if="isEmpty" class="ctx-empty">No conversations yet</div>
 
-    <!-- Message list (newest at bottom) -->
+    <!-- 消息列表（最新在底部） -->
     <div ref="cardListRef" v-else class="ctx-card-list">
       <div
         v-for="msg in msgs"
@@ -170,7 +170,7 @@ function onCancelStream() {
           <span v-if="msg.role === 'cross'" class="ctx-phase-tag">{{ crossPhaseLabel(msg) }}</span>
         </div>
 
-        <!-- Interleaved timeline (new format) -->
+        <!-- 交错时间线（新格式） -->
         <div v-if="msg.timeline && msg.timeline.length > 0" class="ctx-timeline">
           <div
             v-for="(ev, idx) in msg.timeline"
@@ -190,7 +190,7 @@ function onCancelStream() {
               >{{ ev.content }}</div>
             </template>
             <div v-else class="tl-tool-line">
-              <!-- Cross-module tool: detected by tool name -->
+              <!-- 跨模块工具：通过工具名称检测 -->
               <template v-if="isCrossModuleTool(ev)">
                 <div class="tl-tool-header" @click.stop="toggleTimelineItem(msg.id, idx)">
                   <span class="tl-arrow">{{ isTimelineItemExpanded(msg.id, idx) ? '▼' : '▶' }}</span>
@@ -205,7 +205,7 @@ function onCancelStream() {
                   class="tl-tool-detail"
                 >{{ ev.detail }}</div>
               </template>
-              <!-- Regular tool with detail -->
+              <!-- 普通工具（含详情） -->
               <template v-else-if="ev.detail">
                 <div class="tl-tool-header" @click.stop="toggleTimelineItem(msg.id, idx)">
                   <span class="tl-arrow">{{ isTimelineItemExpanded(msg.id, idx) ? '▼' : '▶' }}</span>
@@ -217,7 +217,7 @@ function onCancelStream() {
                   class="tl-tool-detail"
                 >{{ ev.detail }}</div>
               </template>
-              <!-- Simple tool -->
+              <!-- 简单工具 -->
               <template v-else>
                 <span class="ctx-tag tag-tools">工具</span>
                 <span>{{ ev.content }}</span>
@@ -226,7 +226,7 @@ function onCancelStream() {
           </div>
         </div>
 
-        <!-- Fallback: separate thinking toggle (for old messages without timeline) -->
+        <!-- 回退：独立的思考切换（针对无时间线的旧消息） -->
         <div v-if="msg.thinking && (!msg.timeline || msg.timeline.length === 0)" class="ctx-thinking-toggle" @click.stop="toggleThinking(msg.id)">
           <span class="ctx-tag tag-thinking">思考</span>
           <span class="ctx-thinking-arrow">{{ isThinkingExpanded(msg.id) ? '▼' : '▶' }}</span>
@@ -237,7 +237,7 @@ function onCancelStream() {
           class="ctx-thinking-content"
         >{{ msg.thinking }}</div>
 
-        <!-- Fallback: tools section (for old messages without timeline) -->
+        <!-- 回退：工具区（针对无时间线的旧消息） -->
         <div v-if="msg.tools && (!msg.timeline || msg.timeline.length === 0)" class="ctx-tools">
           <span class="ctx-tag tag-tools">工具</span>
           <span class="ctx-tools-count">{{ msg.tools.split('\n').filter(Boolean).length }} 次调用</span>
@@ -250,17 +250,17 @@ function onCancelStream() {
           </div>
         </div>
 
-        <!-- Content -->
+        <!-- 内容 -->
         <div class="ctx-preview">
           <template v-if="msg.content">{{ msg.content }}<span v-if="msg.role === 'agent' && msg.status === 'executing'" class="ctx-cursor"></span></template>
           <span v-else-if="msg.role === 'agent' && msg.status === 'executing'" class="ctx-empty-preview">等待中...<span class="ctx-cursor"></span></span>
           <span v-else class="ctx-empty-preview">(无文本回复)</span>
         </div>
 
-        <!-- Time -->
+        <!-- 时间 -->
         <div class="ctx-time">{{ msg.time }}</div>
 
-        <!-- Cancel button for streaming -->
+        <!-- 流式输出的取消按钮 -->
         <button
           v-if="msg.role === 'agent' && msg.status === 'executing'"
           class="btn-cancel-stream"
@@ -272,7 +272,7 @@ function onCancelStream() {
 </template>
 
 <style scoped>
-/* ── Section header ── */
+/* ── 区块标题 ── */
 .ctx-section {
   margin-top: 4px;
 }
@@ -308,7 +308,7 @@ function onCancelStream() {
   border-color: var(--el-color-danger);
 }
 
-/* ── Empty state ── */
+/* ── 空状态 ── */
 .ctx-empty {
   font-size: 12px;
   color: var(--el-text-color-secondary);
@@ -319,13 +319,13 @@ function onCancelStream() {
   border: 1px dashed var(--el-border-color-lighter);
 }
 
-/* ── Card list ── */
+/* ── 卡片列表 ── */
 .ctx-card-list {
   display: flex;
   flex-direction: column;
 }
 
-/* ── Card ── */
+/* ── 卡片 ── */
 .ctx-card {
   padding: 10px 16px;
   border-bottom: 1px solid var(--el-border-color-lighter);
@@ -376,7 +376,7 @@ function onCancelStream() {
   color: var(--el-color-warning);
 }
 
-/* ── Status badges ── */
+/* ── 状态徽章 ── */
 .ctx-status {
   font-size: 9px;
   font-weight: 700;
@@ -393,7 +393,7 @@ function onCancelStream() {
 .st-error       { background: var(--el-color-danger-light-7);  color: var(--el-color-danger); }
 .st-interrupted { background: var(--el-color-warning-light-8); color: var(--el-color-warning); }
 
-/* ── Cross phase tag ── */
+/* ── 跨阶段标签 ── */
 .ctx-phase-tag {
   font-size: 9px;
   font-weight: 700;
@@ -404,7 +404,7 @@ function onCancelStream() {
   margin-left: 4px;
 }
 
-/* ── Content ── */
+/* ── 内容 ── */
 .ctx-card .ctx-preview {
   font-size: 12px;
   color: var(--el-text-color-secondary);
@@ -421,7 +421,7 @@ function onCancelStream() {
   opacity: 0.5;
 }
 
-/* ── Time ── */
+/* ── 时间 ── */
 .ctx-card .ctx-time {
   font-size: 10px;
   color: var(--el-text-color-secondary);
@@ -429,7 +429,7 @@ function onCancelStream() {
   margin-top: 4px;
 }
 
-/* ── Timeline ── */
+/* ── 时间线 ── */
 .ctx-timeline {
   margin-bottom: 4px;
 }
@@ -522,7 +522,7 @@ function onCancelStream() {
   font-family: inherit;
 }
 
-/* ── Thinking toggle ── */
+/* ── 思考切换 ── */
 .ctx-thinking-toggle {
   display: flex;
   align-items: center;
@@ -566,7 +566,7 @@ function onCancelStream() {
   overflow-y: auto;
 }
 
-/* ── Tools ── */
+/* ── 工具 ── */
 .ctx-card .ctx-tools {
   font-size: 11px;
   margin-bottom: 2px;
@@ -616,7 +616,7 @@ function onCancelStream() {
   color: var(--el-color-success);
 }
 
-/* ── Blinking cursor for streaming messages ── */
+/* ── 流式消息的闪烁光标 ── */
 .ctx-cursor {
   display: inline-block;
   width: 6px;
@@ -632,7 +632,7 @@ function onCancelStream() {
   50% { opacity: 0; }
 }
 
-/* ── Cancel button ── */
+/* ── 取消按钮 ── */
 .btn-cancel-stream {
   display: block;
   width: 100%;

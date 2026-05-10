@@ -50,7 +50,7 @@ export class ConfigLoader {
     return { ...DEFAULT_WORKSPACE_CONFIG };
   }
 
-  // Get the active (default) config entry
+  // 获取激活（默认）的配置条目
   static getDefaultConfig(workspace: WorkspaceConfig): ConfigEntry {
     const found = workspace.configs.find(c => c.name === workspace.defaultConfig);
     return found || workspace.configs[0] || DEFAULT_CONFIG_ENTRY;

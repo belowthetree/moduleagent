@@ -33,7 +33,7 @@ import type { ChatMsg } from '../types/preload.js';
 import type { CoreCallbacks } from '../core/CoreTypes.js';
 
 // ---------------------------------------------------------------------------
-// ElectronBridge
+// ElectronBridge — Electron 桥接层
 // ---------------------------------------------------------------------------
 
 export class ElectronBridge {
@@ -48,7 +48,7 @@ export class ElectronBridge {
 
   private prompts = { mainPrompt: '', subPrompt: '', rolePrompt: '' };
 
-  // Per-module state (for IPC status reporting)
+  // 按模块状态（用于 IPC 状态报告）
   private agentStatus = new Map<string, 'idle' | 'streaming' | 'error'>();
   private sendLock = new Map<string, Promise<void>>();
   private roleSendLock = new Map<string, Promise<void>>();
@@ -70,7 +70,7 @@ export class ElectronBridge {
       configDir: this.configDir,
       logger: this.logger,
       onSessionUpdate: (moduleName, sessionId, notification) => {
-        // Forward to AgentStateManager for accumulation
+        // 转发到 AgentStateManager 进行累加
         const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
         this.stateManager?.appendChunk(moduleName, update || '', notification.update as Record<string, unknown>);
         const acc = this.stateManager?.getStreamState(moduleName);
@@ -111,7 +111,7 @@ export class ElectronBridge {
   }
 
   // -----------------------------------------------------------------------
-  // IPC registration
+  // IPC 注册
   // -----------------------------------------------------------------------
 
   registerAllHandlers(): void {
@@ -126,19 +126,19 @@ export class ElectronBridge {
   }
 
   // -----------------------------------------------------------------------
-  // Cleanup
+  // 清理
   // -----------------------------------------------------------------------
 
   async cleanup(): Promise<void> {
     await this.core.dispose();
-    try { this.mcpBackend?.stop(); } catch { /* ignore */ }
+    try { this.mcpBackend?.stop(); } catch { /* 忽略 */ }
     if (this.core.modules.mcpGraphFile) {
-      try { fs.unlinkSync(this.core.modules.mcpGraphFile); } catch { /* ignore */ }
+      try { fs.unlinkSync(this.core.modules.mcpGraphFile); } catch { /* 忽略 */ }
     }
   }
 
   // -----------------------------------------------------------------------
-  // Private: callbacks
+  // 私有：回调
   // -----------------------------------------------------------------------
 
   private _buildCallbacks(): CoreCallbacks {
@@ -149,20 +149,20 @@ export class ElectronBridge {
     };
 
     return {
-      onStreamChunk: () => { /* handled via onSessionUpdate */ },
-      onStreamComplete: () => { /* handled via onSessionUpdate */ },
+      onStreamChunk: () => { /* 通过 onSessionUpdate 处理 */ },
+      onStreamComplete: () => { /* 通过 onSessionUpdate 处理 */ },
       onStreamError: (moduleName, error) => {
         this.agentStatus.set(moduleName, 'error');
         send('agent:status', { name: moduleName, status: 'error' });
         this.logger.error(`[${moduleName}] stream error: ${error}`);
       },
-      onStatusChange: () => { /* status managed per-module */ },
-      onMessage: () => { /* messages handled via per-module streams */ },
+      onStatusChange: () => { /* 状态按模块管理 */ },
+      onMessage: () => { /* 消息通过各模块流处理 */ },
     };
   }
 
   private _getBasePath(): string {
-    // app.getAppPath() returns the Electron app root
+    // app.getAppPath() 返回 Electron 应用根目录
     try {
       const { app } = require('electron');
       return app.getAppPath();
@@ -172,7 +172,7 @@ export class ElectronBridge {
   }
 
   // -----------------------------------------------------------------------
-  // Private: IPC handler registration
+  // 私有：IPC 处理器注册
   // -----------------------------------------------------------------------
 
   private _registerDialogHandlers(): void {
@@ -193,7 +193,7 @@ export class ElectronBridge {
       try {
         const workspaceConfig = await ConfigLoader.loadOrCreate(projectRoot);
 
-        // Ensure default module-gen role exists
+        // 确保默认的模块生成角色存在
         if (!workspaceConfig.roles) workspaceConfig.roles = [];
         const hasDefaultRole = workspaceConfig.roles.some(r => r.name === DEFAULT_MODULE_GEN_ROLE.name);
         if (!hasDefaultRole) {
@@ -207,19 +207,18 @@ export class ElectronBridge {
         self.summarizationEnabled = config.summarization?.enabled ?? true;
         const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
 
-        // Load prompts from resolved config dir
+        // 从解析后的 config 目录加载提示词
         self.prompts = { ...loadSystemPrompts(self.configDir), rolePrompt: '' };
         try {
           const rpPath = path.join(self.configDir, 'knowledge', 'roleagentprompt.md');
           self.prompts.rolePrompt = fs.readFileSync(rpPath, 'utf-8');
-        } catch { /* optional */ }
+        } catch { /* 可选 */ }
 
-        // Init core & roles (before module scan, so roles are available even if scan fails)
+        // 初始化核心和角色（在模块扫描之前，这样即使扫描失败角色也可用）
         const result = await self.core.init(projectRoot);
         self.core.initRoles(config.projectPath, workspaceRoot);
 
-        // Init state manager early — must be before any streaming starts, and before
-        // module scan which may throw and skip remaining init
+        // 提前初始化状态管理器——必须在任何流开始之前，以及在可能抛出异常并跳过后续初始化的模块扫描之前
         self.stateManager = new AgentStateManager(
           path.join(projectRoot, '.module-agent', 'context'),
         );
@@ -233,11 +232,11 @@ export class ElectronBridge {
 
         const graph = new ModuleGraph().build(descriptors, projectRoot);
 
-        // Set MCP backend port on core.modules
+        // 设置 MCP 后端端口到 core.modules
         self.core.modules.mcpBackendPort = 0; // Will be set after backend starts
         self.core.modules.mcpGraphFile = writeMcpGraphFile(graph, os.tmpdir());
 
-        // Create MCP backend
+        // 创建 MCP 后端
         self.mcpBackend = new McpBackendServer({
           getAgentEntry(name) {
             const e = self.core.modules.getAgent(name);
@@ -261,10 +260,10 @@ export class ElectronBridge {
             });
           },
           sendCrossContext(source, target, direction, phase, content) {
-            // Manage stateManager lifecycle for target module of cross-module requests.
-            // The target module gets these unique direction/phase pairs:
-            //   received+request → request arrived, start streaming accumulation
-            //   sent+response    → response ready, finish and persist context
+            // 管理跨模块请求目标模块的 stateManager 生命周期。
+            // 目标模块接收这些方向/阶段配对：
+            //   received+request → 请求到达，开始流积累
+            //   sent+response    → 响应就绪，完成并持久化上下文
             if (direction === 'received' && phase === 'request') {
               self.stateManager?.startStream(source);
             } else if (direction === 'sent' && phase === 'response') {
@@ -288,20 +287,20 @@ export class ElectronBridge {
               }
             }
 
-            // Update stateManager timeline so cross-module metadata is persisted
+            // 更新 stateManager 时间线以便跨模块元数据被持久化
             const st = self.stateManager?.getStreamState(source);
             if (st && st.timeline) {
               for (let i = st.timeline.length - 1; i >= 0; i--) {
                 const ev = st.timeline[i]!;
                 if (ev.type === 'tool_call' && (ev.content.includes('module_call') || ev.content.includes('module_query'))) {
-                  // Only set cross-module metadata on the first event (request); response appends detail
+                  // 仅在第一个事件（请求）上设置跨模块元数据；响应追加细节
                   if (!ev.crossModule) {
                     ev.crossDirection = direction;
                     ev.crossModule = target;
                     ev.crossPhase = phase;
                     ev.detail = content;
                   } else {
-                    // Response: append to existing detail, keep original direction/module
+                    // 响应：追加到现有详情，保持原始方向/模块
                     ev.crossPhase = phase;
                     if (ev.detail) {
                       ev.detail = ev.detail + '\n\n---\n\n' + content;
@@ -466,7 +465,7 @@ DO NOT overwrite existing module.md files.`,
         };
 
         await launched.connection.prompt({ sessionId, prompt: [systemBlock, userBlock] });
-        try { fs.unlinkSync(graphFile); } catch { /* ignore */ }
+        try { fs.unlinkSync(graphFile); } catch { /* 忽略 */ }
 
         const newDescriptors = await ModuleScanner.scan({
           projectRoot: moduleScanPath,
@@ -505,7 +504,7 @@ DO NOT overwrite existing module.md files.`,
 
       const prevLock = self.sendLock.get(moduleName);
       if (prevLock) {
-        try { await prevLock; } catch { /* proceed */ }
+        try { await prevLock; } catch { /* 继续 */ }
       }
       let resolveLock: () => void = () => {};
       const lockPromise = new Promise<void>(r => { resolveLock = r; });
@@ -538,7 +537,7 @@ DO NOT overwrite existing module.md files.`,
 
         const acc = self.stateManager?.finishStream(moduleName);
 
-        // Save context
+        // 保存上下文
         const timeStr = new Date().toLocaleTimeString();
         const agentCmd = entry.config.command || '';
         const userMsg: ChatMsg = {
@@ -565,7 +564,7 @@ DO NOT overwrite existing module.md files.`,
         existingMsgs.push(userMsg, agentMsg);
         await self.stateManager?.saveContext(moduleName, existingMsgs);
 
-        // Fire-and-forget experience summarization
+        // 触发即忘的经验总结（后台执行）
         const projectRoot = self.core.getProjectRoot();
         if (projectRoot && self.summarizationEnabled) {
           self.logger.info(`Triggering summarizer for [${moduleName}]`);
@@ -607,7 +606,7 @@ DO NOT overwrite existing module.md files.`,
     ipcMain.handle('agent:cancel', async (_event, moduleName: string) => {
       const entry = self.core.modules.getAgent(moduleName);
       if (entry) {
-        try { await entry.launched.connection.cancel({ sessionId: entry.sessionId }); } catch { /* ignore */ }
+        try { await entry.launched.connection.cancel({ sessionId: entry.sessionId }); } catch { /* 忽略 */ }
         self.agentStatus.set(moduleName, 'idle');
         self.mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'idle' });
       }
@@ -618,8 +617,8 @@ DO NOT overwrite existing module.md files.`,
     ipcMain.handle('agent:stop', async (_event, moduleName: string) => {
       const entry = self.core.modules.getAgent(moduleName);
       if (entry) {
-        try { entry.launched.process.kill(); } catch { /* ignore */ }
-        // Remove from agents map directly via internal access
+        try { entry.launched.process.kill(); } catch { /* 忽略 */ }
+        // 通过内部访问直接从 agents 映射中移除
         (self.core.modules as any).agents?.delete?.(moduleName);
         self.agentStatus.delete(moduleName);
         self.mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'stopped' });
@@ -775,13 +774,13 @@ DO NOT overwrite existing module.md files.`,
       if (!self.core.roles) return { error: 'no role agent manager' };
 
       const prevLock = self.roleSendLock.get(roleName);
-      if (prevLock) try { await prevLock; } catch { /* proceed */ }
+      if (prevLock) try { await prevLock; } catch { /* 继续 */ }
       let resolveLock: () => void = () => {};
       const lockPromise = new Promise<void>(r => { resolveLock = r; });
       self.roleSendLock.set(roleName, lockPromise);
 
       try {
-        // Ensure agent is started (normally started via role:start, but guard here)
+        // 确保 Agent 已启动（通常通过 role:start 启动，但在此做保护）
         let entry = self.core.roles.getAgent(roleName);
         if (!entry) {
           const workspaceConfig = await ConfigLoader.load(self.core.getProjectRoot());
@@ -849,7 +848,7 @@ DO NOT overwrite existing module.md files.`,
     ipcMain.handle('role:cancel', async (_event, roleName: string) => {
       const entry = self.core.roles?.getAgent(roleName);
       if (entry) {
-        try { await entry.launched.connection.cancel({ sessionId: entry.sessionId }); } catch { /* ignore */ }
+        try { await entry.launched.connection.cancel({ sessionId: entry.sessionId }); } catch { /* 忽略 */ }
       }
       const ctxKey = `workrole:${roleName}`;
       const acc = self.stateManager?.cancelStream(ctxKey);
@@ -920,7 +919,7 @@ DO NOT overwrite existing module.md files.`,
       if (projectRoot) {
         dirs.push(path.join(projectRoot, '.module-agent', 'knowledge'));
       }
-      // Global config knowledge directory
+      // 全局配置知识目录
       dirs.push(path.join(getUserConfigRoot(), 'config', 'knowledge'));
       return dirs;
     }
@@ -948,7 +947,7 @@ DO NOT overwrite existing module.md files.`,
             items.push({ name: file.replace(/\.md$/, ''), filename: file, source: dir });
           }
         }
-      } catch { /* directory may not exist */ }
+      } catch { /* 目录可能不存在 */ }
       return items;
     }
 
@@ -987,14 +986,14 @@ DO NOT overwrite existing module.md files.`,
 
     ipcMain.handle('knowledge:save', async (_event, entry: { name: string; filename: string; content: string }) => {
       try {
-        // Save to project knowledge dir, fall back to first available dir
+        // 保存到项目知识目录，回退到第一个可用目录
         const projectRoot = self.core.getProjectRoot();
         if (!projectRoot) return { success: false };
         const knowledgeDir = path.join(projectRoot, '.module-agent', 'knowledge');
         fs.ensureDirSync(knowledgeDir);
         const filePath = path.join(knowledgeDir, entry.filename);
         let content = entry.content;
-        // Update the first # title line to match entry.name, or prepend one
+        // 更新第一个 # 标题行匹配 entry.name，或者在最前面添加一个
         if (/^#\s+/m.test(content)) {
           content = content.replace(/^#\s+.*$/m, `# ${entry.name}`);
         } else {
@@ -1036,7 +1035,7 @@ DO NOT overwrite existing module.md files.`,
           await fs.promises.unlink(filePath);
           return { success: true };
         }
-        return { success: true }; // Already gone
+        return { success: true }; // 文件已不存在
       } catch (err) {
         self.logger.error(`knowledge:delete failed [${filename}]: ${(err as Error).message}`);
         return { success: false };

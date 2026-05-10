@@ -82,7 +82,7 @@ export class TuiBridge {
   }
 
   // -----------------------------------------------------------------------
-  // Lifecycle
+  // 生命周期
   // -----------------------------------------------------------------------
 
   async init(projectRoot: string): Promise<InitResult> {
@@ -99,12 +99,12 @@ export class TuiBridge {
   }
 
   // -----------------------------------------------------------------------
-  // Agent interaction
+  // Agent 交互
   // -----------------------------------------------------------------------
 
   async sendMessage(text: string): Promise<void> {
     try {
-      // Add user message to UI
+      // 向 UI 添加用户消息
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         role: 'user',
@@ -113,7 +113,7 @@ export class TuiBridge {
       };
       tuiState.setMessages([...tuiState.messages(), userMsg]);
 
-      // Add empty agent message for streaming
+      // 添加空的 Agent 消息用于流式展示
       const streamMsg: ChatMessage = {
         id: `agent-${Date.now()}`,
         role: 'agent',
@@ -129,7 +129,7 @@ export class TuiBridge {
 
       await this.core.sendMessage(text);
 
-      // Fire-and-forget experience summarization
+      // 触发即忘的经验总结（后台执行）
       const projectRoot = this.core.getProjectRoot();
       if (projectRoot && targetName) {
         defaultLogger.info(`Triggering summarizer for [${targetName}]`);
@@ -173,7 +173,7 @@ export class TuiBridge {
   }
 
   // -----------------------------------------------------------------------
-  // Query (for commands.ts)
+  // 查询（用于 commands.ts）
   // -----------------------------------------------------------------------
 
   getGraph(): ModuleGraphType | null {
@@ -209,7 +209,7 @@ export class TuiBridge {
   }
 
   // -----------------------------------------------------------------------
-  // Internal
+  // 内部方法
   // -----------------------------------------------------------------------
 
   private setStatus(status: AgentStatus): void {

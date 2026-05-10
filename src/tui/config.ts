@@ -9,7 +9,7 @@ import os from 'os';
 
 const LAST_PROJECT_FILE = path.join(os.homedir(), '.module-agent', 'last-project');
 
-// No upward search — just resolve to cwd or explicit project root
+// 不向上搜索——直接解析到 cwd 或显式项目根目录
 export function resolveProjectRoot(cwd?: string): string {
   return path.resolve(cwd ?? process.cwd());
 }
@@ -20,7 +20,7 @@ export async function validateModuleAgentJson(projectRoot: string): Promise<bool
   try {
     await fs.access(configPath);
     const config = await ConfigLoader.load(projectRoot);
-    // Valid if at least one config entry has a command
+    // 至少有一个配置条目包含命令才视为有效
     return config.configs.length > 0 && !!config.configs[0]?.agents.default.command;
   } catch {
     return false;
@@ -31,7 +31,7 @@ export function getDefaultConfig(): ConfigEntry {
   return DEFAULT_CONFIG_ENTRY;
 }
 
-// Get the active config entry from the workspace
+// 从工作区获取活动的配置条目
 export function getDefaultEntry(workspace: WorkspaceConfig): ConfigEntry {
   return ConfigLoader.getDefaultConfig(workspace);
 }
@@ -58,7 +58,7 @@ export async function writeModuleAgentJson(
     existing.configs.push(newEntry);
   }
 
-  // Set defaultConfig to the new/updated entry
+  // 将 defaultConfig 设置为新建/更新的条目
   existing.defaultConfig = entryName;
 
   WorkspaceConfigSchema.parse(existing);

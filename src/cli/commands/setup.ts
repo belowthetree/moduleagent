@@ -115,7 +115,7 @@ export async function runSetup(
     config.projectPath = projectRoot;
     console.log(`  项目路径: ${projectRoot}`);
 
-    // Ensure module.md exists (silent auto-gen when project is resolved)
+    // 确保 module.md 存在（项目解析时静默自动生成）
     if (!fs.existsSync(path.join(projectRoot, 'module.md'))) {
       try {
         const content = await ModuleGenerator.generate({ dirPath: projectRoot, projectRoot });
@@ -139,7 +139,7 @@ export async function runSetup(
       config.agents.default.args = argsStr.trim().split(/\s+/);
     }
 
-    // Save config in new array format
+    // 以新数组格式保存配置
     try {
       const workspaceConfig: { configs: (typeof config & { name: string })[]; defaultConfig: string } = {
         configs: [{ name: 'default', ...config }],

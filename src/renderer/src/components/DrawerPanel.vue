@@ -18,15 +18,15 @@ const emit = defineEmits<{
 const configStore = useConfigStore()
 const agentStore = useAgentStore()
 
-// ── refs ──
+// ── 引用 ──
 const drawerRef = ref<HTMLElement | null>(null)
 
-// ── resize state ──
+// ── 调整大小状态 ──
 const resizeDragging = ref(false)
 let resizeStartX = 0
 let resizeStartWidth = 0
 
-// ── agent CWD ──
+// ── Agent 工作目录 ──
 const agentCwd = computed(() => {
   if (!props.node) return ''
   if (props.node.path === '.') return configStore.projectPath
@@ -34,14 +34,14 @@ const agentCwd = computed(() => {
   return base + '/' + props.node.path.replace(/^\.\//, '')
 })
 
-// ── send handler ──
+// ── 发送处理 ──
 async function handleSendMessage(text: string): Promise<void> {
   if (!props.node) return
   const cwd = agentCwd.value
   await agentStore.sendMessage(props.node.name, text, cwd)
 }
 
-// ── resize handlers ──
+// ── 调整大小事件 ──
 function onResizeMousedown(e: MouseEvent) {
   e.preventDefault()
   resizeDragging.value = true
@@ -49,7 +49,7 @@ function onResizeMousedown(e: MouseEvent) {
   resizeStartWidth = drawerRef.value?.getBoundingClientRect().width ?? 420
 }
 
-// ── window-level mouse events ──
+// ── 窗口级鼠标事件 ──
 function onWindowMousemove(e: MouseEvent) {
   if (resizeDragging.value) {
     const delta = resizeStartX - e.clientX
@@ -66,16 +66,16 @@ function onWindowMouseup() {
   }
 }
 
-// ── restore context when node changes ──
+// ── 节点变化时恢复上下文 ──
 watch(() => props.node?.name, (newName) => {
   if (newName) {
     agentStore.restoreContext(newName)
   }
 }, { immediate: true })
 
-// ── lifecycle ──
+// ── 生命周期 ──
 onMounted(() => {
-  // Restore drawer width
+  // 恢复抽屉宽度
   const savedWidth = localStorage.getItem('drawerWidth')
   if (savedWidth) {
     const w = parseInt(savedWidth, 10) || 420

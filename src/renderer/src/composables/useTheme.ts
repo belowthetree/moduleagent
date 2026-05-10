@@ -2,7 +2,7 @@ import { ref, watch } from 'vue'
 
 const THEME_KEY = 'theme'
 
-// Default to dark theme on first load (wabi-sabi dark aesthetic)
+// 首次加载默认为深色主题（侘寂深色美学）
 const isDark = ref<boolean>(localStorage.getItem(THEME_KEY) !== 'light')
 
 function applyTheme(): void {
@@ -21,10 +21,10 @@ function toggleTheme(): void {
   isDark.value = !isDark.value
 }
 
-// Apply initial theme class on module load
+// 模块加载时应用初始主题类
 applyTheme()
 
-// Watch for changes and persist + apply
+// 监听变化并持久化 + 应用
 watch(isDark, () => {
   applyTheme()
   persistTheme()

@@ -5,7 +5,7 @@ import { cosmiconfig } from 'cosmiconfig';
 import { defaultLogger } from './Logger.js';
 
 // ---------------------------------------------------------------------------
-// Dev mode detection
+// 开发模式检测
 // ---------------------------------------------------------------------------
 
 export function isDev(): boolean {
@@ -19,7 +19,7 @@ export function isDev(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Platform config directory
+// 平台配置目录
 // ---------------------------------------------------------------------------
 
 export function getUserConfigRoot(): string {
@@ -34,7 +34,7 @@ export function getPromptConfigDir(basePath: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime config file initialization
+// 运行时配置文件初始化
 // ---------------------------------------------------------------------------
 
 export function ensureConfigFiles(bundledConfigDir: string): void {
@@ -43,11 +43,11 @@ export function ensureConfigFiles(bundledConfigDir: string): void {
   const promptTargetDir = path.join(getUserConfigRoot(), 'config');
   const configRoot = getUserConfigRoot();
 
-  // Ensure target directories exist
+  // 确保目标目录存在
   fs.mkdirSync(promptTargetDir, { recursive: true });
   fs.mkdirSync(configRoot, { recursive: true });
 
-  // Copy .md prompt files from bundled config/ (including knowledge/ subdirectory)
+  // 从捆绑配置目录复制 .md 提示文件（包括 knowledge/ 子目录）
   try {
     const files = fs.readdirSync(bundledConfigDir);
     for (const file of files) {
@@ -60,7 +60,7 @@ export function ensureConfigFiles(bundledConfigDir: string): void {
         }
       }
     }
-    // Also copy knowledge/ subdirectory
+    // 同时复制 knowledge/ 子目录
     const knowledgeSrc = path.join(bundledConfigDir, 'knowledge');
     const knowledgeDest = path.join(promptTargetDir, 'knowledge');
     if (fs.existsSync(knowledgeSrc)) {
@@ -80,7 +80,7 @@ export function ensureConfigFiles(bundledConfigDir: string): void {
     defaultLogger.warn(`[config] Cannot read bundled config dir: ${bundledConfigDir}`);
   }
 
-  // Copy .module-agent.json template from bundled app root
+  // 从捆绑的应用根目录复制 .module-agent.json 模板
   const bundledJsonPath = path.join(path.dirname(bundledConfigDir), '.module-agent.json');
   const userJsonPath = path.join(configRoot, '.module-agent.json');
   if (fs.existsSync(bundledJsonPath) && !fs.existsSync(userJsonPath)) {
@@ -94,7 +94,7 @@ export function ensureConfigFiles(bundledConfigDir: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Cosmiconfig explorer for .module-agent.json discovery
+// Cosmiconfig 探索器用于发现 .module-agent.json
 // ---------------------------------------------------------------------------
 
 export const configExplorer = cosmiconfig('module-agent', {

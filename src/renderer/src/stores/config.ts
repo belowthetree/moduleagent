@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-// localStorage keys — FROZEN contract, must match renderer.ts exactly
+// localStorage 键名——冻结约定，必须与 renderer.ts 完全一致
 const LS_KEYS = {
   agentCmd: 'agentCmd',
   agentArgs: 'agentArgs',
@@ -10,19 +10,19 @@ const LS_KEYS = {
 } as const;
 
 export const useConfigStore = defineStore('config', () => {
-  // ── state ──
+  // ── 状态 ──
   const agentCmd = ref('opencode');
   const agentArgs = ref('acp');
   const projectPath = ref('');
   const autoDocUpdate = ref(true);
 
-  // ── localStorage persistence ──
+  // ── localStorage 持久化 ──
   function loadFromLocalStorage(): void {
     agentCmd.value = localStorage.getItem(LS_KEYS.agentCmd) || 'opencode';
     agentArgs.value = localStorage.getItem(LS_KEYS.agentArgs) || 'acp';
     autoDocUpdate.value = localStorage.getItem(LS_KEYS.autoDocUpdate) !== 'false';
 
-    // Migration: old `lastWorkspace` key → `lastProject`
+    // 迁移：旧版 `lastWorkspace` 键 → `lastProject`
     const legacyWorkspace = localStorage.getItem('lastWorkspace');
     if (legacyWorkspace) {
       localStorage.setItem(LS_KEYS.lastProject, legacyWorkspace);
@@ -31,7 +31,7 @@ export const useConfigStore = defineStore('config', () => {
 
     projectPath.value = localStorage.getItem(LS_KEYS.lastProject) || '';
 
-    // Clean up removed keys from older versions
+    // 清理旧版本中已移除的键
     const removedKeys = [
       'codeSourceType',
       'codeSourcePath',
@@ -50,7 +50,7 @@ export const useConfigStore = defineStore('config', () => {
     localStorage.setItem(LS_KEYS.autoDocUpdate, String(autoDocUpdate.value));
   }
 
-  // ── project config persistence ──
+  // ── 项目配置持久化 ──
   async function saveToProject(projectRoot: string): Promise<{ success: boolean }> {
     const args = agentArgs.value ? agentArgs.value.split(/\s+/).filter(Boolean) : [];
     return window.moduleAgent.saveAgentConfig(projectRoot, agentCmd.value, args, projectPath.value, autoDocUpdate.value);
@@ -67,12 +67,12 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   return {
-    // state refs
+    // 状态引用
     agentCmd,
     agentArgs,
     projectPath,
     autoDocUpdate,
-    // functions
+    // 函数
     loadFromLocalStorage,
     saveToLocalStorage,
     saveToProject,

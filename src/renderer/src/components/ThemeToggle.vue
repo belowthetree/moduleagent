@@ -6,7 +6,7 @@ const theme = useTheme()
 </script>
 
 <template>
-  <el-tooltip :content="theme.isDark.value ? 'Switch to light' : 'Switch to dark'" placement="bottom">
+  <el-tooltip :content="theme.isDark.value ? '切换为亮色' : '切换为深色'" placement="bottom">
     <el-button text @click="theme.toggleTheme">
       <el-icon><Sunny v-if="theme.isDark.value" /><Moon v-else /></el-icon>
     </el-button>

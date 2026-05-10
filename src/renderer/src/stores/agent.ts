@@ -3,14 +3,14 @@ import { defineStore } from 'pinia'
 import type { AgentStatus, ChatMsg, RoleConfigData } from '../../../types/preload'
 
 export const useAgentStore = defineStore('agent', () => {
-  // ── State ──
+  // ── 状态 ──
   const runningAgents = shallowRef(new Map<string, AgentStatus>())
   const contextMap = ref(new Map<string, ChatMsg[]>())
   const sendingLock = ref(false)
   const crossContextCleanup = ref<(() => void) | null>(null)
   const selectedModuleName = ref<string | null>(null)
 
-  // ── Role agent state ──
+  // ── 角色 Agent 状态 ──
   const roles = ref<RoleConfigData[]>([])
   const rolesLoaded = ref(false)
   const selectedRoleAgent = ref<string | null>(null)
@@ -18,13 +18,13 @@ export const useAgentStore = defineStore('agent', () => {
   const roleRunningAgents = shallowRef(new Map<string, AgentStatus>())
   const roleSendingLock = ref(false)
 
-  // ── Internal cleanup refs (not exposed) ──
+  // ── 内部清理引用（不对外暴露） ──
   let statusListenerCleanup: (() => void) | null = null
   let roleStatusListenerCleanup: (() => void) | null = null
   let streamCleanup: (() => void) | null = null
   let roleStreamCleanup: (() => void) | null = null
 
-  // ── Helpers ──
+  // ── 辅助方法 ──
   function now(): string {
     return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   }
@@ -36,9 +36,9 @@ export const useAgentStore = defineStore('agent', () => {
     return contextMap.value.get(name)!
   }
 
-  // ── Context persistence via IPC ──
+  // ── 通过 IPC 持久化上下文 ──
   async function restoreContext(moduleName: string): Promise<void> {
-    // Don't overwrite live in-memory data with stale persisted data
+    // 不要用过时的持久化数据覆盖内存中的实时数据
     if (contextMap.value.has(moduleName) && (contextMap.value.get(moduleName)?.length ?? 0) > 0) {
       return
     }
@@ -53,7 +53,7 @@ export const useAgentStore = defineStore('agent', () => {
         contextMap.value.set(moduleName, msgs)
       }
     } catch {
-      // Silently ignore — context may not exist yet
+      // 静默忽略——上下文可能尚不存在
     }
   }
 
@@ -72,17 +72,17 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  // ── Cross-context listener ──
+  // ── 跨上下文监听器 ──
   function ensureCrossContextListener(): void {
     if (crossContextCleanup.value) return
     crossContextCleanup.value = window.moduleAgent.onCrossContext(({ moduleName, crossModule, direction, phase, content, time }) => {
       const msgs = getMsgs(moduleName)
       const last = msgs[msgs.length - 1]
 
-      // Target module receiving a cross-module request: push an executing placeholder
-      // so the stream listener has an agent message to update
+      // 目标模块接收到跨模块请求：推送一个 executing 占位消息，
+      // 以便流监听器有 Agent 消息可以更新
       if (direction === 'received' && phase === 'request') {
-        if (last && last.role === 'agent' && last.status === 'executing') return // already streaming
+        if (last && last.role === 'agent' && last.status === 'executing') return // 已经在流中
         msgs.push({
           id: 'x' + Date.now() + Math.random().toString(36).slice(2, 6),
           role: 'agent',
@@ -98,7 +98,7 @@ export const useAgentStore = defineStore('agent', () => {
         return
       }
 
-      // Response for target module: mark the placeholder as completed
+      // 目标模块的响应：将占位消息标记为已完成
       if (direction === 'sent' && phase === 'response') {
         if (last && last.role === 'agent' && last.status === 'executing') {
           last.status = 'completed'
@@ -107,7 +107,7 @@ export const useAgentStore = defineStore('agent', () => {
         return
       }
 
-      // Requesting module: enhance the matching cross-module tool_call
+      // 请求模块：增强匹配到的跨模块 tool_call
       if (!last || last.role !== 'agent' || last.status !== 'executing') return
       if (!last.timeline || last.timeline.length === 0) return
 
@@ -131,7 +131,7 @@ export const useAgentStore = defineStore('agent', () => {
     })
   }
 
-  // ── Agent lifecycle ──
+  // ── Agent 生命周期 ──
   async function cancelAgent(moduleName: string): Promise<void> {
     const result = await window.moduleAgent.cancelAgent(moduleName).catch(() => undefined)
     const msgs = getMsgs(moduleName)
@@ -155,7 +155,7 @@ export const useAgentStore = defineStore('agent', () => {
 
     ensureStreamListener()
 
-    // Push user message immediately for instant UI feedback
+    // 立即推送用户消息以获得即时 UI 反馈
     getMsgs(moduleName).push({
       id: 'm' + Date.now(),
       role: 'user',
@@ -168,7 +168,7 @@ export const useAgentStore = defineStore('agent', () => {
       agentCmd: '',
     })
 
-    // Push agent placeholder — updated in real time by stream listener
+    // 推送 Agent 占位消息——由流监听器实时更新
     const agentIdx = getMsgs(moduleName).length
     getMsgs(moduleName).push({
       id: 'm' + Date.now(),
@@ -210,7 +210,7 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  // ── Push-based agent status listener ──
+  // ── 推送式 Agent 状态监听器 ──
   function ensureStatusListener(): void {
     if (statusListenerCleanup) return
     statusListenerCleanup = window.moduleAgent.onAgentStatus(({ name, status }) => {
@@ -224,7 +224,7 @@ export const useAgentStore = defineStore('agent', () => {
     })
   }
 
-  // ── Preserve cross-context modifications across timeline replacements
+  // ── 跨时间线保留跨上下文修改
   function mergeTimeline(oldTimeline: ChatMsg['timeline'], newTimeline: ChatMsg['timeline']): ChatMsg['timeline'] {
     if (!newTimeline) return newTimeline
     if (!oldTimeline) return newTimeline
@@ -242,7 +242,7 @@ export const useAgentStore = defineStore('agent', () => {
     })
   }
 
-  // ── Stream listeners for real-time agent output ──
+  // ── 用于实时 Agent 输出的流监听器 ──
   function ensureStreamListener(): void {
     if (streamCleanup) return
     streamCleanup = window.moduleAgent.onAgentStream((data) => {
@@ -283,7 +283,7 @@ export const useAgentStore = defineStore('agent', () => {
     runningAgents.value = new Map()
   }
 
-  // ── Role agent helpers ──
+  // ── 角色 Agent 辅助方法 ──
   function getRoleMsgs(name: string): ChatMsg[] {
     if (!roleContextMap.value.has(name)) {
       roleContextMap.value.set(name, [])
@@ -291,7 +291,7 @@ export const useAgentStore = defineStore('agent', () => {
     return roleContextMap.value.get(name)!
   }
 
-  // ── Role agent lifecycle ──
+  // ── 角色 Agent 生命周期 ──
   async function fetchRoles(): Promise<void> {
     if (rolesLoaded.value) return
     await refreshRoles()
@@ -307,7 +307,7 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   async function saveRole(role: RoleConfigData): Promise<void> {
-    // Deep-clone to plain object: Vue reactive proxies are not IPC-cloneable
+    // 深度克隆为普通对象：Vue 响应式代理不可通过 IPC 克隆
     const plain = JSON.parse(JSON.stringify(role))
     await window.moduleAgent.saveRole(plain)
     await refreshRoles()
@@ -352,7 +352,7 @@ export const useAgentStore = defineStore('agent', () => {
       agentCmd: '',
     })
 
-    // Push agent placeholder — updated in real time by stream listener
+    // 推送 Agent 占位消息——由流监听器实时更新
     const agentIdx = getRoleMsgs(roleName).length
     getRoleMsgs(roleName).push({
       id: 'r' + Date.now(),
@@ -430,7 +430,7 @@ export const useAgentStore = defineStore('agent', () => {
         roleContextMap.value.set(roleName, msgs)
       }
     } catch {
-      // Silently ignore — context may not exist yet
+      // 静默忽略——上下文可能尚不存在
     }
   }
 
@@ -465,7 +465,7 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   return {
-    // Module agent
+    // 模块 Agent
     runningAgents,
     contextMap,
     sendingLock,
@@ -479,7 +479,7 @@ export const useAgentStore = defineStore('agent', () => {
     sendMessage,
     ensureStatusListener,
     stopRunningPoll,
-    // Role agent
+    // 角色 Agent
     roles,
     rolesLoaded,
     selectedRoleAgent,

@@ -20,15 +20,15 @@ const agentStore = useAgentStore()
 const configStore = useConfigStore()
 const knowledgeStore = useKnowledgeStore()
 
-// ── Settings dialog toggle ──
+// ── 设置对话框开关 ──
 const showSettings = ref(false)
 const scanning = ref(false)
 const generating = ref(false)
 
-// ── Sidebar tab ('' = no drawer open) ──
+// ── 侧边栏标签（'' = 抽屉关闭） ──
 const activeTab = ref('')
 
-// ── Drawer resize ──
+// ── 抽屉调整大小 ──
 const SIDEBAR_WIDTH = 52
 const DRAWER_MIN = 280
 const DRAWER_MAX_RATIO = 0.85
@@ -78,7 +78,7 @@ function onWindowMouseup() {
   document.body.style.userSelect = ''
 }
 
-// ── Computed ──
+// ── 计算属性 ──
 const statusText = computed(() => {
   if (scanning.value) return '正在扫描...'
   if (!projectStore.treeRoot) return '就绪'
@@ -105,7 +105,7 @@ const projectName = computed(() => {
 
 const drawerOpen = computed(() => activeTab.value !== '')
 
-// ── Tab toggle ──
+// ── 标签切换 ──
 function onTabChange(tabId: string): void {
   if (activeTab.value === tabId) {
     activeTab.value = '' // close drawer
@@ -136,7 +136,7 @@ async function rescan(): Promise<void> {
   agentStore.ensureStatusListener()
   agentStore.ensureRoleStatusListener()
 
-  // Auto-select first role if no module nodes found
+  // 未找到模块节点时自动选择首个角色
   if (!projectStore.treeRoot) {
     await agentStore.fetchRoles()
     if (agentStore.roles.length > 0) {
@@ -148,7 +148,7 @@ async function rescan(): Promise<void> {
 async function generateModules(): Promise<void> {
   if (!configStore.projectPath) return
 
-  // Try to use the "模块生成角色" role agent
+  // 尝试使用"模块生成角色"角色 Agent
   await agentStore.fetchRoles()
   const genRole = agentStore.roles.find(r => r.name === '模块生成角色')
   if (genRole) {
@@ -162,7 +162,7 @@ async function generateModules(): Promise<void> {
     return
   }
 
-  // Fallback: legacy agent-based generation
+  // 回退：基于旧版 Agent 的生成方式
   generating.value = true
   try {
     const result = await window.moduleAgent.generateModules(configStore.projectPath)
@@ -182,18 +182,18 @@ function clearAll(): void {
   agentStore.clearAllContexts()
 }
 
-// ── Tree events ──
+// ── 树节点事件 ──
 function onSelectNode(node: Parameters<typeof projectStore.selectNode>[0]): void {
   agentStore.selectedRoleAgent = null // clear role selection
   projectStore.selectNode(node)
-  closeDrawer() // auto-close drawer after selecting a node
+  closeDrawer() // 选择节点后自动关闭抽屉
 }
 
 function onCloseNodeDetail(): void {
   projectStore.selectedNode = null
 }
 
-// ── Role selection (from drawer) ──
+// ── 角色选择（从抽屉） ──
 function onSelectRole(name: string): void {
   projectStore.selectedNode = null // clear node selection
   agentStore.selectRoleAgentAndStart(name)
@@ -215,7 +215,7 @@ async function handleRoleSendMessage(text: string): Promise<void> {
   await agentStore.sendRoleMessage(agentStore.selectedRoleAgent, text)
 }
 
-// ── Knowledge selection (from drawer) ──
+// ── 知识选择（从抽屉） ──
 async function onSelectKnowledge(filename: string): Promise<void> {
   projectStore.selectedNode = null
   agentStore.selectedRoleAgent = null
@@ -227,7 +227,7 @@ function onCloseKnowledgeDetail(): void {
   knowledgeStore.clearSelection()
 }
 
-// ── Computed: selected role info ──
+// ── 计算属性：选中的角色信息 ──
 const selectedRoleInfo = computed(() => {
   if (!agentStore.selectedRoleAgent) return null
   return agentStore.roles.find(r => r.name === agentStore.selectedRoleAgent) || null
@@ -240,7 +240,7 @@ const renderedKnowledge = computed(() => {
   return marked.parse(knowledgeStore.selectedContent) as string
 })
 
-// ── Lifecycle ──
+// ── 生命周期 ──
 onMounted(async () => {
   agentStore.ensureStatusListener()
   agentStore.ensureCrossContextListener()
@@ -260,7 +260,7 @@ onMounted(async () => {
     }
   }
 
-  // Auto-select first role if no module nodes found
+  // 未找到模块节点时自动选择首个角色
   if (!projectStore.treeRoot) {
     await agentStore.fetchRoles()
     if (agentStore.roles.length > 0) {
@@ -301,14 +301,14 @@ onUnmounted(() => {
         @tab-change="onTabChange"
       />
 
-      <!-- Drawer overlay (click to close) -->
+      <!-- 抽屉遮罩（点击关闭） -->
       <div
         class="drawer-overlay"
         :class="{ open: drawerOpen }"
         @click="closeDrawer"
       />
 
-      <!-- Tree drawer (slides from left) -->
+      <!-- 模块树抽屉（从左侧滑入） -->
       <div
         class="drawer"
         :class="{ open: activeTab === 'tree' }"
@@ -334,7 +334,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Role drawer (slides from left) -->
+      <!-- 角色抽屉（从左侧滑入） -->
       <div
         class="drawer"
         :class="{ open: activeTab === 'roles' }"
@@ -346,7 +346,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Knowledge drawer (slides from left) -->
+      <!-- 知识抽屉（从左侧滑入） -->
       <div
         class="drawer"
         :class="{ open: activeTab === 'knowledge' }"
@@ -358,7 +358,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Main detail area (always visible) -->
+      <!-- 主详情区（始终可见） -->
       <div class="detail-area">
         <!-- Node detail -->
         <NodeDetailPanel
@@ -408,7 +408,7 @@ onUnmounted(() => {
           </div>
           <div class="knowledge-detail-body" v-html="renderedKnowledge" />
         </div>
-        <!-- Placeholder -->
+        <!-- 占位 -->
         <div v-else class="detail-placeholder">
           <div class="placeholder-icon">📋</div>
           <p class="placeholder-text">从左侧节点树选择模块，从角色面板选择角色 Agent，或从知识面板选择知识条目</p>
@@ -423,7 +423,7 @@ onUnmounted(() => {
       <span class="status-path">{{ projectName }}</span>
     </footer>
 
-    <!-- Settings dialog (modal) -->
+    <!-- 设置对话框（模态） -->
     <SettingsDialog
       v-if="showSettings"
       :visible="showSettings"
@@ -485,7 +485,7 @@ onUnmounted(() => {
   position: relative;
 }
 
-/* ── Drawer overlay ── */
+/* ── 抽屉遮罩 ── */
 .drawer-overlay {
   position: absolute;
   top: 0;
@@ -504,7 +504,7 @@ onUnmounted(() => {
   pointer-events: auto;
 }
 
-/* ── Drawer ── */
+/* ── 抽屉 ── */
 .drawer {
   position: absolute;
   top: 0;
@@ -546,7 +546,7 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-/* ── Detail area (fills remaining space) ── */
+/* ── 详情区（填充剩余空间） ── */
 .detail-area {
   flex: 1;
   overflow: hidden;
@@ -607,7 +607,7 @@ onUnmounted(() => {
 .empty-text { font-size: 16px; color: var(--el-text-color-primary); margin: 0; }
 .empty-hint { font-size: 13px; color: var(--el-text-color-secondary); margin: 0; }
 
-/* ── Role detail (main area) ── */
+/* ── 角色详情（主区域） ── */
 .role-detail {
   display: flex;
   flex-direction: column;
@@ -705,7 +705,7 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-/* ── Knowledge detail (main area) ── */
+/* ── 知识详情（主区域） ── */
 .knowledge-detail {
   display: flex;
   flex-direction: column;
@@ -759,7 +759,7 @@ onUnmounted(() => {
   -webkit-user-select: text;
 }
 
-/* ── Detail placeholder ── */
+/* ── 详情占位 ── */
 .detail-placeholder {
   display: flex;
   flex-direction: column;

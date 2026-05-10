@@ -12,7 +12,7 @@ export class ModuleParser {
     const { data, content } = matter(raw);
 
     const frontmatter = ModuleParser.parseFrontmatter(data);
-    // Prefer frontmatter submodules; fall back to markdown body (legacy format)
+    // 优先使用 frontmatter 子模块；回退到 markdown 正文（旧格式）
     const subModules = frontmatter.submodules?.length
       ? frontmatter.submodules
       : ModuleParser.parseSubModulesFromBody(marked.lexer(content));

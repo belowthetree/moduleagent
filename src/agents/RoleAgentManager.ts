@@ -8,7 +8,7 @@ import type { RoleConfig } from '../config/defaults.js';
 import { prepareRoleWorkspace } from './RoleWorkspace.js';
 
 // ---------------------------------------------------------------------------
-// RoleAgentEntry
+// RoleAgentEntry 接口
 // ---------------------------------------------------------------------------
 
 export interface RoleAgentEntry {
@@ -21,7 +21,7 @@ export interface RoleAgentEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Constructor options
+// 构造函数选项
 // ---------------------------------------------------------------------------
 
 export interface RoleAgentManagerOptions {
@@ -36,7 +36,7 @@ export interface RoleAgentManagerOptions {
 }
 
 // ---------------------------------------------------------------------------
-// RoleAgentManager
+// RoleAgentManager 核心类
 // ---------------------------------------------------------------------------
 
 export class RoleAgentManager {
@@ -60,7 +60,7 @@ export class RoleAgentManager {
   }
 
   // -----------------------------------------------------------------------
-  // startRoleAgent
+  // 启动角色 Agent
   // -----------------------------------------------------------------------
 
   async startRoleAgent(role: RoleConfig): Promise<RoleAgentEntry> {
@@ -84,13 +84,13 @@ export class RoleAgentManager {
   }
 
   // -----------------------------------------------------------------------
-  // stopRoleAgent / stopAll
+  // 停止角色 Agent / 停止全部
   // -----------------------------------------------------------------------
 
   async stopRoleAgent(roleName: string): Promise<void> {
     const entry = this.agents.get(roleName);
     if (entry) {
-      try { entry.launched.process.kill(); } catch { /* ignore */ }
+      try { entry.launched.process.kill(); } catch { /* 忽略 */ }
       this.agents.delete(roleName);
       this.logger.info(`Role agent stopped: ${roleName}`);
     }
@@ -98,14 +98,14 @@ export class RoleAgentManager {
 
   async stopAll(): Promise<void> {
     for (const [, entry] of this.agents) {
-      try { entry.launched.process.kill(); } catch { /* ignore */ }
+      try { entry.launched.process.kill(); } catch { /* 忽略 */ }
     }
     this.agents.clear();
     this.pendingStarts.clear();
   }
 
   // -----------------------------------------------------------------------
-  // Query helpers
+  // 查询辅助方法
   // -----------------------------------------------------------------------
 
   getAgent(roleName: string): RoleAgentEntry | undefined {
@@ -117,7 +117,7 @@ export class RoleAgentManager {
   }
 
   // -----------------------------------------------------------------------
-  // Internal start pipeline
+  // 内部启动管道
   // -----------------------------------------------------------------------
 
   private async _startRoleAgentInternal(role: RoleConfig): Promise<RoleAgentEntry> {
@@ -182,7 +182,7 @@ export class RoleAgentManager {
   }
 
   // -----------------------------------------------------------------------
-  // Build MCP servers for role agent
+  // 为角色 Agent 构建 MCP 服务器
   // -----------------------------------------------------------------------
 
   private _buildRoleMcpServers(workspacePath: string): McpServerStdio[] {
@@ -208,7 +208,7 @@ export class RoleAgentManager {
   }
 
   // -----------------------------------------------------------------------
-  // Role config resolution
+  // 角色配置解析
   // -----------------------------------------------------------------------
 
   resolveRoleConfig(role: RoleConfig): AgentConfig {

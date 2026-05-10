@@ -1,6 +1,6 @@
-// Standalone MCP server entry point — spawned by the agent via mcpServers config.
-// Communicates with the agent via stdio (MCP protocol).
-// Communicates with the electron process via HTTP back-channel for cross-module calls.
+// 独立的 MCP 服务器入口点——由 Agent 通过 mcpServers 配置启动。
+// 通过 stdio（MCP 协议）与 Agent 通信。
+// 通过 HTTP 反向通道与 Electron 进程通信，用于跨模块调用。
 
 import { CommunicationBus } from './CommunicationBus.js';
 import { MCPServer } from './MCPServer.js';

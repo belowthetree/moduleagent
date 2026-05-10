@@ -84,34 +84,34 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { TreeNode, LayoutNode, AgentStatus } from '../../../types/preload'
 
-// ── Props ──
+// ── 属性 ──
 const props = defineProps<{
   root: TreeNode | null
   selectedNode: TreeNode | null
   runningAgents: Map<string, AgentStatus>
 }>()
 
-// ── Emits ──
+// ── 事件 ──
 const emit = defineEmits<{
   select: [node: TreeNode]
   collapse: [node: LayoutNode]
 }>()
 
-// ── Constants ──
+// ── 常量 ──
 const NODE_W = 180
 const NODE_H = 50
 const H_GAP = 80
 const V_GAP = 16
 
-// ── Refs ──
+// ── 引用 ──
 const svgRef = ref<SVGSVGElement | null>(null)
 const panelRef = ref<HTMLElement | null>(null)
 
-// ── Layout state ──
+// ── 布局状态 ──
 const flattenedNodes = ref<LayoutNode[]>([])
 const collapsedRef = ref<Record<string, boolean>>({})
 
-// ── Pan/zoom state ──
+// ── 平移/缩放状态 ──
 const panX = ref(20)
 const panY = ref(20)
 const scale = ref(1)
@@ -121,7 +121,7 @@ const panStartY = ref(0)
 const panStartTX = ref(0)
 const panStartTY = ref(0)
 
-// ── Helpers ──
+// ── 辅助方法 ──
 function sanitizeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '_')
 }
@@ -139,7 +139,7 @@ function isCollapsedAncestor(node?: LayoutNode): boolean {
   return !p ? false : p.collapsed ? true : isCollapsedAncestor(p)
 }
 
-// ── Layout algorithm (exact migration from renderer.ts:904-922) ──
+// ── 布局算法（从 renderer.ts:904-922 迁移而来） ──
 function layoutTree(node: TreeNode, depth: number, stY: number, _isRoot: boolean, parentName?: string): LayoutNode {
   const x = depth * (NODE_W + H_GAP)
   const y = stY
@@ -172,7 +172,7 @@ function computeLayout() {
   layoutTree(props.root, 0, 0, true)
 }
 
-// ── Computed ──
+// ── 计算属性 ──
 const visibleNodes = computed(() => {
   return flattenedNodes.value.filter(n => !isCollapsedAncestor(n))
 })
@@ -218,7 +218,7 @@ const edgePaths = computed(() => {
   return paths
 })
 
-// ── Node helpers ──
+// ── 节点辅助 ──
 function agentState(node: LayoutNode): string | undefined {
   return props.runningAgents.get(node.data.name)
 }
@@ -237,7 +237,7 @@ function subText(node: LayoutNode): string {
     : (node.data.description || '').slice(0, 15)
 }
 
-// ── Event handlers ──
+// ── 事件处理 ──
 function onNodeClick(node: LayoutNode) {
   emit('select', node.data)
 }
@@ -280,7 +280,7 @@ function onWheel(e: WheelEvent) {
   scale.value = ns
 }
 
-// ── Lifecycle ──
+// ── 生命周期 ──
 onMounted(() => {
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
@@ -291,7 +291,7 @@ onUnmounted(() => {
   window.removeEventListener('mouseup', onMouseUp)
 })
 
-// ── Watch root for re-layout ──
+// ── 监听根节点变化重新布局 ──
 watch(() => props.root, () => {
   computeLayout()
   panX.value = 20
@@ -301,7 +301,7 @@ watch(() => props.root, () => {
 </script>
 
 <style scoped>
-/* ── SVG Tree — Wabi-sabi Flat Redesign ── */
+/* ── SVG 树 — 侘寂扁平化重新设计 ── */
 
 .tree-panel {
   width: 100%;
@@ -317,7 +317,7 @@ watch(() => props.root, () => {
   height: 100%;
 }
 
-/* ── Node rectangles ── */
+/* ── 节点矩形 ── */
 .node-rect {
   fill: var(--el-fill-color);
   stroke: var(--el-border-color-dark);
@@ -337,7 +337,7 @@ watch(() => props.root, () => {
   stroke-width: 3;
 }
 
-/* Agent state on rects — flat, no drop-shadow */
+/* Agent 状态在矩形上 — 扁平，无阴影 */
 .node-rect.agent-idle {
   stroke: var(--el-color-primary);
   stroke-width: 2;
@@ -353,7 +353,7 @@ watch(() => props.root, () => {
   stroke-width: 2;
 }
 
-/* ── Node text ── */
+/* ── 节点文本 ── */
 .node-text {
   font-size: 12px;
   font-weight: 600;
@@ -369,14 +369,14 @@ watch(() => props.root, () => {
   font-family: inherit;
 }
 
-/* ── Edge lines ── */
+/* ── 连线 ── */
 .edge-line {
   fill: none;
   stroke: var(--el-border-color);
   stroke-width: 1;
 }
 
-/* ── Agent status dots — no drop-shadow, subtle stroke ── */
+/* ── Agent 状态点 — 无阴影，柔和描边 ── */
 .node-status-dot {
   stroke-width: 1;
 }
@@ -402,7 +402,7 @@ watch(() => props.root, () => {
   50% { opacity: 0.4; }
 }
 
-/* ── Expand/collapse button ── */
+/* ── 展开/折叠按钮 ── */
 .expand-btn {
   fill: var(--el-text-color-secondary);
   cursor: pointer;

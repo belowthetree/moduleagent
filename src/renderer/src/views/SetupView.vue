@@ -8,10 +8,10 @@ const configStore = useConfigStore()
 
 const error = ref('')
 
-// ── Computed ──
+// ── 计算属性 ──
 const confirmDisabled = computed(() => !configStore.projectPath)
 
-// ── Browse buttons ──
+// ── 浏览按钮 ──
 async function selectProject(): Promise<void> {
   const d = await window.moduleAgent.selectDir('选择项目目录')
   if (!d) return
@@ -19,7 +19,7 @@ async function selectProject(): Promise<void> {
   configStore.saveToLocalStorage()
 }
 
-// ── Confirm setup ──
+// ── 确认设置 ──
 async function confirmSetup(): Promise<void> {
   if (!configStore.projectPath) return
 
@@ -34,7 +34,7 @@ async function confirmSetup(): Promise<void> {
   }
 }
 
-// ── Init ──
+// ── 初始化 ──
 onMounted(() => {
   configStore.loadFromLocalStorage()
 })
@@ -43,13 +43,13 @@ onMounted(() => {
 <template>
   <div class="setup-screen">
     <el-card class="setup-card" shadow="hover">
-      <!-- Header -->
+      <!-- 标题 -->
       <div class="setup-header">
         <h1 class="setup-logo">ModuleAgent</h1>
         <p class="setup-subtitle">选择项目目录，配置 Agent 命令后确认进入</p>
       </div>
 
-      <!-- Error Alert -->
+      <!-- 错误提示 -->
       <el-alert
         v-if="error"
         :title="error"
@@ -60,24 +60,24 @@ onMounted(() => {
         class="setup-error"
       />
 
-      <!-- Form -->
+      <!-- 表单 -->
       <el-form
         label-position="top"
         class="setup-form"
       >
-        <!-- Agent Command -->
+        <!-- Agent 命令 -->
         <el-form-item label="Agent 命令">
           <p class="field-hint">启动 Agent 的可执行文件名或路径</p>
           <el-input v-model="configStore.agentCmd" placeholder="opencode" />
         </el-form-item>
 
-        <!-- Agent Args -->
+        <!-- Agent 参数 -->
         <el-form-item label="Agent 参数">
           <p class="field-hint">传给 Agent 的额外参数（空格分隔，如: acp）</p>
           <el-input v-model="configStore.agentArgs" placeholder="acp" />
         </el-form-item>
 
-        <!-- Project Path -->
+        <!-- 项目路径 -->
         <el-form-item label="项目目录">
           <p class="field-hint">项目根目录，模块文件存储在 .module-agent/module/ 中，工作空间在 .module-agent/workspace/</p>
           <el-input v-model="configStore.projectPath" placeholder="输入或点击右侧按钮选择项目目录...">
@@ -87,7 +87,7 @@ onMounted(() => {
           </el-input>
         </el-form-item>
 
-        <!-- Auto-created dirs note -->
+        <!-- 自动创建目录提示 -->
         <el-alert
           type="info"
           :closable="false"
@@ -99,7 +99,7 @@ onMounted(() => {
         </el-alert>
       </el-form>
 
-      <!-- Confirm Button -->
+      <!-- 确认按钮 -->
       <div class="setup-actions">
         <el-button
           type="primary"
@@ -192,7 +192,7 @@ onMounted(() => {
   width: 100%;
 }
 
-/* ── Wabi-sabi: flat inputs, no focus glow ── */
+/* ── 侘寂风格：扁平输入框，无聚焦光晕 ── */
 .setup-form :deep(.el-input__wrapper) {
   box-shadow: none !important;
 }

@@ -1,3 +1,3 @@
-// Services layer has been refactored.
-// Agent orchestration now lives in src/core/ModuleAgentCore.ts.
-// TUI bridge is at src/tui/bridge.ts.
+// 服务层已重构。
+// Agent 编排现在位于 src/core/ModuleAgentCore.ts。
+// TUI 桥接层位于 src/tui/bridge.ts。

@@ -12,7 +12,7 @@ const api: ModuleAgentApi = {
 
   getTree: () => ipcRenderer.invoke('project:getTree') as Promise<Record<string, unknown> | null>,
 
-  // Agent APIs
+  // Agent API
   startAgent: (moduleName: string, cmd: string, args: string[], cwd: string) =>
     ipcRenderer.invoke('agent:start', moduleName, cmd, args, cwd) as Promise<{ sessionId?: string; error?: string }>,
 
@@ -39,33 +39,33 @@ const api: ModuleAgentApi = {
     return () => ipcRenderer.removeListener('agent:status', handler);
   },
 
-  // Config APIs
+  // 配置 API
   saveAgentConfig: (projectRoot: string, cmd: string, args: string[], projectPath?: string, summarizationEnabled?: boolean) =>
     ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args, projectPath, summarizationEnabled }) as Promise<{ success: boolean }>,
 
   getAgentConfig: (projectRoot: string) =>
     ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; projectPath?: string; summarizationEnabled?: boolean }>,
 
-  // Migration APIs
+  // 迁移 API
   migrateCheck: (keys: string[]) => ipcRenderer.invoke('migrate:check', keys) as Promise<{ needed: string[]; streamNeeded: boolean }>,
 
   migrateData: (payload: MigrationData) => ipcRenderer.invoke('migrate:data', payload) as Promise<void>,
 
-  // Context APIs
+  // 上下文 API
   getContext: (moduleName: string) => ipcRenderer.invoke('context:get', moduleName) as Promise<ChatMsg[]>,
 
   clearContext: (moduleName: string) => ipcRenderer.invoke('context:clear', moduleName) as Promise<void>,
 
   clearAllContexts: () => ipcRenderer.invoke('context:clearAll') as Promise<void>,
 
-  // Cross-module context events
+  // 跨模块上下文事件
   onCrossContext: (callback: (data: CrossContextData) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: CrossContextData) => callback(data);
     ipcRenderer.on('agent:cross-context', handler);
     return () => ipcRenderer.removeListener('agent:cross-context', handler);
   },
 
-  // ── Role Agent APIs ──
+  // ── 角色 Agent API ──
   getRoles: () => ipcRenderer.invoke('role:list') as Promise<RoleConfigData[]>,
 
   saveRole: (role: RoleConfigData) =>
@@ -107,7 +107,7 @@ const api: ModuleAgentApi = {
     return () => ipcRenderer.removeListener('role:status', handler);
   },
 
-  // ── Knowledge APIs ──
+  // ── 知识 API ──
   knowledgeList: () =>
     ipcRenderer.invoke('knowledge:list') as Promise<KnowledgeListItem[]>,
 

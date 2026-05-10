@@ -9,7 +9,7 @@ import { defaultLogger, type Logger } from './Logger.js';
 import type { CoreCallbacks } from './CoreTypes.js';
 
 // ---------------------------------------------------------------------------
-// RoleAgentSubsystem options
+// RoleAgentSubsystem 选项
 // ---------------------------------------------------------------------------
 
 export interface RoleAgentSubsystemOptions {
@@ -19,12 +19,12 @@ export interface RoleAgentSubsystemOptions {
   projectPath: string;
   workspaceRoot: string;
   logger?: Logger;
-  /** Optional external session-update listener (e.g. AgentStateManager) */
+  /** 可选的外部会话更新监听器（如 AgentStateManager） */
   onSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
 }
 
 // ---------------------------------------------------------------------------
-// RoleAgentSubsystem
+// RoleAgentSubsystem — 角色 Agent 子系统
 // ---------------------------------------------------------------------------
 
 export class RoleAgentSubsystem {
@@ -43,7 +43,7 @@ export class RoleAgentSubsystem {
     this.projectPath = options.projectPath;
     this._onSessionUpdate = options.onSessionUpdate;
 
-    // Load role agent prompt
+    // 加载角色 Agent 提示词
     const resolvedConfigDir = options.configDir || path.join(options.basePath, 'config');
     const rolePromptPath = path.join(resolvedConfigDir, 'knowledge', 'roleagentprompt.md');
     try {
@@ -90,7 +90,7 @@ export class RoleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Lifecycle
+  // 生命周期
   // -----------------------------------------------------------------------
 
   async startRole(role: RoleConfig): Promise<RoleAgentEntry> {
@@ -108,13 +108,13 @@ export class RoleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Send / cancel
+  // 发送 / 取消
   // -----------------------------------------------------------------------
 
   async sendMessage(roleName: string, text: string): Promise<void> {
     const prevLock = this.sendLock.get(roleName);
     if (prevLock) {
-      try { await prevLock; } catch { /* proceed */ }
+      try { await prevLock; } catch { /* 继续 */ }
     }
 
     let resolveLock: () => void = () => {};
@@ -124,7 +124,7 @@ export class RoleAgentSubsystem {
     try {
       let entry = this.manager.getAgent(roleName);
       if (!entry) {
-        // Need RoleConfig to start — caller must have started via startRole() first
+        // 需要 RoleConfig 才能启动——调用者必须先通过 startRole() 启动
         throw new Error(`Role agent "${roleName}" not started. Call startRole() first.`);
       }
 
@@ -165,12 +165,12 @@ export class RoleAgentSubsystem {
       await entry.launched.connection.cancel({ sessionId: entry.sessionId });
       this.logger.info(`role:cancel [${roleName}]`);
     } catch {
-      // ignore
+      // 忽略
     }
   }
 
   // -----------------------------------------------------------------------
-  // Query
+  // 查询
   // -----------------------------------------------------------------------
 
   getAgent(roleName: string): RoleAgentEntry | undefined {
@@ -182,10 +182,10 @@ export class RoleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Internal
+  // 内部方法
   // -----------------------------------------------------------------------
 
-  /** Build prompt blocks for a role agent, including knowledge on first message per session. */
+  /** 构建角色 Agent 的提示块，首条消息包含知识引用。 */
   buildPromptBlocks(roleName: string, userText: string): ContentBlock[] {
     const blocks: ContentBlock[] = [];
     const isFirst = !this.sessionPrompted.has(roleName);
@@ -196,7 +196,7 @@ export class RoleAgentSubsystem {
         blocks.push({ type: 'text', text: this.rolePrompt + '\n\n---\n\n' });
       }
 
-      // Inject knowledge references on first message
+      // 在首条消息中注入知识引用
       const entry = this.manager.getAgent(roleName);
       const refs = entry?.roleConfig.knowledgeRefs;
       if (refs && refs.length > 0) {
@@ -216,8 +216,8 @@ export class RoleAgentSubsystem {
   }
 
   /**
-   * Build a prompt block containing referenced knowledge files,
-   * formatted for AI consumption.
+   * 构建包含引用知识文件的提示块，
+   * 格式化为 AI 可消费的内容。
    */
   private _buildKnowledgeBlock(refs: { filename: string; name: string }[]): string | null {
     const sections: string[] = [];
@@ -248,7 +248,7 @@ export class RoleAgentSubsystem {
   }
 
   /**
-   * Look up a knowledge file across all knowledge directories.
+   * 在所有知识目录中查找知识文件。
    */
   private _resolveKnowledgePath(filename: string): string | null {
     const dirs = [

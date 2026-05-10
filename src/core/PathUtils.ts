@@ -11,7 +11,7 @@ import path from 'path';
 export function normalizeCodeSourcePath(p: string): string {
   if (!p) return p;
 
-  // On non-Windows, detect Windows drive-letter absolute paths
+  // 在非 Windows 上检测 Windows 盘符绝对路径
   if (process.platform !== 'win32' && /^[a-zA-Z]:[/\\]/.test(p)) {
     const drive = p.charAt(0).toLowerCase();
     const rest = p.slice(2).replace(/\\/g, '/');

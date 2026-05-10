@@ -74,5 +74,5 @@ export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {
   roles: [DEFAULT_MODULE_GEN_ROLE],
 };
 
-// Keep backward compat: legacy code that expects the single-entry format
+// 保持向后兼容：旧代码期望单条目格式
 export const DEFAULT_CONFIG: ProjectConfig = DEFAULT_CONFIG_ENTRY;

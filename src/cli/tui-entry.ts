@@ -1,11 +1,11 @@
-// TUI entry point — must be run with Bun
-// Set BEFORE @opentui/core loads — wcwidth corrects CJK cursor position
+// TUI 入口点 — 必须使用 Bun 运行
+// 在 @opentui/core 加载前设置 — wcwidth 修正 CJK 光标位置
 process.env.OPENTUI_FORCE_WCWIDTH = 'true';
 
 async function main() {
   const args = process.argv.slice(2);
   
-  // Parse --project flag
+  // 解析 --project 标志
   let projectRoot = '';
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--project' && args[i + 1]) {
@@ -14,7 +14,7 @@ async function main() {
   }
 
   if (!projectRoot) {
-    // Prefer the last saved project root, fall back to upward search
+    // 优先使用上次保存的项目根目录，回退向上搜索
     const { getLastProjectRoot, resolveProjectRoot } = await import('../tui/config.js');
     projectRoot = await getLastProjectRoot() || resolveProjectRoot();
   }

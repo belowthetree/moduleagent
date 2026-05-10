@@ -60,7 +60,7 @@ export class ExperienceSummarizer {
       this.logger.error(`ExperienceSummarizer: failed for [${moduleName}]: ${(err as Error).message}`);
     } finally {
       if (launched) {
-        try { launched.process.kill(); } catch { /* ignore */ }
+        try { launched.process.kill(); } catch { /* 忽略 */ }
       }
     }
   }

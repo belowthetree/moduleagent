@@ -24,7 +24,7 @@ export default function CommandPalette() {
 
   const filterText = createMemo(() => {
     const value = tuiState.inputValue();
-    // Strip leading "/" if present, otherwise use raw value
+    // 去掉前导 "/"，否则使用原始值
     return value.startsWith("/") ? value.slice(1) : value;
   });
 

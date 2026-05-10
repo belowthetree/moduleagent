@@ -1,6 +1,6 @@
-// Standalone MCP server entry point for role agents — spawned by the agent via mcpServers config.
-// Communicates with the agent via stdio (MCP protocol).
-// No CommunicationBus, no module graph, no backend URL — just file read/write within the workspace.
+// 独立的角色 Agent MCP 服务器入口点——由 Agent 通过 mcpServers 配置启动。
+// 通过 stdio（MCP 协议）与 Agent 通信。
+// 没有 CommunicationBus、模块图和后端 URL——仅在工作区内读写文件。
 
 import { RoleMCPServer } from './RoleMCPServer.js';
 import fs from 'fs';

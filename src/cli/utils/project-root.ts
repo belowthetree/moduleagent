@@ -29,7 +29,7 @@ export function saveLastProject(projectPath: string): void {
 }
 
 function findSavedProject(): string | null {
-  // Search upward from cwd for .module-agent/state.json containing lastProject
+  // 从 cwd 向上搜索包含 lastProject 的 .module-agent/state.json
   let dir = path.resolve(process.cwd());
   while (true) {
     const state = loadState(dir);
@@ -53,11 +53,11 @@ export function resolveProjectRoot(cliProject?: string): string {
     return resolved;
   }
 
-  // Check saved last project path from any ancestor .module-agent/state.json
+  // 检查任何祖先目录中 .module-agent/state.json 保存的上次项目路径
   const saved = findSavedProject();
   if (saved) return saved;
 
-  // Fallback: search upward from cwd for project markers
+  // 回退：从 cwd 向上搜索项目标记
   let dir = path.resolve(process.cwd());
   while (true) {
     if (

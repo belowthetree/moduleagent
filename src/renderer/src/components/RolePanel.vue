@@ -91,7 +91,7 @@ function selectRole(name: string): void {
       </div>
     </div>
 
-    <!-- Config dialog -->
+    <!-- 配置对话框 -->
     <RoleConfigDialog
       v-if="showConfigDialog && editingRole"
       :visible="showConfigDialog"

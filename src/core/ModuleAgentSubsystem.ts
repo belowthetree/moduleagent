@@ -26,7 +26,7 @@ import type { AgentCapabilities, SessionNotification, ContentBlock } from '@agen
 import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from './CoreTypes.js';
 
 // ---------------------------------------------------------------------------
-// AgentEntry
+// AgentEntry 接口
 // ---------------------------------------------------------------------------
 
 export interface AgentEntry {
@@ -39,7 +39,7 @@ export interface AgentEntry {
 }
 
 // ---------------------------------------------------------------------------
-// ModuleAgentSubsystem options
+// ModuleAgentSubsystem 选项
 // ---------------------------------------------------------------------------
 
 export interface ModuleAgentSubsystemOptions {
@@ -55,7 +55,7 @@ export interface ModuleAgentSubsystemOptions {
 }
 
 // ---------------------------------------------------------------------------
-// ModuleAgentSubsystem
+// ModuleAgentSubsystem 核心类
 // ---------------------------------------------------------------------------
 
 export class ModuleAgentSubsystem {
@@ -65,13 +65,13 @@ export class ModuleAgentSubsystem {
   private logger: Logger;
   private launcher = new AgentLauncher();
 
-  // Config / graph state
+  // 配置/图谱状态
   private projectRoot = '';
   private config: import('../config/defaults.js').ConfigEntry | null = null;
   private graph: ModuleGraphType | null = null;
   private prompts = { mainPrompt: '', subPrompt: '' };
 
-  // Agent state
+  // Agent 状态
   private agents = new Map<string, AgentEntry>();
   private pendingStarts = new Map<string, Promise<AgentEntry>>();
   private currentModule = '';
@@ -79,11 +79,11 @@ export class ModuleAgentSubsystem {
   private lastSent = new Map<string, { text: string; time: number }>();
   private sendLock = new Map<string, Promise<void>>();
 
-  // MCP state
+  // MCP 状态
   mcpBackendPort = 0;
   mcpGraphFile = '';
 
-  // External hooks
+  // 外部钩子
   private _onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void;
   private _onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
 
@@ -97,7 +97,7 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Lifecycle
+  // 生命周期
   // -----------------------------------------------------------------------
 
   async init(projectRoot: string): Promise<InitResult> {
@@ -132,7 +132,7 @@ export class ModuleAgentSubsystem {
   async dispose(): Promise<void> {
     this.logger.info('ModuleAgentSubsystem: disposing');
     for (const [, entry] of this.agents) {
-      try { entry.launched.process.kill(); } catch { /* ignore */ }
+      try { entry.launched.process.kill(); } catch { /* 忽略 */ }
     }
     this.agents.clear();
     this.pendingStarts.clear();
@@ -141,7 +141,7 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Agent interaction
+  // Agent 交互
   // -----------------------------------------------------------------------
 
   async sendMessage(text: string, moduleName?: string): Promise<void> {
@@ -154,10 +154,10 @@ export class ModuleAgentSubsystem {
 
     if (dedupMessage(this.lastSent, finalTarget, finalText)) return;
 
-    // Per-module send mutex
+    // 按模块发送互斥锁
     const prevLock = this.sendLock.get(finalTarget);
     if (prevLock) {
-      try { await prevLock; } catch { /* proceed */ }
+      try { await prevLock; } catch { /* 继续 */ }
     }
     let resolveLock: () => void = () => {};
     const lockPromise = new Promise<void>(r => { resolveLock = r; });
@@ -212,7 +212,7 @@ export class ModuleAgentSubsystem {
       await entry.launched.connection.cancel({ sessionId: entry.sessionId });
       this.logger.info(`cancel [${this.currentModule}]`);
     } catch {
-      // ignore
+      // 忽略
     }
   }
 
@@ -226,14 +226,14 @@ export class ModuleAgentSubsystem {
     this.currentModule = name;
     this.logger.info(`switch agent → "${name}"`);
 
-    // Lazily start if not already running
+    // 若未运行则延迟启动
     if (!this.agents.has(name)) {
       await this.startAgent(name);
     }
   }
 
   // -----------------------------------------------------------------------
-  // Agent lifecycle (exposed for McpBackend)
+  // Agent 生命周期（为 McpBackend 暴露）
   // -----------------------------------------------------------------------
 
   async startAgent(moduleName: string): Promise<AgentEntry> {
@@ -258,7 +258,7 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Query
+  // 查询
   // -----------------------------------------------------------------------
 
   getCurrentAgent(): string {
@@ -278,7 +278,7 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Public helpers (for McpBackend integration)
+  // 公共辅助方法（供 McpBackend 集成）
   // -----------------------------------------------------------------------
 
   resolveAgentConfig(moduleName: string): AgentConfig {
@@ -312,7 +312,7 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Internal: start pipeline (merged from AgentOrchestrator)
+  // 内部：启动管道（从 AgentOrchestrator 合并）
   // -----------------------------------------------------------------------
 
   private async _startAgentInternal(moduleName: string): Promise<AgentEntry> {
@@ -347,7 +347,7 @@ export class ModuleAgentSubsystem {
 
       launched = await this.launcher.launch(agentConfig, moduleName, cwd, this.logger, { subModuleDirs });
 
-      // Wire session-update → CoreCallbacks + external listener
+      // 连接会话更新 → CoreCallbacks + 外部监听器
       const self = this;
       launched.onSessionUpdate = (name, sessionId, notification) => {
         const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
@@ -371,7 +371,7 @@ export class ModuleAgentSubsystem {
         }
       };
 
-      // Build MCP servers
+      // 构建 MCP 服务器
       const mcpServers = buildMcpServers({
         moduleName,
         basePath: this.basePath,
@@ -398,7 +398,7 @@ export class ModuleAgentSubsystem {
       return entry;
     } catch (err) {
       if (launched) {
-        try { launched.process.kill(); } catch { /* ignore */ }
+        try { launched.process.kill(); } catch { /* 忽略 */ }
       }
       this.logger.error(`startAgent [${moduleName}] failed: ${(err as Error).message}`);
       throw err;
@@ -406,11 +406,11 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Message routing (from AgentRouter)
+  // 消息路由（从 AgentRouter 而来）
   // -----------------------------------------------------------------------
 
   private _routeMessage(message: string): { targetName: string | null; prompt: string } {
-    // Keyword matching: @moduleName or 模块: name
+    // 关键词匹配：@moduleName 或 模块: name
     const keyword = this._extractModuleKeyword(message);
     if (keyword) {
       const target = this._findModule(keyword);
@@ -419,7 +419,7 @@ export class ModuleAgentSubsystem {
       }
     }
 
-    // File path matching
+    // 文件路径匹配
     const pathMatch = this._extractFilePath(message);
     if (pathMatch) {
       const target = this._findModuleByFile(pathMatch);
@@ -428,7 +428,7 @@ export class ModuleAgentSubsystem {
       }
     }
 
-    // Default: stay on current agent
+    // 默认：停留在当前 Agent
     return { targetName: null, prompt: message };
   }
 
@@ -468,7 +468,7 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Internal helpers
+  // 内部辅助方法
   // -----------------------------------------------------------------------
 
   private setStatus(status: CoreStatus): void {

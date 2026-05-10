@@ -110,8 +110,8 @@ export function executeCommand(input: string): void {
         const node = graph.nodes.get(nodeName);
         if (!node) return;
 
-        // Status indicator
-        let status = '◌'; // not started
+        // 状态标记
+        let status = '◌'; // 未启动
         if (nodeName === currentAgent) {
           if (currentStatus === 'streaming') status = '▶';
           else if (currentStatus === 'error') status = '✗';
@@ -120,18 +120,18 @@ export function executeCommand(input: string): void {
           status = '●'; // loaded
         }
 
-        // Description with truncation
+        // 描述（带截断）
         const desc = node.definition?.frontmatter?.description || '';
         const shortDesc = desc.length > 40 ? desc.slice(0, 40) + '…' : (desc || '(无描述)');
 
-        // Path
+        // 路径
         const path = node.relativePath || '.';
 
-        // Build line
+        // 构建行
         const connector = isRoot ? '' : (isLast ? '└── ' : '├── ');
         lines.push(`${prefix}${connector}${status} ${node.name} — ${shortDesc} [${path}]`);
 
-        // Children
+        // 子节点
         const children = node.children || [];
         const validChildren = children.filter((c: string) => graph.nodes.has(c) && !visited.has(c));
         const childPrefix = isRoot ? '' : (isLast ? '    ' : '│   ');
@@ -205,14 +205,14 @@ export function executeCommand(input: string): void {
       const service = getAgentService();
       const renderer = (globalThis as any).__tuiRenderer;
 
-      // Use a small delay so the message renders
+      // 延迟一小段时间让消息渲染
       setTimeout(async () => {
         try {
           if (service?.dispose) {
             await service.dispose();
           }
         } catch {
-          // ignore dispose errors during exit
+          // 忽略退出时的 dispose 错误
         }
         if (renderer?.destroy) {
           renderer.destroy();

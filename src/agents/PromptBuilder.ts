@@ -5,8 +5,8 @@ import type { ModuleGraph } from '../types/module.js';
 import { defaultLogger } from '../core/Logger.js';
 
 /**
- * Load system prompt files from config/ directory.
- * Returns empty strings (with warning) if files are missing.
+ * 从 config/ 目录加载系统提示文件。
+ * 如果文件缺失则返回空字符串（附带警告）。
  */
 export function loadSystemPrompts(configDir: string): { mainPrompt: string; subPrompt: string } {
   const mainPath = path.join(configDir, 'knowledge', 'mainagentprompt.md');
@@ -36,10 +36,10 @@ export function loadSystemPrompts(configDir: string): { mainPrompt: string; subP
 }
 
 /**
- * Build ContentBlock array for a module message.
- * On first message for a given moduleName, injects system prompt + module context
- * + modification patterns + recent experiences.
- * Key in sessionPrompted Set is moduleName.
+ * 为模块消息构建 ContentBlock 数组。
+ * 对于给定 moduleName 的首条消息，注入系统提示、模块上下文、
+ * 修改规范及近期经验。
+ * sessionPrompted 集合的键为 moduleName。
  */
 export function buildPromptBlocks(options: {
   moduleName: string;
@@ -55,28 +55,28 @@ export function buildPromptBlocks(options: {
   if (isFirst) {
     sessionPrompted.add(moduleName);
 
-    // System prompt
+    // 系统提示
     const systemPrompt = moduleName === graph?.root ? prompts.mainPrompt : prompts.subPrompt;
     if (systemPrompt) {
       blocks.push({ type: 'text', text: systemPrompt + '\n\n---\n\n' });
       defaultLogger.info(`[${moduleName}] system prompt: ${systemPrompt.slice(0, 120)}... (${systemPrompt.length} chars)`);
     }
 
-    // Module context (module.md body)
+    // 模块上下文（module.md 正文）
     const node = graph?.nodes.get(moduleName);
     if (node?.definition?.body) {
       blocks.push({ type: 'text', text: `# Module: ${moduleName}\n\n${node.definition.body}\n\n---\n\n` });
       defaultLogger.info(`[${moduleName}] module context: ${node.definition.body.slice(0, 120)}... (${node.definition.body.length} chars)`);
     }
 
-    // Modification patterns (patterns.md)
+    // 修改规范（patterns.md）
     const patternsBlock = loadPatternsBlock(node?.absolutePath);
     if (patternsBlock) {
       blocks.push({ type: 'text', text: patternsBlock });
       defaultLogger.info(`[${moduleName}] patterns injected (${patternsBlock.length} chars)`);
     }
 
-    // Recent experiences (experience.md, last 3 entries)
+    // 近期经验（experience.md，最近 3 条）
     const experienceBlock = loadExperienceBlock(node?.absolutePath);
     if (experienceBlock) {
       blocks.push({ type: 'text', text: experienceBlock });
@@ -88,7 +88,7 @@ export function buildPromptBlocks(options: {
   return blocks;
 }
 
-// ── Experience / Patterns injection ──
+// ── 经验 / 规范注入 ──
 
 function loadPatternsBlock(moduleDir: string | undefined): string | null {
   if (!moduleDir) return null;
@@ -108,9 +108,9 @@ function loadExperienceBlock(moduleDir: string | undefined): string | null {
   const experiencePath = path.join(moduleDir, 'experience.md');
   try {
     const content = fs.readFileSync(experiencePath, 'utf-8');
-    // Parse sections delimited by "## " headings; take the last 3
+    // 解析以 "## " 标题分隔的章节；取最后 3 条
     const sections = content.split(/\n(?=## )/);
-    // First "section" is the file title — skip it if it starts with "# "
+    // 第一个"章节"是文件标题——以 "# " 开头则跳过
     const entries = sections.filter(s => s.trim().startsWith('## '));
     if (entries.length === 0) return null;
     const recent = entries.slice(-3);
@@ -121,12 +121,12 @@ function loadExperienceBlock(moduleDir: string | undefined): string | null {
 }
 
 /**
- * Deduplicate agent messages by module name + text within a time window.
- * Returns `true` if the message is a duplicate and should be ignored,
- * `false` if it should be sent.
+ * 按模块名称 + 文本在时间窗口内去重 Agent 消息。
+ * 如果消息是重复的则应忽略，返回 `true`；
+ * 否则应发送，返回 `false`。
  *
- * On the first call (or when the message differs): updates lastSent and returns false.
- * On subsequent identical calls within windowMs: logs the dedup event and returns true.
+ * 首次调用（或消息不同时）：更新 lastSent 并返回 false。
+ * 后续在 windowMs 内相同调用：记录去重事件并返回 true。
  */
 export function dedupMessage(
   lastSent: Map<string, { text: string; time: number }>,
@@ -147,10 +147,10 @@ export function dedupMessage(
 }
 
 /**
- * Factory that returns an empty Set<string> for tracking which sessions
- * have already been prompted (keyed by moduleName).
+ * 工厂函数，返回一个空的 Set<string>，用于追踪哪些会话
+ * 已被提示过（键为 moduleName）。
  *
- * Used by both Electron and TUI paths to create independent tracking state.
+ * 由 Electron 和 TUI 路径分别调用，创建独立的追踪状态。
  */
 export function createSessionPrompted(): Set<string> {
   return new Set<string>();

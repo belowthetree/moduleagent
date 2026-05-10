@@ -37,14 +37,14 @@ export class ModuleScanner {
           await fs.writeFile(experiencePath, `# ${mod.name} — 经验记录\n\n`, 'utf-8');
           created++;
         }
-      } catch { /* ignore */ }
+      } catch { /* 忽略 */ }
 
       try {
         if (!await fs.pathExists(patternsPath)) {
           await fs.writeFile(patternsPath, `# ${mod.name} — 修改规范\n\n`, 'utf-8');
           created++;
         }
-      } catch { /* ignore */ }
+      } catch { /* 忽略 */ }
     }
     if (created > 0) {
       log.info(`ModuleScanner: initialized ${created} doc file(s) (experience.md / patterns.md)`);

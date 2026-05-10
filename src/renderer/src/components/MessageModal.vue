@@ -132,7 +132,7 @@ function toggleThinking() {
 </template>
 
 <style scoped>
-/* ── Dialog overrides ── */
+/* ── 对话框覆盖样式 ── */
 :deep(.el-dialog) {
   border-radius: 10px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
@@ -154,7 +154,7 @@ function toggleThinking() {
   padding: 20px;
 }
 
-/* ── Status Row ── */
+/* ── 状态行 ── */
 .modal-status-row {
   display: flex;
   align-items: center;
@@ -184,7 +184,7 @@ function toggleThinking() {
   font-weight: 600;
 }
 
-/* ── Info Grid ── */
+/* ── 信息网格 ── */
 .modal-info-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -210,7 +210,7 @@ function toggleThinking() {
   color: var(--el-text-color-primary);
 }
 
-/* ── Sections ── */
+/* ── 区块 ── */
 .modal-section {
   padding: 12px 0;
   border-bottom: 1px solid var(--el-border-color-lighter);
@@ -252,7 +252,7 @@ function toggleThinking() {
   border-color: var(--el-color-warning-light-8);
 }
 
-/* ── Thinking Toggle ── */
+/* ── 思考切换 ── */
 .modal-thinking-toggle {
   cursor: pointer;
   user-select: none;

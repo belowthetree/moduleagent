@@ -10,7 +10,7 @@ export default function InputBox(props: {
   const renderer = useRenderer();
   let inputEl: unknown = null;
 
-  // Auto re-focus input when focus moves elsewhere (safety net for programmatic focus changes)
+  // 焦点移开时自动重聚焦输入框（程序化焦点变化的安全网）
   createEffect(() => {
     const handler = (current: unknown) => {
       if (untrack(() => tuiState.agentStatus()) === "streaming") return;
@@ -22,7 +22,7 @@ export default function InputBox(props: {
     onCleanup(() => renderer.off("focused_renderable", handler));
   });
 
-  // Auto show/hide command palette only when input starts with "/"
+  // 仅在输入以 "/" 开头时自动显示/隐藏命令面板
   createEffect(() => {
     const val = tuiState.inputValue();
     defaultLogger.info(`[InputBox] createEffect value: ${val}`);
@@ -40,7 +40,7 @@ export default function InputBox(props: {
 
     const val = tuiState.inputValue();
 
-    // Enter: submit message or command
+    // 回车：提交消息或命令
     if (key.name === "return" || key.name === "enter") {
       if (val.startsWith("/")) {
         props.onCommand(val);
@@ -53,7 +53,7 @@ export default function InputBox(props: {
       return;
     }
 
-    // Backspace: manually update inputValue since OpenTUI's onChange may not fire
+    // 退格：手动更新 inputValue，因为 OpenTUI 的 onChange 可能不会触发
     if (key.name === "backspace") {
       const val = tuiState.inputValue();
       if (val.length > 0) {
@@ -64,7 +64,7 @@ export default function InputBox(props: {
       return;
     }
 
-    // Escape: dismiss command palette and clear input
+    // Escape：关闭命令面板并清空输入
     if (key.name === "escape") {
       tuiState.setShowCommands(false);
       tuiState.setInputValue("");
@@ -72,13 +72,13 @@ export default function InputBox(props: {
       return;
     }
 
-    // Tab: prevent literal tab insertion when command palette is showing
+    // Tab：命令面板显示时阻止插入字面 Tab
     if (key.name === "tab" && tuiState.showCommands()) {
       key.preventDefault();
       return;
     }
 
-    // Printable characters: manually append to inputValue since OpenTUI's onChange never fires
+    // 可打印字符：手动追加到 inputValue，因 OpenTUI 的 onChange 从不触发
     if (key.name.length === 1 && !key.ctrl) {
       const val = tuiState.inputValue();
       tuiState.setInputValue(val + key.name);

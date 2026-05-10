@@ -84,7 +84,7 @@ export function resolveCommand(command: string, args: string[]): { cmd: string; 
       }
     } catch {}
 
-    // Fallback: spawn via cmd.exe so .cmd is handled properly
+    // 回退：通过 cmd.exe 启动以确保 .cmd 被正确处理
     return { cmd: 'cmd.exe', resolvedArgs: ['/c', cmdPath, ...args], shell: false };
   }
 

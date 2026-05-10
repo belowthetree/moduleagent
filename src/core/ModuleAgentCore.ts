@@ -14,7 +14,7 @@ import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 
 // ---------------------------------------------------------------------------
-// ModuleAgentCore options
+// ModuleAgentCore 选项
 // ---------------------------------------------------------------------------
 
 export interface ModuleAgentCoreOptions {
@@ -31,7 +31,7 @@ export interface ModuleAgentCoreOptions {
 }
 
 // ---------------------------------------------------------------------------
-// ModuleAgentCore
+// ModuleAgentCore 核心类
 // ---------------------------------------------------------------------------
 
 export class ModuleAgentCore {
@@ -63,12 +63,12 @@ export class ModuleAgentCore {
     });
 
     if (options.enableRoles) {
-      // Role subsystem needs projectPath and workspaceRoot which are set at init time
+      // 角色子系统需要 init 时设置的 projectPath 和 workspaceRoot
     }
   }
 
   // -----------------------------------------------------------------------
-  // Lifecycle
+  // 生命周期
   // -----------------------------------------------------------------------
 
   async init(projectRoot: string): Promise<InitResult> {
@@ -116,7 +116,7 @@ export class ModuleAgentCore {
   }
 
   // -----------------------------------------------------------------------
-  // Agent interaction (convenience wrappers)
+  // Agent 交互（便捷包装）
   // -----------------------------------------------------------------------
 
   async sendMessage(text: string, moduleName?: string): Promise<void> {
@@ -134,7 +134,7 @@ export class ModuleAgentCore {
   }
 
   // -----------------------------------------------------------------------
-  // Query
+  // 查询
   // -----------------------------------------------------------------------
 
   getGraph(): ModuleGraphType | null {
@@ -165,7 +165,7 @@ export class ModuleAgentCore {
   }
 
   // -----------------------------------------------------------------------
-  // Internal
+  // 内部方法
   // -----------------------------------------------------------------------
 
   private _ensureInit(): void {

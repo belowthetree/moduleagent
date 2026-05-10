@@ -3,12 +3,12 @@ import { defineStore } from 'pinia'
 import type { KnowledgeEntry, KnowledgeListItem } from '../../../types/preload'
 
 export const useKnowledgeStore = defineStore('knowledge', () => {
-  // ── State ──
+  // ── 状态 ──
   const entries = ref<KnowledgeListItem[]>([])
   const selectedEntry = ref<KnowledgeListItem | null>(null)
   const selectedContent = ref<string>('')
 
-  // ── Actions ──
+  // ── 操作 ──
   async function fetchList(): Promise<void> {
     try {
       entries.value = await window.moduleAgent.knowledgeList()

@@ -14,17 +14,17 @@ export default function SetupWizard(props: SetupWizardProps) {
   const defaultConfig = getDefaultConfig();
   const existing = tuiState.setupData();
 
-  // Existing/default values for fallback and placeholders
+  // 回退和占位符的现有/默认值
   const fallbackCommand = existing.command || defaultConfig.agents.default.command;
   const fallbackArgs = existing.args || (defaultConfig.agents.default.args ?? []).join(" ");
   const fallbackProjectPath = existing.projectPath || tuiState.workingDir() || process.cwd();
 
-  // ── local editing state (start empty, user input is explicit) ─────
+  // ── 本地编辑状态（初始为空，用户输入需显式确认） ─────
   const [command, setCommand] = createSignal("");
   const [args, setArgs] = createSignal("");
   const [projectPath, setProjectPath] = createSignal("");
 
-  // ── keyboard navigation ─────────────────────────────────────────────
+  // ── 键盘导航 ─────────────────────────────────────────────
   useKeyboard((key: { name: string }) => {
     const step = tuiState.setupStep();
 
@@ -45,7 +45,7 @@ export default function SetupWizard(props: SetupWizardProps) {
     }
   });
 
-  // ── data persistence ────────────────────────────────────────────────
+  // ── 数据持久化 ────────────────────────────────────────────────
   function saveStepData(step: number): void {
     const data = { ...tuiState.setupData() };
     switch (step) {
@@ -81,7 +81,7 @@ export default function SetupWizard(props: SetupWizardProps) {
     props.onComplete();
   }
 
-  // ── derived ─────────────────────────────────────────────────────────
+  // ── 派生 ─────────────────────────────────────────────────────────
   const step = createMemo(() => tuiState.setupStep());
 
   const summaryText = createMemo((): string => {
@@ -97,10 +97,10 @@ export default function SetupWizard(props: SetupWizardProps) {
     return lines.join("\n");
   });
 
-  // ── render ──────────────────────────────────────────────────────────
+  // ── 渲染 ──────────────────────────────────────────────────────────
   return (
     <box flexDirection="column" padding={1} gap={1}>
-      {/* ── Step 0: Agent 配置 ──────────────────────────────────────── */}
+      {/* ── 步骤 0：Agent 配置 ──────────────────────────────────────── */}
       {step() === 0 && (
         <>
           <text>Agent 配置</text>
@@ -121,7 +121,7 @@ export default function SetupWizard(props: SetupWizardProps) {
         </>
       )}
 
-      {/* ── Step 1: 项目目录 ──────────────────────────────────────── */}
+      {/* ── 步骤 1：项目目录 ──────────────────────────────────────── */}
       {step() === 1 && (
         <>
           <text>项目目录</text>
@@ -137,7 +137,7 @@ export default function SetupWizard(props: SetupWizardProps) {
         </>
       )}
 
-      {/* ── Step 2: 确认设置 ───────────────────────────────────────── */}
+      {/* ── 步骤 2：确认设置 ───────────────────────────────────────── */}
       {step() === 2 && (
         <>
           <text>确认设置</text>

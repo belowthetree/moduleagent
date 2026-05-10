@@ -8,8 +8,8 @@
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { useTheme } from './composables/useTheme'
 
-// Trigger theme side effects — applyTheme() runs on module load,
-// setting document.documentElement class from localStorage 'theme'
+// 触发主题副作用——applyTheme() 在模块加载时运行，
+// 从 localStorage 'theme' 设置 document.documentElement 类
 useTheme()
 </script>
 

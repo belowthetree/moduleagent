@@ -20,8 +20,8 @@ export class ModuleGenerator {
       throw new Error(`Directory does not exist: ${dirPath}`);
     }
 
-    // Use relative path from project root as module name for uniqueness.
-    // Falls back to basename for the root module (where relative path is "").
+    // 使用相对于项目根目录的路径作为模块名以确保唯一性。
+    // 对于根模块（相对路径为空）使用 basename。
     const relativePath = path.relative(projectRoot, dirPath);
     const moduleName = relativePath || path.basename(projectRoot);
     const description = await ModuleGenerator.inferDescription(dirPath);
