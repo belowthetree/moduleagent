@@ -324,13 +324,20 @@ export class ModuleAgentSubsystem {
 
       const workspaceRoot = path.join(this.projectRoot, '.module-agent', 'workspace');
       let cwd: string;
-      if (node && node.relativePath !== '.' && this.config?.projectPath) {
-        await prepareModuleWorkspace(node, {
-          workspaceRoot,
-          projectPath: this.config.projectPath,
-          graph: this.graph,
-        });
-        cwd = workspacePathForModule(node, workspaceRoot, this.projectRoot);
+      this.logger.info(`_startAgentInternal ${node?.relativePath} this.config?.projectPath`);
+      if (node && this.config?.projectPath) {
+        if (node.relativePath === '.') {
+          // 根模块: cwd 放在 .module-agent/module/，不拷贝
+          cwd = path.join(this.projectRoot, '.module-agent', 'module');
+        } else {
+          // 非根模块: workspace 隔离拷贝
+          await prepareModuleWorkspace(node, {
+            workspaceRoot,
+            projectPath: this.config.projectPath,
+            graph: this.graph,
+          });
+          cwd = workspacePathForModule(node, workspaceRoot, this.projectRoot);
+        }
       } else {
         cwd = node?.absolutePath || this.projectRoot;
       }

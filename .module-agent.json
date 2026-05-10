@@ -1,7 +1,6 @@
 {
   "configs": [
     {
-      "name": "default",
       "agents": {
         "default": {
           "command": "opencode",
@@ -11,7 +10,11 @@
         }
       },
       "exclude": [],
-      "projectPath": "E:\\Project\\ModuleAgent"
+      "projectPath": "E:\\Project\\ModuleAgent",
+      "name": "default",
+      "summarization": {
+        "enabled": true
+      }
     }
   ],
   "defaultConfig": "default",

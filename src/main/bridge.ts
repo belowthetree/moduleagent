@@ -29,7 +29,7 @@ import {
 } from '../agents/WorkspaceIsolator.js';
 import { getPromptConfigDir, ensureConfigFiles, getUserConfigRoot, configExplorer } from '../core/ConfigPaths.js';
 import type { ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../types/module.js';
-import type { ChatMsg } from '../types/preload.js';
+import type { ChatMsg, TreeNode } from '../types/preload.js';
 import type { CoreCallbacks } from '../core/CoreTypes.js';
 
 // ---------------------------------------------------------------------------
@@ -352,7 +352,23 @@ export class ElectronBridge {
     ipcMain.handle('project:getTree', () => {
       const graph = self.core.getGraph();
       if (!graph) return null;
-      function buildTree(node: ModuleGraphNode): Record<string, unknown> {
+
+      const projectRoot = self.core.getProjectRoot();
+      const config = self.core.modules.getConfig();
+      const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
+
+      function buildTree(node: ModuleGraphNode): TreeNode {
+        let cwd: string;
+        if (config?.projectPath) {
+          if (node.relativePath === '.') {
+            cwd = path.join(projectRoot, '.module-agent', 'module');
+          } else {
+            cwd = workspacePathForModule(node, workspaceRoot, projectRoot);
+          }
+        } else {
+          cwd = node.absolutePath || projectRoot;
+        }
+
         return {
           name: node.name,
           path: node.relativePath,
@@ -361,6 +377,7 @@ export class ElectronBridge {
             .map(c => graph!.nodes.get(c))
             .filter(Boolean)
             .map(c => buildTree(c!)),
+          cwd,
         };
       }
       const rootNode = graph.nodes.get(graph.root);
@@ -404,14 +421,14 @@ export class ElectronBridge {
 
         const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
         let cwd: string;
-        if (rootNode.relativePath !== '.') {
+        if (rootNode.relativePath === '.') {
+          cwd = path.join(projectRoot, '.module-agent', 'module');
+        } else {
           cwd = await prepareModuleWorkspace(rootNode, {
             workspaceRoot,
             projectPath: config.projectPath,
             graph,
           });
-        } else {
-          cwd = rootNode.absolutePath;
         }
 
         const subModuleDirs = getSubModuleDirs(rootNode, graph, (n) =>

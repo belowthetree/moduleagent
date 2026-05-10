@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import type { TreeNode } from '../../../types/preload'
-import { useConfigStore } from '../stores/config'
 import { useAgentStore } from '../stores/agent'
 import ContextCards from './ContextCards.vue'
 import ChatInput from './ChatInput.vue'
@@ -14,15 +13,9 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const configStore = useConfigStore()
 const agentStore = useAgentStore()
 
-const agentCwd = computed(() => {
-  if (!props.node) return ''
-  if (props.node.path === '.') return configStore.projectPath
-  const base = configStore.projectPath
-  return base + '/' + props.node.path.replace(/^\.\//, '')
-})
+const agentCwd = computed(() => props.node?.cwd ?? '')
 
 async function handleClearContext(): Promise<void> {
   if (!props.node) return

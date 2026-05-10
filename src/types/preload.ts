@@ -10,6 +10,7 @@ export interface TreeNode {
   path: string;
   description: string;
   children: TreeNode[];
+  cwd: string;
 }
 
 export interface ScanResult {

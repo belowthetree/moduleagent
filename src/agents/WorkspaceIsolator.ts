@@ -99,13 +99,22 @@ export async function prepareModuleWorkspace(
 
   if (path.resolve(srcDir) === path.resolve(destDir)) return destDir;
 
-  // 收集子模块相对路径以便从根模块拷贝中排除
+  // 收集子模块相对路径以便从父模块拷贝中排除
   const subModulePaths = new Set<string>();
-  if (node.relativePath === '.') {
-    for (const childName of node.children) {
-      const child = options.graph?.nodes.get(childName);
-      if (child?.relativePath) {
+  for (const childName of node.children) {
+    const child = options.graph?.nodes.get(childName);
+    if (child?.relativePath) {
+      if (node.relativePath === '.') {
+        // 根模块: 子模块路径已是相对于项目根目录
         subModulePaths.add(child.relativePath);
+      } else {
+        // 非根模块: 子模块路径需要去掉父模块路径前缀，使之相对于父模块源目录
+        const prefix = node.relativePath + '/';
+        if (child.relativePath.startsWith(prefix)) {
+          subModulePaths.add(child.relativePath.slice(prefix.length));
+        } else {
+          subModulePaths.add(child.relativePath);
+        }
       }
     }
   }
