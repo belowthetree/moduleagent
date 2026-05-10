@@ -37,7 +37,8 @@ export function loadSystemPrompts(configDir: string): { mainPrompt: string; subP
 
 /**
  * Build ContentBlock array for a module message.
- * On first message for a given moduleName, injects system prompt + module context.
+ * On first message for a given moduleName, injects system prompt + module context
+ * + modification patterns + recent experiences.
  * Key in sessionPrompted Set is moduleName.
  */
 export function buildPromptBlocks(options: {
@@ -67,10 +68,56 @@ export function buildPromptBlocks(options: {
       blocks.push({ type: 'text', text: `# Module: ${moduleName}\n\n${node.definition.body}\n\n---\n\n` });
       defaultLogger.info(`[${moduleName}] module context: ${node.definition.body.slice(0, 120)}... (${node.definition.body.length} chars)`);
     }
+
+    // Modification patterns (patterns.md)
+    const patternsBlock = loadPatternsBlock(node?.absolutePath);
+    if (patternsBlock) {
+      blocks.push({ type: 'text', text: patternsBlock });
+      defaultLogger.info(`[${moduleName}] patterns injected (${patternsBlock.length} chars)`);
+    }
+
+    // Recent experiences (experience.md, last 3 entries)
+    const experienceBlock = loadExperienceBlock(node?.absolutePath);
+    if (experienceBlock) {
+      blocks.push({ type: 'text', text: experienceBlock });
+      defaultLogger.info(`[${moduleName}] experience injected (${experienceBlock.length} chars)`);
+    }
   }
 
   blocks.push({ type: 'text', text: userText });
   return blocks;
+}
+
+// ── Experience / Patterns injection ──
+
+function loadPatternsBlock(moduleDir: string | undefined): string | null {
+  if (!moduleDir) return null;
+  const patternsPath = path.join(moduleDir, 'patterns.md');
+  try {
+    const content = fs.readFileSync(patternsPath, 'utf-8');
+    const bodyLines = content.split('\n').filter(l => l.trim() && !l.startsWith('# '));
+    if (bodyLines.length === 0) return null;
+    return `# 模块修改规范\n\n${content}\n\n---\n\n`;
+  } catch {
+    return null;
+  }
+}
+
+function loadExperienceBlock(moduleDir: string | undefined): string | null {
+  if (!moduleDir) return null;
+  const experiencePath = path.join(moduleDir, 'experience.md');
+  try {
+    const content = fs.readFileSync(experiencePath, 'utf-8');
+    // Parse sections delimited by "## " headings; take the last 3
+    const sections = content.split(/\n(?=## )/);
+    // First "section" is the file title — skip it if it starts with "# "
+    const entries = sections.filter(s => s.trim().startsWith('## '));
+    if (entries.length === 0) return null;
+    const recent = entries.slice(-3);
+    return `# 近期经验\n\n${recent.join('\n')}\n\n---\n\n`;
+  } catch {
+    return null;
+  }
 }
 
 /**

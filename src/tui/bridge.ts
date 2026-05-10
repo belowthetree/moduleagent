@@ -2,9 +2,11 @@ import path from 'path';
 import fs from 'fs-extra';
 import { ModuleAgentCore } from '../core/ModuleAgentCore.js';
 import { defaultLogger } from '../core/Logger.js';
+import { ExperienceSummarizer } from '../core/ExperienceSummarizer.js';
 import type { AgentStatus, ChatMessage } from './types.js';
 import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from '../core/CoreTypes.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
+import type { ChatMsg } from '../types/preload.js';
 import { tuiState } from './state.js';
 
 function findRepoRoot(): string {
@@ -22,8 +24,13 @@ export class TuiBridge {
   core: ModuleAgentCore;
   private status: AgentStatus = 'idle';
   private loadedModules = new Set<string>();
+  private summarizer: ExperienceSummarizer;
+  private configDir: string;
 
   constructor() {
+    this.summarizer = new ExperienceSummarizer(defaultLogger);
+    this.configDir = path.join(findRepoRoot(), 'config');
+
     const callbacks: CoreCallbacks = {
       onStreamChunk: (_moduleName, text) => {
         const msgs = tuiState.messages();
@@ -121,6 +128,33 @@ export class TuiBridge {
       }
 
       await this.core.sendMessage(text);
+
+      // Fire-and-forget experience summarization
+      const projectRoot = this.core.getProjectRoot();
+      if (projectRoot && targetName) {
+        defaultLogger.info(`Triggering summarizer for [${targetName}]`);
+        const msgs = tuiState.messages();
+        const chatMsgs: ChatMsg[] = msgs.map(m => ({
+          id: m.id,
+          role: (m.role === 'agent' ? 'agent' : m.role === 'user' ? 'user' : 'system') as ChatMsg['role'],
+          content: m.content || '',
+          thinking: '',
+          tools: '',
+          time: m.time || '',
+          status: 'completed',
+          moduleName: targetName || '',
+          agentCmd: '',
+        }));
+        this.summarizer.summarize({
+          moduleName: targetName,
+          chatMsgs,
+          projectRoot,
+          configDir: this.configDir,
+          agentConfig: { command: 'opencode', args: ['acp'] },
+        }).catch(err => {
+          defaultLogger.warn(`Summarizer error [${targetName}]: ${(err as Error).message}`);
+        });
+      }
     } catch (err) {
       const msg: ChatMessage = {
         id: `err-${Date.now()}`,

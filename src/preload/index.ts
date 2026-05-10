@@ -40,11 +40,11 @@ const api: ModuleAgentApi = {
   },
 
   // Config APIs
-  saveAgentConfig: (projectRoot: string, cmd: string, args: string[], projectPath?: string) =>
-    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args, projectPath }) as Promise<{ success: boolean }>,
+  saveAgentConfig: (projectRoot: string, cmd: string, args: string[], projectPath?: string, summarizationEnabled?: boolean) =>
+    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args, projectPath, summarizationEnabled }) as Promise<{ success: boolean }>,
 
   getAgentConfig: (projectRoot: string) =>
-    ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; projectPath?: string }>,
+    ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; projectPath?: string; summarizationEnabled?: boolean }>,
 
   // Migration APIs
   migrateCheck: (keys: string[]) => ipcRenderer.invoke('migrate:check', keys) as Promise<{ needed: string[]; streamNeeded: boolean }>,

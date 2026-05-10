@@ -1,7 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import type { ModuleGraph as ModuleGraphType } from '../../types/module.js';
 import { CommunicationBus } from './CommunicationBus.js';
 
 export interface MCPServerOptions {
@@ -131,11 +130,50 @@ export class MCPServer {
       },
     );
 
+    this.server.registerTool(
+      'module_doc_update',
+      {
+        description:
+          '更新当前模块的 module.md 文件。在修改代码后必须调用此工具同步更新模块文档，包括 API 变更、新增依赖、职责变化等。传入完整的 Markdown 内容（含 YAML frontmatter），将完整替换现有 module.md。',
+        inputSchema: z.object({
+          content: z.string().describe('完整的 Markdown 内容，包含 YAML frontmatter（以 --- 开头）。将完整替换现有 module.md。'),
+        }),
+      },
+      async (args) => {
+        console.error(`[MCPServer] module_doc_update [${this.moduleName}] invoked (${args.content.length} chars)`);
+        const result = await this.bus.updateModuleDoc(this.moduleName, args.content);
+        return {
+          content: [{ type: 'text', text: result.success ? `模块文档已更新: ${result.message}` : `更新失败: ${result.message}` }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'module_doc_record',
+      {
+        description:
+          '记录任务经验或修改规范到模块文档。经验会追加到 experience.md，修改规范会追加到 patterns.md（如同名规范已存在则替换旧内容）。',
+        inputSchema: z.object({
+          type: z.enum(['experience', 'pattern']).describe('记录类型：experience=任务经验，pattern=修改规范'),
+          title: z.string().describe('标题，简要概括记录内容'),
+          body: z.string().describe('正文（Markdown 格式）。对 pattern 类型，应包含：触发条件、必须同时修改的内容、原因说明。'),
+          tags: z.array(z.string()).optional().describe('标签列表，用于后续搜索匹配相关经验'),
+        }),
+      },
+      async (args) => {
+        console.error(`[MCPServer] module_doc_record [${this.moduleName}] type=${args.type} title="${args.title}"`);
+        const result = await this.bus.recordToModuleDoc(this.moduleName, args.type, args.title, args.body, args.tags);
+        return {
+          content: [{ type: 'text', text: result.success ? `已记录: ${result.message}` : `记录失败: ${result.message}` }],
+        };
+      },
+    );
+
   }
 
   async start(): Promise<void> {
     const transport = new StdioServerTransport();
-    console.error('[MCPServer] Starting with tools: module_list, module_call, module_query, create_module');
+    console.error('[MCPServer] Starting with tools: module_list, module_call, module_query, create_module, module_doc_update, module_doc_record');
     await this.server.connect(transport);
     console.error('[MCPServer] Connected to stdio transport');
   }

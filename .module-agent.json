@@ -1,2 +1,39 @@
 {
+  "configs": [
+    {
+      "name": "default",
+      "agents": {
+        "default": {
+          "command": "opencode",
+          "args": [
+            "acp"
+          ]
+        }
+      },
+      "exclude": [],
+      "projectPath": "E:\\Project\\ModuleAgent"
+    }
+  ],
+  "defaultConfig": "default",
+  "roles": [
+    {
+      "name": "模块生成角色",
+      "description": "负责根据项目需求生成新模块，识别代码边界并创建模块定义。对项目所有模块具有可见性，能够分析现有模块结构并生成符合项目规范的新模块。",
+      "visibleModulePaths": [],
+      "agents": {
+        "default": {
+          "command": "opencode",
+          "args": [
+            "acp"
+          ]
+        }
+      },
+      "knowledgeRefs": [
+        {
+          "filename": "MODULE_FORMAT.md",
+          "name": "Module.md 文件规范"
+        }
+      ]
+    }
+  ]
 }

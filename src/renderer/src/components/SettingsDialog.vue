@@ -111,6 +111,12 @@ function onCancel(): void {
         </el-input>
       </el-form-item>
 
+      <!-- Auto Documentation Toggle -->
+      <el-form-item label="自动文档更新">
+        <p class="field-hint">任务完成后自动评估并更新模块文档（module.md）、任务经验和修改规范</p>
+        <el-switch v-model="configStore.autoDocUpdate" />
+      </el-form-item>
+
     </el-form>
 
     <!-- Footer -->

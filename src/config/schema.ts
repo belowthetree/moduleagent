@@ -13,6 +13,9 @@ export const ProjectConfigSchema = z.object({
   }),
   exclude: z.array(z.string()),
   projectPath: z.string(),
+  summarization: z.object({
+    enabled: z.boolean(),
+  }).optional(),
 });
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

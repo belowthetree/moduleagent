@@ -21,8 +21,34 @@ export class ModuleScanner {
     log.info(`ModuleScanner: scanning ${projectRoot}`);
     const modules: ModuleDescriptor[] = [];
     await ModuleScanner.scanDir(projectRoot, projectRoot, extraExclude, modules);
+    await ModuleScanner.ensureDocFiles(modules);
     log.info(`ModuleScanner: found ${modules.length} modules in ${projectRoot}`);
     return modules;
+  }
+
+  private static async ensureDocFiles(modules: ModuleDescriptor[]): Promise<void> {
+    let created = 0;
+    for (const mod of modules) {
+      const experiencePath = path.join(mod.rootPath, 'experience.md');
+      const patternsPath = path.join(mod.rootPath, 'patterns.md');
+
+      try {
+        if (!await fs.pathExists(experiencePath)) {
+          await fs.writeFile(experiencePath, `# ${mod.name} — 经验记录\n\n`, 'utf-8');
+          created++;
+        }
+      } catch { /* ignore */ }
+
+      try {
+        if (!await fs.pathExists(patternsPath)) {
+          await fs.writeFile(patternsPath, `# ${mod.name} — 修改规范\n\n`, 'utf-8');
+          created++;
+        }
+      } catch { /* ignore */ }
+    }
+    if (created > 0) {
+      log.info(`ModuleScanner: initialized ${created} doc file(s) (experience.md / patterns.md)`);
+    }
   }
 
   private static async scanDir(

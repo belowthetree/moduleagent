@@ -186,8 +186,10 @@ export class CommunicationBus {
 
     try {
       await fs.writeFile(path.join(targetDir, 'module.md'), moduleMdContent, 'utf-8');
+      await fs.writeFile(path.join(targetDir, 'experience.md'), `# ${name} — 经验记录\n\n`, 'utf-8');
+      await fs.writeFile(path.join(targetDir, 'patterns.md'), `# ${name} — 修改规范\n\n`, 'utf-8');
     } catch (err) {
-      return { success: false, message: `Failed to write module.md: ${(err as Error).message}` };
+      return { success: false, message: `Failed to write module docs: ${(err as Error).message}` };
     }
 
     const newNode: ModuleGraphNode = {
@@ -245,5 +247,87 @@ export class CommunicationBus {
       JSON.stringify({ root: this.moduleGraph.root, nodes: nodesObj }, null, 2),
       'utf-8',
     );
+  }
+
+  // ── Module doc operations ──
+
+  async updateModuleDoc(moduleName: string, content: string): Promise<{ success: boolean; message: string }> {
+    if (!this.moduleGraph) return { success: false, message: 'Module graph not initialized' };
+    const node = this.moduleGraph.nodes.get(moduleName);
+    if (!node) return { success: false, message: `Module not found: ${moduleName}` };
+
+    const filePath = path.join(node.absolutePath, 'module.md');
+    console.error(`[CommunicationBus] module_doc_update [${moduleName}] → ${filePath} (${content.length} chars)`);
+    try {
+      await fs.writeFile(filePath, content, 'utf-8');
+      console.error(`[CommunicationBus] module_doc_update [${moduleName}] done`);
+      return { success: true, message: `module.md updated for "${moduleName}"` };
+    } catch (err) {
+      console.error(`[CommunicationBus] module_doc_update [${moduleName}] FAILED: ${(err as Error).message}`);
+      return { success: false, message: `Failed to write module.md: ${(err as Error).message}` };
+    }
+  }
+
+  async recordToModuleDoc(
+    moduleName: string,
+    type: 'experience' | 'pattern',
+    title: string,
+    body: string,
+    tags?: string[],
+  ): Promise<{ success: boolean; message: string }> {
+    if (!this.moduleGraph) return { success: false, message: 'Module graph not initialized' };
+    const node = this.moduleGraph.nodes.get(moduleName);
+    if (!node) return { success: false, message: `Module not found: ${moduleName}` };
+
+    const fileName = type === 'experience' ? 'experience.md' : 'patterns.md';
+    const filePath = path.join(node.absolutePath, fileName);
+
+    try {
+      await fs.ensureDir(node.absolutePath);
+    } catch {
+      // directory exists
+    }
+
+    if (type === 'experience') {
+      const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const tagsLine = tags && tags.length > 0 ? `\n标签: ${tags.join(', ')}` : '';
+      const entry = `\n## ${timestamp} — ${title}\n${tagsLine}\n${body}\n`;
+      console.error(`[CommunicationBus] module_doc_record experience [${moduleName}] title="${title}" → ${filePath}`);
+      try {
+        await fs.appendFile(filePath, entry, 'utf-8');
+      } catch {
+        await fs.writeFile(filePath, entry, 'utf-8');
+      }
+      console.error(`[CommunicationBus] module_doc_record experience [${moduleName}] done`);
+      return { success: true, message: `经验已记录到 ${fileName}` };
+    } else {
+      console.error(`[CommunicationBus] module_doc_record pattern [${moduleName}] title="${title}" → ${filePath}`);
+      await this._appendOrReplaceSection(filePath, title, body);
+      console.error(`[CommunicationBus] module_doc_record pattern [${moduleName}] done`);
+      return { success: true, message: `规范已记录到 ${fileName}` };
+    }
+  }
+
+  private async _appendOrReplaceSection(filePath: string, title: string, content: string): Promise<void> {
+    let existing = '';
+    try { existing = await fs.readFile(filePath, 'utf-8'); } catch { /* file may not exist */ }
+
+    const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sectionRegex = new RegExp(`(^|\\n)## ${escapedTitle}\\n[^#]*?(?=\\n## |\\n*$)`, 's');
+
+    if (sectionRegex.test(existing)) {
+      const newSection = `\n## ${title}\n\n${content}\n`;
+      existing = existing.replace(sectionRegex, (_match, prefix) => {
+        return (prefix || '') + newSection.trimEnd();
+      });
+      await fs.writeFile(filePath, existing, 'utf-8');
+    } else {
+      const entry = existing ? `\n## ${title}\n\n${content}\n` : `## ${title}\n\n${content}\n`;
+      try {
+        await fs.appendFile(filePath, entry, 'utf-8');
+      } catch {
+        await fs.writeFile(filePath, entry, 'utf-8');
+      }
+    }
   }
 }

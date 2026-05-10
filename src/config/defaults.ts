@@ -11,6 +11,9 @@ export interface ProjectConfig {
   };
   exclude: string[];
   projectPath: string;
+  summarization?: {
+    enabled: boolean;
+  };
 }
 
 export interface ConfigEntry extends ProjectConfig {

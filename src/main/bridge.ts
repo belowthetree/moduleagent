@@ -8,6 +8,7 @@ import { DEFAULT_CONFIG, DEFAULT_MODULE_GEN_ROLE, type RoleConfig } from '../con
 import { defaultLogger, type Logger } from '../core/Logger.js';
 import { AgentStateManager } from '../agents/AgentStateManager.js';
 import { McpBackendServer } from '../agents/McpBackend.js';
+import { ExperienceSummarizer } from '../core/ExperienceSummarizer.js';
 import { cleanupRoleWorkspace } from '../agents/RoleWorkspace.js';
 import { ModuleScanner } from '../core/ModuleScanner.js';
 import { ModuleGraph } from '../core/ModuleGraph.js';
@@ -40,6 +41,8 @@ export class ElectronBridge {
   private core: ModuleAgentCore;
   private stateManager: AgentStateManager | null = null;
   private mcpBackend: McpBackendServer | null = null;
+  private summarizer: ExperienceSummarizer;
+  private summarizationEnabled = true;
   private logger: Logger;
   private configDir: string;
 
@@ -53,6 +56,7 @@ export class ElectronBridge {
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
     this.logger = defaultLogger;
+    this.summarizer = new ExperienceSummarizer(this.logger);
 
     const basePath = this._getBasePath();
     this.configDir = getPromptConfigDir(basePath);
@@ -200,6 +204,7 @@ export class ElectronBridge {
         }
 
         const config = ConfigLoader.getDefaultConfig(workspaceConfig);
+        self.summarizationEnabled = config.summarization?.enabled ?? true;
         const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
 
         // Load prompts from resolved config dir
@@ -560,6 +565,21 @@ DO NOT overwrite existing module.md files.`,
         existingMsgs.push(userMsg, agentMsg);
         await self.stateManager?.saveContext(moduleName, existingMsgs);
 
+        // Fire-and-forget experience summarization
+        const projectRoot = self.core.getProjectRoot();
+        if (projectRoot && self.summarizationEnabled) {
+          self.logger.info(`Triggering summarizer for [${moduleName}]`);
+          self.summarizer.summarize({
+            moduleName,
+            chatMsgs: existingMsgs,
+            projectRoot,
+            configDir: self.configDir,
+            agentConfig: { command: entry.config.command, args: entry.config.args },
+          }).catch(err => {
+            self.logger.warn(`Summarizer error [${moduleName}]: ${(err as Error).message}`);
+          });
+        }
+
         self.agentStatus.set(moduleName, 'idle');
         self.mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'idle' });
 
@@ -637,7 +657,7 @@ DO NOT overwrite existing module.md files.`,
   }
 
   private _registerConfigHandlers(): void {
-    ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; projectPath?: string }) => {
+    ipcMain.handle('config:save', async (_event, projectRoot: string, updates: { command?: string; args?: string[]; projectPath?: string; summarizationEnabled?: boolean }) => {
       const configPath = path.join(projectRoot, '.module-agent.json');
       let workspaceConfig;
       try {
@@ -649,6 +669,10 @@ DO NOT overwrite existing module.md files.`,
       if (updates.command) config.agents.default.command = updates.command;
       if (updates.args) config.agents.default.args = updates.args;
       if (updates.projectPath !== undefined) config.projectPath = updates.projectPath;
+      if (updates.summarizationEnabled !== undefined) {
+        config.summarization = { enabled: updates.summarizationEnabled };
+        this.summarizationEnabled = updates.summarizationEnabled;
+      }
       await fs.promises.writeFile(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
       this.logger.info(`config:save wrote to ${configPath}`);
       return { success: true };
@@ -662,12 +686,14 @@ DO NOT overwrite existing module.md files.`,
           command: config.agents.default.command,
           args: config.agents.default.args || [],
           projectPath: config.projectPath,
+          summarizationEnabled: config.summarization?.enabled ?? true,
         };
       } catch {
         return {
           command: DEFAULT_CONFIG.agents.default.command,
           args: DEFAULT_CONFIG.agents.default.args || [],
           projectPath: DEFAULT_CONFIG.projectPath,
+          summarizationEnabled: true,
         };
       }
     });

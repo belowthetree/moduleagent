@@ -136,12 +136,14 @@ export interface ModuleAgentApi {
     cmd: string,
     args: string[],
     projectPath?: string,
+    summarizationEnabled?: boolean,
   ): Promise<{ success: boolean }>;
 
   getAgentConfig(projectRoot: string): Promise<{
     command: string;
     args: string[];
     projectPath?: string;
+    summarizationEnabled?: boolean;
   }>;
 
   migrateCheck(keys: string[]): Promise<{ needed: string[]; streamNeeded: boolean }>;
