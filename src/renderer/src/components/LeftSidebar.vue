@@ -11,6 +11,7 @@ const tabs = [
   { id: 'tree', label: '节点树', icon: '🌳' },
   { id: 'roles', label: '角色 Agent', icon: '👤' },
   { id: 'knowledge', label: '知识', icon: '📚' },
+  { id: 'workflow', label: '工作流', icon: '⚡' },
 ]
 </script>
 

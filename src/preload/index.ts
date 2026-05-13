@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem } from '../types/preload.js';
+import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus } from '../types/preload.js';
 
 const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke('dialog:selectDir', title) as Promise<string | null>,
@@ -40,8 +40,8 @@ const api: ModuleAgentApi = {
   },
 
   // 配置 API
-  saveAgentConfig: (projectRoot: string, cmd: string, args: string[], projectPath?: string, summarizationEnabled?: boolean) =>
-    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args, projectPath, summarizationEnabled }) as Promise<{ success: boolean }>,
+  saveAgentConfig: (projectRoot: string, cmd: string, args: string[], projectPath?: string, summarizationEnabled?: boolean, fastModel?: string, normalModel?: string, autoSwitchModel?: boolean) =>
+    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args, projectPath, summarizationEnabled, fastModel, normalModel, autoSwitchModel }) as Promise<{ success: boolean }>,
 
   getAgentConfig: (projectRoot: string) =>
     ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; projectPath?: string; summarizationEnabled?: boolean }>,
@@ -122,6 +122,37 @@ const api: ModuleAgentApi = {
 
   knowledgeDelete: (filename: string) =>
     ipcRenderer.invoke('knowledge:delete', filename) as Promise<{ success: boolean }>,
+
+  // ── 工作流 API ──
+  workflowList: () =>
+    ipcRenderer.invoke('workflow:list') as Promise<WorkflowListItem[]>,
+
+  workflowLoad: (name: string) =>
+    ipcRenderer.invoke('workflow:load', name) as Promise<WorkflowDetail | { error: string }>,
+
+  workflowCreate: (name: string) =>
+    ipcRenderer.invoke('workflow:create', name) as Promise<{ success: boolean; error?: string }>,
+
+  workflowDelete: (name: string) =>
+    ipcRenderer.invoke('workflow:delete', name) as Promise<{ success: boolean }>,
+
+  workflowStepSave: (wfName: string, stepName: string, content: string) =>
+    ipcRenderer.invoke('workflow:stepSave', wfName, stepName, content) as Promise<{ success: boolean }>,
+
+  workflowStepDelete: (wfName: string, stepName: string) =>
+    ipcRenderer.invoke('workflow:stepDelete', wfName, stepName) as Promise<{ success: boolean }>,
+
+  workflowStepAdd: (wfName: string) =>
+    ipcRenderer.invoke('workflow:stepAdd', wfName) as Promise<{ success: boolean; stepName?: string; error?: string }>,
+
+  workflowExecute: (name: string, userInput?: string) =>
+    ipcRenderer.invoke('workflow:execute', name, userInput) as Promise<{ success: boolean; results?: WorkflowStepResultItem[]; error?: string }>,
+
+  workflowCancel: (name: string) =>
+    ipcRenderer.invoke('workflow:cancel', name) as Promise<void>,
+
+  workflowStatus: (name: string) =>
+    ipcRenderer.invoke('workflow:status', name) as Promise<WorkflowStatus | null>,
 };
 
 contextBridge.exposeInMainWorld('moduleAgent', api);

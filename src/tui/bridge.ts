@@ -209,6 +209,29 @@ export class TuiBridge {
   }
 
   // -----------------------------------------------------------------------
+  // 工作流
+  // -----------------------------------------------------------------------
+
+  initWorkflows(projectPath: string, workspaceRoot: string): void {
+    this.core.initWorkflows(projectPath, workspaceRoot);
+  }
+
+  listWorkflows(): string[] {
+    if (!this.core.workflows) return [];
+    return this.core.workflows.listWorkflows();
+  }
+
+  async executeWorkflow(name: string, userInput?: string): Promise<void> {
+    if (!this.core.workflows) throw new Error('Workflow subsystem not initialized');
+    await this.core.workflows.executeWorkflow(name, userInput);
+  }
+
+  async cancelWorkflow(name: string): Promise<void> {
+    if (!this.core.workflows) return;
+    await this.core.workflows.cancel(name);
+  }
+
+  // -----------------------------------------------------------------------
   // 内部方法
   // -----------------------------------------------------------------------
 

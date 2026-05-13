@@ -3,6 +3,9 @@ import { z } from 'zod';
 export const AgentConfigSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).optional(),
+  fastModel: z.string().optional(),
+  normalModel: z.string().optional(),
+  autoSwitchModel: z.boolean().optional(),
 });
 
 // 单条项目配置（无名称）
@@ -59,3 +62,42 @@ export const WorkspaceConfigSchema = z.object({
 });
 
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
+
+// ---------------------------------------------------------------------------
+// Workflow step schemas
+// ---------------------------------------------------------------------------
+
+export const StepAgentConfigSchema = z.object({
+  command: z.string().optional(),
+  args: z.array(z.string()).optional(),
+  visibleModulePaths: z.array(z.string()).optional(),
+  knowledgeRefs: z.array(z.object({
+    filename: z.string(),
+    name: z.string(),
+  })).optional(),
+});
+
+export type StepAgentConfig = z.infer<typeof StepAgentConfigSchema>;
+
+export const StepInputSchema = z.object({
+  from: z.enum(['user', 'previous', 'both']).default('previous'),
+  sourceStep: z.string().optional(),
+});
+
+export type StepInput = z.infer<typeof StepInputSchema>;
+
+export const StepAcceptanceSchema = z.object({
+  criteria: z.string(),
+});
+
+export type StepAcceptance = z.infer<typeof StepAcceptanceSchema>;
+
+export const StepFrontmatterSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  input: StepInputSchema.optional(),
+  acceptance: StepAcceptanceSchema.optional(),
+  agent: StepAgentConfigSchema.optional(),
+});
+
+export type StepDefinition = z.infer<typeof StepFrontmatterSchema>;

@@ -6,6 +6,7 @@ import NodeDetailPanel from '../components/NodeDetailPanel.vue'
 import LeftSidebar from '../components/LeftSidebar.vue'
 import RolePanel from '../components/RolePanel.vue'
 import KnowledgePanel from '../components/KnowledgePanel.vue'
+import WorkflowPanel from '../components/WorkflowPanel.vue'
 import ContextCards from '../components/ContextCards.vue'
 import ChatInput from '../components/ChatInput.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
@@ -14,11 +15,13 @@ import { useProjectStore } from '../stores/project'
 import { useAgentStore } from '../stores/agent'
 import { useConfigStore } from '../stores/config'
 import { useKnowledgeStore } from '../stores/knowledge'
+import { useWorkflowStore } from '../stores/workflow'
 
 const projectStore = useProjectStore()
 const agentStore = useAgentStore()
 const configStore = useConfigStore()
 const knowledgeStore = useKnowledgeStore()
+const workflowStore = useWorkflowStore()
 
 // ── 设置对话框开关 ──
 const showSettings = ref(false)
@@ -227,6 +230,24 @@ function onCloseKnowledgeDetail(): void {
   knowledgeStore.clearSelection()
 }
 
+// ── 工作流选择（从抽屉） ──
+async function onSelectWorkflow(name: string): Promise<void> {
+  projectStore.selectedNode = null
+  agentStore.selectedRoleAgent = null
+  knowledgeStore.clearSelection()
+  await workflowStore.selectWorkflow(name)
+  closeDrawer()
+}
+
+function onCloseWorkflowDetail(): void {
+  workflowStore.clearSelection()
+}
+
+async function onRunWorkflow(): Promise<void> {
+  if (!workflowStore.selectedWorkflow) return
+  await workflowStore.executeWorkflow(workflowStore.selectedWorkflow.name)
+}
+
 // ── 计算属性：选中的角色信息 ──
 const selectedRoleInfo = computed(() => {
   if (!agentStore.selectedRoleAgent) return null
@@ -358,6 +379,18 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <!-- 工作流抽屉（从左侧滑入） -->
+      <div
+        class="drawer"
+        :class="{ open: activeTab === 'workflow' }"
+        :style="{ width: drawerWidth + 'px' }"
+      >
+        <div class="drawer-resize-handle" @mousedown="onResizeMousedown" />
+        <div class="drawer-inner">
+          <WorkflowPanel @select="onSelectWorkflow" />
+        </div>
+      </div>
+
       <!-- 主详情区（始终可见） -->
       <div class="detail-area">
         <!-- Node detail -->
@@ -407,6 +440,59 @@ onUnmounted(() => {
             <button class="btn-close" @click="onCloseKnowledgeDetail">✕</button>
           </div>
           <div class="knowledge-detail-body" v-html="renderedKnowledge" />
+        </div>
+        <!-- Workflow detail -->
+        <div v-else-if="workflowStore.selectedWorkflow" class="workflow-detail">
+          <div class="workflow-detail-header">
+            <div class="workflow-title-row">
+              <span class="workflow-detail-title">{{ workflowStore.selectedWorkflow.name }}</span>
+              <button class="btn-close" @click="onCloseWorkflowDetail">✕</button>
+            </div>
+            <div class="workflow-actions">
+              <el-button type="primary" size="small" @click="onRunWorkflow">
+                运行工作流
+              </el-button>
+            </div>
+          </div>
+          <div class="workflow-detail-body">
+            <!-- 执行状态 -->
+            <div v-if="workflowStore.executionState" class="execution-state">
+              <el-tag :type="workflowStore.executionState.status === 'completed' ? 'success' : workflowStore.executionState.status === 'failed' ? 'danger' : 'warning'">
+                {{ workflowStore.executionState.status === 'completed' ? '已完成' : workflowStore.executionState.status === 'failed' ? '失败' : workflowStore.executionState.status === 'running' ? '运行中' : workflowStore.executionState.status }}
+              </el-tag>
+              <span class="execution-progress">
+                步骤 {{ workflowStore.executionState.currentStep }} / {{ workflowStore.executionState.totalSteps }}
+              </span>
+            </div>
+            <!-- 步骤列表 -->
+            <div class="step-list">
+              <div
+                v-for="(step, idx) in workflowStore.selectedWorkflow.steps"
+                :key="step.name"
+                class="step-card"
+              >
+                <div class="step-header">
+                  <span class="step-number">{{ idx + 1 }}</span>
+                  <div class="step-meta">
+                    <strong>{{ step.definition.name }}</strong>
+                    <span v-if="step.definition.description" class="step-desc">
+                      — {{ step.definition.description }}
+                    </span>
+                  </div>
+                  <el-tag
+                    v-if="workflowStore.executionState?.results[idx]"
+                    size="small"
+                    :type="workflowStore.executionState.results[idx].success ? 'success' : 'danger'"
+                  >
+                    {{ workflowStore.executionState.results[idx].success ? '通过' : '失败' }}
+                  </el-tag>
+                </div>
+                <div class="step-body-preview">
+                  <pre>{{ step.body.slice(0, 300) }}{{ step.body.length > 300 ? '...' : '' }}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- 占位 -->
         <div v-else class="detail-placeholder">
@@ -757,6 +843,117 @@ onUnmounted(() => {
   color: var(--el-text-color-primary);
   user-select: text;
   -webkit-user-select: text;
+}
+
+/* ── 工作流详情（主区域） ── */
+.workflow-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--el-fill-color);
+}
+
+.workflow-detail-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--el-border-color);
+  flex-shrink: 0;
+}
+
+.workflow-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.workflow-detail-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--el-color-primary);
+}
+
+.workflow-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.workflow-detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.execution-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+}
+
+.execution-progress {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.step-card {
+  padding: 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 8px;
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--el-color-primary);
+  border-radius: 50%;
+}
+
+.step-meta {
+  flex: 1;
+}
+
+.step-meta strong {
+  font-size: 14px;
+}
+
+.step-desc {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.step-body-preview pre {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 8px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
 }
 
 /* ── 详情占位 ── */

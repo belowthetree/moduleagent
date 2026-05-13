@@ -121,6 +121,7 @@ export class ElectronBridge {
     this._registerContextHandlers();
     this._registerConfigHandlers();
     this._registerRoleHandlers();
+    this._registerWorkflowHandlers();
     this._registerMigrationHandlers();
     this._registerKnowledgeHandlers();
   }
@@ -217,6 +218,7 @@ export class ElectronBridge {
         // 初始化核心和角色（在模块扫描之前，这样即使扫描失败角色也可用）
         const result = await self.core.init(projectRoot);
         self.core.initRoles(config.projectPath, workspaceRoot);
+        self.core.initWorkflows(config.projectPath, workspaceRoot);
 
         // 提前初始化状态管理器——必须在任何流开始之前，以及在可能抛出异常并跳过后续初始化的模块扫描之前
         self.stateManager = new AgentStateManager(
@@ -891,6 +893,165 @@ DO NOT overwrite existing module.md files.`,
     ipcMain.handle('role:clearContext', async (_event, roleName: string) => {
       const ctxKey = `workrole:${roleName}`;
       await self.stateManager?.clearContext(ctxKey);
+    });
+  }
+
+  private _registerWorkflowHandlers(): void {
+    const self = this;
+
+    ipcMain.handle('workflow:list', async () => {
+      if (!self.core.workflows) return [];
+      try {
+        const names = self.core.workflows.listWorkflows();
+        return names.map(name => {
+          const wf = self.core.workflows!.loadWorkflow(name);
+          return { name, stepCount: wf?.steps.length ?? 0 };
+        });
+      } catch { return []; }
+    });
+
+    ipcMain.handle('workflow:load', async (_event, name: string) => {
+      if (!self.core.workflows) return { error: 'workflow subsystem not initialized' };
+      try {
+        const wf = self.core.workflows.loadWorkflow(name);
+        if (!wf) return { error: `workflow not found: ${name}` };
+        return { workflow: wf };
+      } catch (err) {
+        return { error: (err as Error).message };
+      }
+    });
+
+    ipcMain.handle('workflow:execute', async (_event, name: string, userInput?: string) => {
+      if (!self.core.workflows) return { error: 'workflow subsystem not initialized' };
+      try {
+        const results = await self.core.workflows.executeWorkflow(name, userInput);
+        return { success: true, results };
+      } catch (err) {
+        self.logger.error(`workflow:execute [${name}] failed: ${(err as Error).message}`);
+        return { error: (err as Error).message };
+      }
+    });
+
+    ipcMain.handle('workflow:cancel', async (_event, name: string) => {
+      if (!self.core.workflows) return;
+      await self.core.workflows.cancel(name);
+    });
+
+    ipcMain.handle('workflow:status', async (_event, name: string) => {
+      if (!self.core.workflows) return null;
+      const state = self.core.workflows.getExecutionState(name);
+      if (!state) return null;
+      return {
+        status: state.status,
+        currentStep: state.currentStepIndex,
+        totalSteps: state.stepResults.length,
+        results: state.stepResults,
+      };
+    });
+
+    // ── CRUD operations ──
+
+    ipcMain.handle('workflow:create', async (_event, name: string) => {
+      const projectRoot = self.core.getProjectRoot();
+      if (!projectRoot) return { success: false, error: 'no project root' };
+      try {
+        const wfDir = path.join(projectRoot, '.module-agent', 'workflow', name);
+        const stepDir = path.join(wfDir, 'step1');
+        await fs.ensureDir(stepDir);
+        const stepMd = [
+          '---',
+          'name: ' + name,
+          '---',
+          '',
+          '# ' + name,
+          '',
+          '请描述第一步要完成的工作...',
+        ].join('\n');
+        await fs.promises.writeFile(path.join(stepDir, 'STEP.md'), stepMd, 'utf-8');
+        self.logger.info(`workflow:create [${name}] created at ${wfDir}`);
+        return { success: true };
+      } catch (err) {
+        self.logger.error(`workflow:create [${name}] failed: ${(err as Error).message}`);
+        return { success: false, error: (err as Error).message };
+      }
+    });
+
+    ipcMain.handle('workflow:delete', async (_event, name: string) => {
+      const projectRoot = self.core.getProjectRoot();
+      if (!projectRoot) return { success: false };
+      try {
+        const wfDir = path.join(projectRoot, '.module-agent', 'workflow', name);
+        if (fs.existsSync(wfDir)) {
+          await fs.remove(wfDir);
+        }
+        // Also clean up state file
+        const stateFile = path.join(projectRoot, '.module-agent', 'workflow', `${name}.state.json`);
+        if (fs.existsSync(stateFile)) await fs.promises.unlink(stateFile);
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: (err as Error).message };
+      }
+    });
+
+    ipcMain.handle('workflow:stepSave', async (_event, wfName: string, stepName: string, content: string) => {
+      const projectRoot = self.core.getProjectRoot();
+      if (!projectRoot) return { success: false };
+      try {
+        const filePath = path.join(projectRoot, '.module-agent', 'workflow', wfName, stepName, 'STEP.md');
+        await fs.ensureDir(path.dirname(filePath));
+        await fs.promises.writeFile(filePath, content, 'utf-8');
+        self.logger.info(`workflow:stepSave [${wfName}/${stepName}]`);
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: (err as Error).message };
+      }
+    });
+
+    ipcMain.handle('workflow:stepDelete', async (_event, wfName: string, stepName: string) => {
+      const projectRoot = self.core.getProjectRoot();
+      if (!projectRoot) return { success: false };
+      try {
+        const stepDir = path.join(projectRoot, '.module-agent', 'workflow', wfName, stepName);
+        if (fs.existsSync(stepDir)) await fs.remove(stepDir);
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: (err as Error).message };
+      }
+    });
+
+    ipcMain.handle('workflow:stepAdd', async (_event, wfName: string) => {
+      const projectRoot = self.core.getProjectRoot();
+      if (!projectRoot) return { success: false, error: 'no project root' };
+      try {
+        const wfDir = path.join(projectRoot, '.module-agent', 'workflow', wfName);
+        // Find next step number
+        let maxN = 0;
+        if (fs.existsSync(wfDir)) {
+          const entries = fs.readdirSync(wfDir, { withFileTypes: true });
+          for (const e of entries) {
+            if (e.isDirectory() && e.name.startsWith('step')) {
+              const n = parseInt(e.name.replace('step', ''), 10);
+              if (!isNaN(n) && n > maxN) maxN = n;
+            }
+          }
+        }
+        const nextStep = `step${maxN + 1}`;
+        const stepDir = path.join(wfDir, nextStep);
+        await fs.ensureDir(stepDir);
+        const stepMd = [
+          '---',
+          'name: ' + nextStep,
+          '---',
+          '',
+          '# ' + nextStep,
+          '',
+          '请描述此步骤要完成的工作...',
+        ].join('\n');
+        await fs.promises.writeFile(path.join(stepDir, 'STEP.md'), stepMd, 'utf-8');
+        return { success: true, stepName: nextStep };
+      } catch (err) {
+        return { success: false, error: (err as Error).message };
+      }
     });
   }
 

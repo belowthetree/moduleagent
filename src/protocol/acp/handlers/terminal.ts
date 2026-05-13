@@ -34,7 +34,17 @@ export class TerminalHandler {
 
   async create(params: CreateTerminalRequest): Promise<CreateTerminalResponse> {
     const terminalId = `term_${++this.terminalCounter}`;
-    const cwd = params.cwd ? path.resolve(params.cwd) : this.workspaceRoot;
+
+    // 强制终端在 workspaceRoot 内运行
+    let cwd = this.workspaceRoot;
+    if (params.cwd) {
+      const reqCwd = path.resolve(params.cwd);
+      if (reqCwd.startsWith(this.workspaceRoot + path.sep) || reqCwd === this.workspaceRoot) {
+        cwd = reqCwd;
+      } else {
+        log.warn(`Terminal cwd outside workspace: ${params.cwd}, forcing to ${this.workspaceRoot}`);
+      }
+    }
 
     const env = { ...process.env };
     if (params.env) {

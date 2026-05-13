@@ -2,6 +2,7 @@ import path from 'path';
 import { defaultLogger, type Logger } from './Logger.js';
 import { ModuleAgentSubsystem } from './ModuleAgentSubsystem.js';
 import { RoleAgentSubsystem } from './RoleAgentSubsystem.js';
+import { WorkflowSubsystem } from './WorkflowSubsystem.js';
 import type {
   CoreCallbacks,
   CoreStatus,
@@ -28,6 +29,8 @@ export interface ModuleAgentCoreOptions {
   onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void;
   /** Optional role session-update listener */
   onRoleSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
+  /** Optional workflow session-update listener */
+  onWorkflowSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,10 +45,12 @@ export class ModuleAgentCore {
 
   modules: ModuleAgentSubsystem;
   roles: RoleAgentSubsystem | null = null;
+  workflows: WorkflowSubsystem | null = null;
 
   private projectRoot = '';
   private initialized = false;
   private onRoleSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
+  private onWorkflowSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
 
   constructor(options: ModuleAgentCoreOptions) {
     this.callbacks = options.callbacks;
@@ -53,6 +58,7 @@ export class ModuleAgentCore {
     this.configDir = options.configDir || path.join(options.basePath, 'config');
     this.logger = options.logger || defaultLogger;
     this.onRoleSessionUpdate = options.onRoleSessionUpdate;
+    this.onWorkflowSessionUpdate = options.onWorkflowSessionUpdate;
 
     this.modules = new ModuleAgentSubsystem({
       callbacks: this.callbacks,
@@ -106,11 +112,35 @@ export class ModuleAgentCore {
     });
   }
 
+  /**
+   * Initialize workflow subsystem. Must be called after init().
+   */
+  initWorkflows(
+    projectPath: string,
+    workspaceRoot: string,
+    onSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void,
+  ): void {
+    if (!this.initialized) throw new Error('Must call init() before initWorkflows()');
+
+    this.workflows = new WorkflowSubsystem({
+      callbacks: this.callbacks,
+      basePath: this.basePath,
+      configDir: this.configDir,
+      projectPath,
+      workspaceRoot,
+      logger: this.logger,
+      onSessionUpdate: onSessionUpdate || this.onWorkflowSessionUpdate,
+    });
+  }
+
   async dispose(): Promise<void> {
     this.logger.info('ModuleAgentCore: disposing');
     await this.modules.dispose();
     if (this.roles) {
       await this.roles.dispose();
+    }
+    if (this.workflows) {
+      await this.workflows.dispose();
     }
     this.initialized = false;
   }

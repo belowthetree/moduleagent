@@ -107,6 +107,67 @@ export interface KnowledgeListItem {
   filename: string;
 }
 
+// ── Workflow types (shared with renderer) ──
+
+export interface WorkflowListItem {
+  name: string;
+  stepCount: number;
+}
+
+export interface WorkflowStepDetail {
+  name: string;
+  dir: string;
+  definition: {
+    name: string;
+    description?: string;
+    input?: { from: string; sourceStep?: string };
+    acceptance?: { criteria: string };
+    agent?: {
+      command?: string;
+      args?: string[];
+      visibleModulePaths?: string[];
+      knowledgeRefs?: { filename: string; name: string }[];
+    };
+  };
+  body: string;
+}
+
+export interface WorkflowDetail {
+  name: string;
+  dir: string;
+  steps: WorkflowStepDetail[];
+}
+
+export interface WorkflowStepResultItem {
+  stepName: string;
+  success: boolean;
+  outputDir: string;
+  completedAt: string;
+  acceptancePassed?: boolean;
+  error?: string;
+}
+
+export interface WorkflowStatus {
+  status: string;
+  currentStep: number;
+  totalSteps: number;
+  results: WorkflowStepResultItem[];
+}
+
+export interface StepEditData {
+  name: string;
+  description?: string;
+  input?: { from: string; sourceStep?: string };
+  acceptance?: { criteria: string };
+  agent?: {
+    command?: string;
+    args?: string[];
+    visibleModulePaths?: string[];
+    knowledgeRefs?: { filename: string; name: string }[];
+  };
+  body: string;
+}
+
 export interface ModuleAgentApi {
   selectDir(title: string): Promise<string | null>;
 
@@ -138,6 +199,9 @@ export interface ModuleAgentApi {
     args: string[],
     projectPath?: string,
     summarizationEnabled?: boolean,
+    fastModel?: string,
+    normalModel?: string,
+    autoSwitchModel?: boolean,
   ): Promise<{ success: boolean }>;
 
   getAgentConfig(projectRoot: string): Promise<{
@@ -145,6 +209,9 @@ export interface ModuleAgentApi {
     args: string[];
     projectPath?: string;
     summarizationEnabled?: boolean;
+    fastModel?: string;
+    normalModel?: string;
+    autoSwitchModel?: boolean;
   }>;
 
   migrateCheck(keys: string[]): Promise<{ needed: string[]; streamNeeded: boolean }>;
@@ -182,6 +249,18 @@ export interface ModuleAgentApi {
   knowledgeSave(entry: KnowledgeEntry): Promise<{ success: boolean }>;
   knowledgeCreate(name: string): Promise<KnowledgeEntry | { error: string }>;
   knowledgeDelete(filename: string): Promise<{ success: boolean }>;
+
+  // ── 工作流 API ──
+  workflowList(): Promise<WorkflowListItem[]>;
+  workflowLoad(name: string): Promise<WorkflowDetail | { error: string }>;
+  workflowCreate(name: string): Promise<{ success: boolean; error?: string }>;
+  workflowDelete(name: string): Promise<{ success: boolean }>;
+  workflowStepSave(wfName: string, stepName: string, content: string): Promise<{ success: boolean }>;
+  workflowStepDelete(wfName: string, stepName: string): Promise<{ success: boolean }>;
+  workflowStepAdd(wfName: string): Promise<{ success: boolean; stepName?: string; error?: string }>;
+  workflowExecute(name: string, userInput?: string): Promise<{ success: boolean; results?: WorkflowStepResultItem[]; error?: string }>;
+  workflowCancel(name: string): Promise<void>;
+  workflowStatus(name: string): Promise<WorkflowStatus | null>;
 }
 
 declare global {

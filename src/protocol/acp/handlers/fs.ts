@@ -5,12 +5,9 @@ import { defaultLogger as log } from '../../../core/Logger.js';
 
 export class FsHandler {
   private workspaceRoot: string;
-  private allowedDirs: string[];
 
-  constructor(workspaceRoot: string, subModuleDirs: string[] = []) {
+  constructor(workspaceRoot: string, _subModuleDirs: string[] = []) {
     this.workspaceRoot = path.resolve(workspaceRoot);
-    this.allowedDirs = [this.workspaceRoot, ...subModuleDirs.map(d => path.resolve(d))];
-    log.debug(`FsHandler: root=${this.workspaceRoot} allowedDirs=${this.allowedDirs.length}`);
   }
 
   async readFile(params: ReadTextFileRequest): Promise<ReadTextFileResponse> {
@@ -44,10 +41,10 @@ export class FsHandler {
 
   private resolvePath(filePath: string): string {
     const p = path.resolve(filePath);
-    const allowed = this.allowedDirs.some(dir => p.startsWith(dir + path.sep) || p === dir);
+    const allowed = p.startsWith(this.workspaceRoot + path.sep) || p === this.workspaceRoot;
     if (!allowed) {
       log.warn(`FsHandler access denied: ${filePath}`);
-      throw new Error(`Access denied: ${filePath} is outside allowed module directories`);
+      throw new Error(`Access denied: ${filePath} is outside module workspace`);
     }
     return p;
   }

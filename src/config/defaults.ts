@@ -74,5 +74,64 @@ export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {
   roles: [DEFAULT_MODULE_GEN_ROLE],
 };
 
+// ---------------------------------------------------------------------------
+// Workflow types
+// ---------------------------------------------------------------------------
+
+export interface StepAgentConfig {
+  command?: string;
+  args?: string[];
+  visibleModulePaths?: string[];
+  knowledgeRefs?: { filename: string; name: string }[];
+}
+
+export interface StepInput {
+  from: 'user' | 'previous' | 'both';
+  sourceStep?: string;
+}
+
+export interface StepAcceptance {
+  criteria: string;
+}
+
+export interface StepDefinition {
+  name: string;
+  description?: string;
+  input?: StepInput;
+  acceptance?: StepAcceptance;
+  agent?: StepAgentConfig;
+}
+
+export interface WorkflowDescriptor {
+  name: string;
+  dir: string;
+  steps: WorkflowStepDescriptor[];
+}
+
+export interface WorkflowStepDescriptor {
+  name: string;
+  dir: string;
+  definition: StepDefinition;
+  body: string;
+}
+
+export interface WorkflowStepResult {
+  stepName: string;
+  success: boolean;
+  outputDir: string;
+  completedAt: string;
+  acceptancePassed?: boolean;
+  error?: string;
+}
+
+export interface WorkflowExecutionState {
+  workflowName: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  currentStepIndex: number;
+  startedAt: string;
+  completedAt?: string;
+  stepResults: WorkflowStepResult[];
+}
+
 // 保持向后兼容：旧代码期望单条目格式
 export const DEFAULT_CONFIG: ProjectConfig = DEFAULT_CONFIG_ENTRY;
