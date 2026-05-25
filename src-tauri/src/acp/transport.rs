@@ -4,7 +4,7 @@
 //! newline-delimited JSON to an async writer.  The reader and writer
 //! are split so they can be moved into separate async tasks.
 
-use crate::types::WireMessage;
+use crate::acp::types::WireMessage;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
 

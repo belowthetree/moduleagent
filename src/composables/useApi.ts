@@ -35,7 +35,7 @@ async function detectPort(): Promise<void> {
     // Try Tauri invoke first
     if ((window as any).__TAURI__) {
       const { invoke } = (window as any).__TAURI__.core;
-      const port = await invoke('get_sidecar_port');
+      const port = await invoke('get_backend_port');
       apiBase = `http://127.0.0.1:${port}`;
     }
   } catch {

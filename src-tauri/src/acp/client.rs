@@ -5,7 +5,7 @@
 //! a prompt session to read/write files, run terminal commands,
 //! request permissions, and stream updates.
 
-use crate::types::*;
+use crate::acp::types::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

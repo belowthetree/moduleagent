@@ -3,9 +3,9 @@
 //! Manages the JSON-RPC 2.0 request/response dispatch and provides
 //! the public API: `initialize`, `new_session`, `prompt`, `cancel`.
 
-use crate::client::Client;
-use crate::transport::{split_transport, TransportError, TransportReader, TransportWriter};
-use crate::types::*;
+use crate::acp::client::{Client, DefaultClient};
+use crate::acp::transport::{split_transport, TransportError, TransportReader, TransportWriter};
+use crate::acp::types::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -39,7 +39,7 @@ impl ClientSideConnection {
         command: &str,
         args: &[&str],
         cwd: &str,
-        client: Arc<dyn Client>,
+        client: Arc<DefaultClient>,
     ) -> Result<Self, ConnectionError> {
         // Normalize paths on Windows
         let cwd_normalized = cwd.replace('\\', "/");
@@ -194,7 +194,7 @@ async fn dispatch_loop(
     reader: &mut TransportReader,
     writer: &mut TransportWriter,
     mut cmd_rx: mpsc::Receiver<DispatchCmd>,
-    client: Arc<dyn Client>,
+    client: Arc<DefaultClient>,
 ) {
     let pending: HashMap<u64, oneshot::Sender<Result<serde_json::Value, AcpError>>> = HashMap::new();
     let pending = Arc::new(Mutex::new(pending));
@@ -303,7 +303,7 @@ async fn dispatch_loop(
 // ── Client method dispatching ──
 
 async fn handle_client_method(
-    client: &Arc<dyn Client>,
+    client: &Arc<DefaultClient>,
     method: &str,
     params: Option<&serde_json::Value>,
 ) -> Result<serde_json::Value, AcpError> {
@@ -405,7 +405,7 @@ async fn handle_client_method(
 }
 
 async fn handle_client_notification(
-    client: &Arc<dyn Client>,
+    client: &Arc<DefaultClient>,
     method: &str,
     params: Option<&serde_json::Value>,
 ) -> Result<(), AcpError> {

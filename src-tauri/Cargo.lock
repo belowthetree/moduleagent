@@ -3,18 +3,6 @@
 version = 4
 
 [[package]]
-name = "acp"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2171,24 +2159,10 @@ dependencies = [
 name = "module-agent"
 version = "0.4.0"
 dependencies = [
- "acp",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-shell",
- "tokio",
-]
-
-[[package]]
-name = "module-agent-backend"
-version = "0.1.0"
-dependencies = [
  "agent-client-protocol",
  "agent-client-protocol-rmcp",
  "anyhow",
+ "async-trait",
  "axum",
  "chrono",
  "futures",
@@ -2199,6 +2173,11 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-shell",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
