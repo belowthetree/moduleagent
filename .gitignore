@@ -26,3 +26,6 @@ dist-backend/
 src-backup-electron/
 src-tauri/target/
 .DS_Store
+backup/
+src-backend/
+target/

@@ -1,23 +1,26 @@
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import { resolve } from 'path'
+import { defineConfig } from "vite"
+import vue from "@vitejs/plugin-vue"
+import { resolve } from "path"
 
 export default defineConfig({
   plugins: [vue()],
-  root: '.',
-  base: './',
+  root: ".",
+  base: "./",
   resolve: {
     alias: {
-      '@': resolve('src-renderer'),
+      "@": resolve("src"),
     },
   },
   build: {
-    outDir: 'dist-renderer',
+    outDir: "dist-renderer",
     emptyOutDir: true,
-    target: 'esnext',
+    target: "esnext",
   },
   server: {
     port: 5173,
     strictPort: false,
+    watch: {
+      ignored: ["**/src-tauri/target/**"],
+    },
   },
 })

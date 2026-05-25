@@ -14,15 +14,13 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "paths": {
-      "@/*": ["./src-renderer/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": [
-    "src-renderer/**/*.ts",
-    "src-renderer/**/*.vue",
-    "src-renderer/**/*.d.ts",
-    "src/types/**/*.ts",
-    "src-backend/**/*.ts"
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "src/**/*.d.ts"
   ],
-  "exclude": ["node_modules", "dist", "dist-backend", "dist-renderer", "src-tauri", "src-backup-electron"]
+  "exclude": ["node_modules", "dist", "dist-backend", "dist-renderer", "src-tauri"]
 }

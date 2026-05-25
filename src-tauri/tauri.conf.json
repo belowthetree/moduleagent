@@ -35,8 +35,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../dist-backend/*",
-      "../config/*"
+      "../config/knowledge/*"
     ],
     "externalBin": []
   }

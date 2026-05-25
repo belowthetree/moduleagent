@@ -13,43 +13,15 @@
 - **流式对话** — 实时展示 Agent 的思考过程、工具调用和回复内容
 - **自动模块生成** — 调用 Agent 分析源码目录，自动生成 `module.md` 文件
 
-## 安装
-
-### 桌面应用（GUI）
-
-从 [GitHub Releases](https://github.com/belowthetree/module-agent/releases) 下载安装包：
-
-| 平台 | 包类型 |
-|------|--------|
-| Windows | `.exe` (portable) / `.exe` (NSIS 安装程序) |
-| macOS | `.dmg` |
-| Linux | `.AppImage` / `.deb` |
-
-Windows 用户推荐使用 NSIS 安装程序，安装后会在开始菜单和桌面创建快捷方式。
-
-### CLI 命令行
-
-```bash
-npm install -g @belowthetree/module-agent
-```
-
-安装后即可在终端使用 `module-agent` 命令：
-
-```bash
-module-agent serve    # 持久化 stdio 模式
-module-agent config   # 交互式配置向导
-```
-
-> **注意：** `module-agent tui` 终端 UI 仍在开发中，推荐使用[桌面应用（GUI）](#桌面应用gui)获得完整功能。
-
-## 开发
-
-### 前置条件
+## 系统要求
 
 - Node.js >= 20
+- Rust 工具链（用于 Tauri 构建，可选）
 - 支持 ACP 协议的 Agent 客户端（如 [opencode](https://github.com/opencode-ai/opencode) 或 Claude CLI）
 
-### 启动开发环境
+## 快速开始
+
+### 桌面应用（Tauri）
 
 ```bash
 # 克隆项目
@@ -59,12 +31,20 @@ cd module-agent
 # 安装依赖
 npm install
 
-# 开发模式启动（Vite HMR 热重载）
-npm run dev
+# 开发模式（Vite HMR + Tauri 窗口 + Node.js sidecar 后端）
+npm run tauri:dev
 
-# 生产构建并启动
-npm run electron
+# 生产构建
+npm run tauri:build
 ```
+
+### Web 模式（仅前端 + 后端，无桌面壳）
+
+```bash
+npm run dev
+```
+
+启动后，Vite 开发服务器运行在 `http://localhost:5173`，后端 API 运行在随机端口（通过 SSE 通知前端）。
 
 ### 配置
 
@@ -83,24 +63,45 @@ npm run electron
 }
 ```
 
-详细配置说明见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
-
 ## 架构概览
 
 ```
-Renderer (Vue 3 + Element Plus)     ← 用户界面、模块树、对话面板
-    ↕ Electron IPC
-Main Process (Electron)              ← Agent 编排、MCP 路由、状态管理
-    ↕ ACP 协议 (stdio)
-Agent 子进程                         ← LLM 推理、代码操作
-    ↕ MCP 协议 (stdio)
-MCP Server                           ← 跨模块通信总线
+┌─────────────────────────────────────────────────────┐
+│                    Tauri (Rust)                      │
+│  ┌───────────────────────────────────────────────┐  │
+│  │               WebView (Vue 3)                  │  │
+│  │  SetupView / MainView / SVGTree / ChatInput    │  │
+│  │  Pinia stores · Element Plus · Vue Router      │  │
+│  │  ┌─────────────────────────────────────────┐   │  │
+│  │  │  HTTP + SSE → http://127.0.0.1:{port}   │   │  │
+│  │  └─────────────────────────────────────────┘   │  │
+│  └───────────────────────────────────────────────┘  │
+│                          ↕                           │
+│  ┌───────────────────────────────────────────────┐  │
+│  │          Node.js Sidecar (src-backend/)        │  │
+│  │  HTTP/SSE Server · Agent Orchestration         │  │
+│  │  ModuleScanner · ModuleGraph · ConfigLoader    │  │
+│  │  McpBackend · RoleAgentManager                 │  │
+│  └───────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────┤
+│               Agent 子进程层 (ACP 协议)               │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │ Agent A  │  │ Agent B  │  │ Agent C  │           │
+│  │ (模块 A) │  │ (模块 B) │  │ (模块 C) │           │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘           │
+│       │              │              │                │
+│  ┌────┴──────────────┴──────────────┴────┐           │
+│  │  MCP Server 子进程 (stdio)              │           │
+│  │  (dist-backend/mcp-server.cjs)         │           │
+│  └────────────────────────────────────────┘           │
+└─────────────────────────────────────────────────────┘
 ```
 
 | 层 | 技术 | 职责 |
 |----|------|------|
-| 渲染进程 | Vue 3 + Pinia + Element Plus | 模块树可视化、对话交互、状态管理 |
-| 主进程 | Electron + TypeScript | Agent 生命周期编排、IPC 处理、MCP HTTP 后端 |
+| 桌面壳 | Tauri (Rust) | 桌面窗口管理、原生 API（文件对话框）、Sidecar 进程管理 |
+| 前端 | Vue 3 + Pinia + Element Plus | 模块树可视化、对话交互、状态管理 |
+| 后端 | Node.js (Sidecar) | Agent 生命周期编排、HTTP/SSE API、MCP 路由 |
 | Agent 层 | opencode / Claude (ACP) | LLM 推理、文件操作、终端命令执行 |
 
 详细架构分析见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
@@ -108,16 +109,28 @@ MCP Server                           ← 跨模块通信总线
 ## 项目结构
 
 ```
-src/
-├── main/          Electron 主进程入口、IPC 处理器
-├── preload/       contextBridge API 桥接
-├── renderer/      Vue 3 渲染进程（视图、组件、Store）
-├── agents/        Agent 编排（启动、隔离、状态、提示构建）
-├── protocol/      ACP 连接 + MCP 服务端 + 通信总线
-├── core/          模块扫描、解析、图构建、路径工具
-├── config/        配置加载、Zod 校验、默认值
-├── cli/           CLI 路径（次级，用于 serve/tui）
-└── types/         全局类型定义
+ModuleAgent/
+├── src-tauri/                     # Tauri Rust 后端
+│   ├── src/lib.rs                 # Tauri 应用逻辑、Sidecar 启动
+│   └── tauri.conf.json            # Tauri 配置
+├── src-backend/                   # Node.js Sidecar 后端
+│   ├── server.ts                  # HTTP/SSE 服务器入口
+│   ├── agents/                    # Agent 编排（启动、状态、提示构建）
+│   ├── config/                    # 配置加载、Zod 校验
+│   ├── core/                      # 模块扫描、解析、图构建、路径工具
+│   ├── protocol/                  # ACP 连接 + MCP 服务端
+│   └── types/                     # 类型定义
+├── src-renderer/                  # Vue 3 前端
+│   ├── views/                     # SetupView, MainView
+│   ├── components/                # SVGTree, ChatInput, RolePanel 等
+│   ├── stores/                    # Pinia 状态管理
+│   └── router/                    # Vue Router 路由
+├── config/                        # Agent 系统提示词
+│   ├── mainagentprompt.md
+│   ├── subagentprompt.md
+│   └── roleagentprompt.md
+├── dist-backend/                  # Sidecar 构建产物
+└── dist-renderer/                 # 前端构建产物
 ```
 
 ## 模块系统
@@ -134,8 +147,8 @@ src/
 │   └── config/
 │       └── module.md
 ├── workspace/         ← 隔离工作空间（Agent 运行时）
-├── context/           ← 对话上下文持久化
-└── .module-agent.json ← 项目配置
+├── workrole/          ← 角色 Agent 工作空间
+└── context/           ← 对话上下文持久化
 ```
 
 ## 角色 Agent
@@ -157,26 +170,18 @@ src/
 }
 ```
 
-## 构建
+## 开发命令
 
 ```bash
-npm run typecheck         # 类型检查
-npm run test              # 单元测试
-npm run test:e2e          # E2E 测试
-npm run build:electron    # 完整生产构建
-npm run dev               # 开发模式（热重载）
+npm run tauri:dev          # Tauri 开发模式（Vite HMR + 桌面窗口 + Sidecar）
+npm run tauri:build        # Tauri 生产构建
+npm run dev                # Web 开发模式（仅前端 + Sidecar，无桌面壳）
+npm run dev:renderer       # 仅前端 Vite 开发服务器
+npm run typecheck          # 类型检查（tsc --noEmit）
+npm run test               # 单元测试（Vitest）
+npm run build:backend      # 构建 Sidecar（esbuild）
+npm run build:renderer     # 构建前端（Vite）
 ```
-
-**本地打包**：
-
-```bash
-npm run dist:win         # 仅构建 Windows 包
-npm run dist:mac         # 仅构建 macOS 包
-npm run dist:linux       # 仅构建 Linux 包
-npm run dist             # 构建当前平台
-```
-
-打包产物输出到 `release/` 目录。
 
 ## 许可
 

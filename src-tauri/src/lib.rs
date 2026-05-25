@@ -22,29 +22,30 @@ fn start_sidecar(app: &tauri::App) -> u16 {
         .resource_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-    // Try multiple paths for the sidecar bundle
-    let sidecar_js = resource_dir.join("dist-backend").join("server.cjs");
-    let fallback_js = std::path::PathBuf::from("dist-backend/server.cjs");
-
-    let script_path = if sidecar_js.exists() {
-        sidecar_js
-    } else if fallback_js.exists() {
-        fallback_js
+    let exe_name = if cfg!(target_os = "windows") {
+        "module-agent-backend.exe"
     } else {
-        eprintln!("[tauri] Sidecar not found, skipping startup");
+        "module-agent-backend"
+    };
+
+    let sidecar_bin = resource_dir.join("dist-backend").join(exe_name);
+    let fallback_bin = std::path::PathBuf::from("dist-backend").join(exe_name);
+    let dev_bin = std::path::PathBuf::from("target/debug").join(exe_name);
+
+    let bin_path = if sidecar_bin.exists() {
+        sidecar_bin
+    } else if fallback_bin.exists() {
+        fallback_bin
+    } else if dev_bin.exists() {
+        dev_bin
+    } else {
+        eprintln!("[tauri] Rust sidecar not found, skipping startup");
         return 18888;
     };
 
-    let node_cmd = if cfg!(target_os = "windows") {
-        "node.exe"
-    } else {
-        "node"
-    };
+    eprintln!("[tauri] Starting sidecar: {}", bin_path.display());
 
-    eprintln!("[tauri] Starting sidecar: {} {}", node_cmd, script_path.display());
-
-    let mut child = match Command::new(node_cmd)
-        .arg(&script_path)
+    let mut child = match Command::new(&bin_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -56,7 +57,6 @@ fn start_sidecar(app: &tauri::App) -> u16 {
         }
     };
 
-    // Read the first line from stdout to get the port
     let stdout = child.stdout.take();
     let mut port = 18888u16;
 
@@ -106,7 +106,7 @@ pub fn run() {
         .setup(|app| {
             let port = start_sidecar(app);
             app.manage(Mutex::new(SidecarState {
-                process: None, // We don't track the process for now; it dies with the app
+                process: None,
                 port,
             }));
             Ok(())
