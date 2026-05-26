@@ -4,7 +4,7 @@
       "name": "default",
       "agents": {
         "default": {
-          "command": "opencode",
+          "command": "C:\\Users\\ZGG\\AppData\\Roaming\\npm\\opencode.cmd",
           "args": [
             "acp"
           ]
@@ -28,15 +28,6 @@
       "name": "模块生成角色",
       "description": "负责根据项目需求生成新模块，扫描源码目录结构并生成 module.md 文件",
       "visibleModulePaths": [],
-      "agents": {
-        "default": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@zed-industries/claude-code-acp@latest"
-          ]
-        }
-      },
       "knowledgeRefs": [
         {
           "filename": "MODULE_FORMAT.md",

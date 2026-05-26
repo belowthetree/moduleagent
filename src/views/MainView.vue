@@ -413,7 +413,7 @@ onUnmounted(() => {
                 <span class="paths-value">{{ selectedRoleInfo.visibleModulePaths.join(', ') || '(全部)' }}</span>
               </div>
               <div class="role-cmd">
-                Agent: {{ selectedRoleInfo.agents.default.command }} {{ (selectedRoleInfo.agents.default.args || []).join(' ') }}
+                Agent: {{ configStore.agentCmd }} {{ configStore.agentArgs }}
               </div>
             </div>
             <div class="role-ctx-area">

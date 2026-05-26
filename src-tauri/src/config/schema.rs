@@ -58,29 +58,14 @@ pub struct ConfigEntry {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RoleAgentConfig {
-    pub command: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub args: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RoleConfig {
     pub name: String,
     #[serde(default)]
     pub description: String,
     #[serde(default)]
     pub visible_module_paths: Vec<String>,
-    pub agents: RoleAgentsConfig,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub knowledge_refs: Option<Vec<KnowledgeRef>>,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RoleAgentsConfig {
-    pub default: RoleAgentConfig,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

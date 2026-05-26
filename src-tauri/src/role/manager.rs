@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use log;
 
 use crate::agent::AgentManager;
-use crate::config::schema::{RoleAgentConfig, RoleConfig};
+use crate::config::schema::{AgentConfig, RoleConfig};
 use crate::util::AppResult;
 
 use super::workspace::RoleWorkspace;
@@ -34,14 +34,13 @@ impl RoleAgentManager {
         }
     }
 
-    /// Start a role agent.
-    pub async fn start(&self, role: &RoleConfig) -> AppResult<String> {
+    /// Start a role agent using the given agent config.
+    pub async fn start(&self, role: &RoleConfig, agent_config: &AgentConfig) -> AppResult<String> {
         let ws = RoleWorkspace::create(&self.workspace_root, role).await?;
         log::info!("启动角色 Agent [{}]，工作空间: {}", role.name, ws.display());
 
-        let config = role_agent_config_to_generic(&role.agents.default);
         self.agent_manager
-            .start_agent(&role.name, &config, &ws)
+            .start_agent(&role.name, agent_config, &ws)
             .await?;
 
         self.active_roles
@@ -79,15 +78,5 @@ impl RoleAgentManager {
             drop(ws);
         }
         Ok(())
-    }
-}
-
-fn role_agent_config_to_generic(rc: &RoleAgentConfig) -> crate::config::schema::AgentConfig {
-    crate::config::schema::AgentConfig {
-        command: rc.command.clone(),
-        args: rc.args.clone(),
-        fast_model: None,
-        normal_model: None,
-        auto_switch_model: None,
     }
 }

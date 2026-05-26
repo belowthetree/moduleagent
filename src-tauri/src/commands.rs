@@ -272,12 +272,7 @@ pub async fn roles_list(
     let config = loader.load().await.map_err(|e| e.to_string())?;
     let mut roles = config.roles.unwrap_or_default();
     if roles.is_empty() {
-        let mut role = defaults::default_module_gen_role();
-        if let Some(entry) = config.configs.first() {
-            role.agents.default.command = entry.config.agents.default.command.clone();
-            role.agents.default.args = entry.config.agents.default.args.clone();
-        }
-        roles.push(role);
+        roles.push(defaults::default_module_gen_role());
     }
     Ok(serde_json::to_value(roles).unwrap_or(json!([])))
 }
@@ -321,9 +316,14 @@ pub async fn role_start(
     let loader = ConfigLoader::new(&project_root);
     let config = loader.load().await.map_err(|e| e.to_string())?;
     let roles = config.roles.unwrap_or_default();
-    let role = roles.iter().find(|r| r.name == name).ok_or(format!("role '{name}' not found"))?;
+    let role = roles.iter().find(|r| r.name == name)
+        .ok_or(format!("role '{name}' not found"))?
+        .clone();
     log::info!("接收角色启动请求: {}", name);
-    let session_id = state.role_manager.start(role).await.map_err(|e| e.to_string())?;
+    let agent_config = config.configs.first()
+        .map(|e| e.config.agents.default.clone())
+        .unwrap_or_else(defaults::default_agent_config);
+    let session_id = state.role_manager.start(&role, &agent_config).await.map_err(|e| e.to_string())?;
     Ok(json!({ "sessionId": session_id }))
 }
 

@@ -1,6 +1,6 @@
 //! Default values for the configuration schema.
 
-use super::schema::{AgentConfig, KnowledgeRef, ProjectConfig, RoleAgentConfig, RoleAgentsConfig, RoleConfig, WorkspaceConfig};
+use super::schema::{AgentConfig, KnowledgeRef, ProjectConfig, RoleConfig, WorkspaceConfig};
 
 /// Default agent command: `npx -y @zed-industries/claude-code-acp@latest`
 pub fn default_agent_config() -> AgentConfig {
@@ -40,12 +40,6 @@ pub fn default_module_gen_role() -> RoleConfig {
         name: "模块生成角色".to_string(),
         description: "负责根据项目需求生成新模块，扫描源码目录结构并生成 module.md 文件".to_string(),
         visible_module_paths: Vec::new(),
-        agents: RoleAgentsConfig {
-            default: RoleAgentConfig {
-                command: default_agent_config().command,
-                args: default_agent_config().args,
-            },
-        },
         knowledge_refs: Some(vec![KnowledgeRef {
             filename: "MODULE_FORMAT.md".to_string(),
             name: "Module.md 文件规范".to_string(),

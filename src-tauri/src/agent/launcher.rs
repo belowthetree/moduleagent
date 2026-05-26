@@ -61,6 +61,7 @@ impl AgentLauncher {
         let cwd_owned = cwd.to_path_buf();
 
         // ── Spawn the connection in a background task ──────────────
+        log::info!("正在启动 Agent [{:?}]...", config);
         tokio::spawn(async move {
             let result = Client
                 .builder()
@@ -125,10 +126,26 @@ impl AgentLauncher {
 }
 
 /// Build an [`AcpAgent`] from our [`AgentConfig`].
+/// On Windows, wraps non-path commands with `cmd.exe /c` to inherit full system PATH.
 fn build_acp_agent(config: &AgentConfig) -> AppResult<AcpAgent> {
-    let args: Vec<&str> = std::iter::once(config.command.as_str())
-        .chain(config.args.as_ref().into_iter().flat_map(|v| v.iter().map(|s| s.as_str())))
-        .collect();
+    let command = &config.command;
+    let user_args: Vec<&str> = config.args.as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+
+    let args: Vec<&str> = if cfg!(windows) && !command.contains('/') && !command.contains('\\') {
+        let mut v = Vec::with_capacity(3 + user_args.len());
+        v.push("cmd.exe");
+        v.push("/c");
+        v.push(command.as_str());
+        v.extend(user_args);
+        v
+    } else {
+        let mut v = Vec::with_capacity(1 + user_args.len());
+        v.push(command.as_str());
+        v.extend(user_args);
+        v
+    };
 
     AcpAgent::from_args(args)
         .map_err(|e| AppError::Internal(format!("invalid agent command: {e}")))
