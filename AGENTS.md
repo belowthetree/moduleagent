@@ -1,128 +1,98 @@
 # AGENTS.md
 
-This file provides guidance to AI coding assistants when working in this repository.
+AI 编程助手的代码库指导。
 
-## Build & verify
+## 构建与验证
 
 ```bash
-npm run dev:renderer       # Frontend-only Vite dev server (port 5173)
-npm run dev                # Web mode: frontend + backend Sidecar (no desktop shell)
-npm run tauri:dev          # Tauri dev mode: Vite HMR + Tauri window + Sidecar
-npm run tauri:build        # Production Tauri build (frontend + Sidecar + Rust)
-npm run build:backend      # Build Sidecar bundles (esbuild): server.cjs + MCP servers
-npm run build:renderer     # Build frontend (Vite → dist-renderer/)
-npm run typecheck          # Type-check only (no emit)
-npm run test               # Vitest unit/component tests
+npm run dev:renderer       # 前端 Vite dev server（端口 5173）
+npm run dev                # Web 模式（仅前端）
+npm run tauri:dev          # Tauri dev 模式（Vite HMR + Tauri 窗口）
+npm run tauri:build        # 生产构建
+npm run build:backend      # Rust 后端构建（cargo build）
+npm run build:renderer     # 前端构建（Vite）
+npm run typecheck          # TypeScript 类型检查
+npm run test               # Vitest 测试
 ```
 
-Type-check (`npm run typecheck`) is the primary guardrail. No linter or formatter configured.
+## 架构：Tauri 2 + Rust 后端 + Vue 3
 
-## Architecture: Tauri + Node.js Sidecar + Vue 3
-
-The codebase has a **three-layer architecture**:
-
-- **Desktop shell** (`src-tauri/`): Tauri 2 (Rust) — window management, native APIs (dialog/shell/fs), Sidecar process launch
-- **Backend** (`src-backend/`): Node.js HTTP/SSE server — Agent orchestration, module scanning, MCP routing, config management. Runs as a **Sidecar** subprocess spawned by Tauri.
-- **Frontend** (`src-renderer/`): Vue 3 SFC + Pinia + Element Plus — UI components, state management, module tree visualization
-
-Communication between frontend and backend uses **HTTP + SSE** (replacing old Electron IPC):
-- Frontend → Backend: `fetch()` POST requests with JSON body
-- Backend → Frontend: SSE (Server-Sent Events) on `/api/stream` for streaming updates
-
-Sidecar startup flow:
-1. Tauri `setup()` spawns `node dist-backend/server.cjs`
-2. Sidecar writes `READY:<port>` to stdout
-3. Tauri reads the port, stores it in app state
-4. Frontend invokes `get_sidecar_port` Tauri command, then connects via HTTP + SSE
-
-### Process model
+### 进程模型
 
 ```
-┌──────────────────────┐     HTTP + SSE     ┌──────────────────────┐
-│   Tauri (Rust)       │◄──────────────────►│  Vue 3 WebView       │
-│   Window + API       │                    │  (frontend UI)       │
-│          │           │                    │                      │
-│    spawn │           │                    │  fetch() + SSE       │
-│          ▼           │                    │                      │
-│   Node.js Sidecar    │◄───────────────────┘                      │
-│   (src-backend/)     │   127.0.0.1:port                          │
-└──────────────────────┘                                          │
-         │ ACP stdio                                               │
-         ▼                                                         │
-   Agent subprocesses (opencode/claude)                            │
-         │ MCP stdio                                               │
-         ▼                                                         │
-   MCP Server subprocesses                                         │
+┌──────────────────────┐  Tauri IPC    ┌──────────────────────┐
+│   Tauri (Rust)       │◄──────────────►│  Vue 3 WebView       │
+│   Window + 后端逻辑   │  invoke/listen │  (前端 UI)           │
+│          │           │                │                      │
+│    spawn │           │                │                      │
+│          ▼           │                │                      │
+│   Agent 子进程        │                │                      │
+│   (opencode/claude)  │                │                      │
+│    ACP stdio         │                │                      │
+└──────────────────────┘                └──────────────────────┘
 ```
 
-### Key layers
+后端逻辑全部在 Rust（`src-tauri/src/`）中运行，无需 Node.js Sidecar。
 
-| Layer | Location | Responsibility |
-|-------|----------|----------------|
-| Desktop | `src-tauri/` | Window, native APIs, Sidecar lifecycle |
-| Backend | `src-backend/server.ts` + `src-backend/agents/`, `core/`, `protocol/` | HTTP/SSE API, agent lifecycle, module graph, MCP routing |
-| Frontend | `src-renderer/` | Vue components, Pinia stores, router |
-| Config | `src-backend/config/` | ConfigLoader, Zod schema, defaults |
-| Protocol | `src-backend/protocol/` | ACP connection + MCP servers + tools |
+### 分层
 
-## Critical gotchas
+| 层 | 位置 | 职责 |
+|----|------|------|
+| 前端 UI | `src/` | Vue 3 组件、Pinia stores、路由 |
+| Tauri 命令 | `src-tauri/src/commands.rs` | 33 个 IPC 命令入口 |
+| Agent 系统 | `src-tauri/src/agent/` | AgentLauncher、AgentManager、StreamAccumulator |
+| ACP 协议 | `src-tauri/src/acp/` | NDJSON 传输、客户端实现 |
+| 模块系统 | `src-tauri/src/module/` | 扫描、解析、图谱构建 |
+| 配置 | `src-tauri/src/config/` | Schema、默认值、加载器 |
+| 角色 | `src-tauri/src/role/` | 角色 Agent 管理、工作空间 |
+| 工具 | `src-tauri/src/util/` | 错误、文件操作、日志、路径 |
 
-- **Windows path normalization**: Always call `cwd.replace(/\\/g, '/')` before passing cwd to Agent subprocesses. Already done in `AgentLauncher.launch()`.
-- **Windows absolute paths on WSL/Linux**: `path.resolve('E:\\foo\\bar')` on Linux does NOT recognize the drive letter as absolute — it treats the whole thing as relative and prepends `cwd`. Use `normalizeCodeSourcePath()` from `src-backend/core/PathUtils.ts` to convert `E:\foo\bar` → `/mnt/e/foo/bar` when `process.platform !== 'win32'`.
-- **Sidecar env format for MCP servers**: Must be `Array<{name: string, value: string}>`, NOT `Record<string, string>`. Zod validation in the SDK rejects record types.
-- **Stream chunk content path**: Content is at `notification.update.content.text`, not `notification.update.text`.
-- **Map serialization**: Module graph uses `Map`. When serializing to JSON (for MCP graph file), convert to object with `Object.fromEntries(map)`. Deserialize with `new Map(Object.entries(obj))`.
-- **MCP server bundle path**: Use Tauri's resource directory (or `dist-backend/` relative to project root), NOT the user's project root. The bundle lives at `dist-backend/mcp-server.cjs`.
-- **First message per session** injects system prompt (`config/mainagentprompt.md` or `config/subagentprompt.md`) + module context. Subsequent messages skip this. Tracked via `sessionPrompted` Set.
-- **SSE vs IPC**: The old Electron architecture used `ipcRenderer.invoke` / `ipcMain.handle` for requests and `webContents.send` for streaming. The new Tauri architecture uses `fetch()` for requests and `EventSource` (SSE) for streaming. Frontend code in `src-renderer/composables/useApi.ts` wraps this.
+## 关键注意事项
 
-## Project config
+- **Windows PATH**：非完整路径命令自动包装 `cmd.exe /c`（见 `agent/launcher.rs`）
+- **配置数据源**：`.module-agent.json` 为唯一数据源，`localStorage` 仅存 `lastProject`
+- **模块扫描**：`.module-agent` 目录只扫描 `module/` 子目录
+- **会话错误**：未知变体（如 `usage_update`）被跳过，不中断会话
+- **角色 Agent**：不包含独立 Agent 配置，统一使用项目主配置
+- **日志系统**：`log` + `log4rs`，输出到 `logs/` 目录
+- **前端通信**：`window.__TAURI__.core.invoke()` + `listen()`，非 HTTP/SSE
 
-`.module-agent.json` at the **user's project root** (not this repo's root) configures the agent command, args, exclusions, and project root. Schema in `src-backend/config/schema.ts`. Note: the repo's own `.module-agent.json` is a sample for self-hosting.
+## 项目配置
 
-### Config fields
+`.module-agent.json` 在用户项目根目录配置。Schema 在 `src-tauri/src/config/schema.rs`。
 
-| Field | Purpose |
-|-------|---------|
-| `agents.default.command` / `args` | Agent executable and arguments |
-| `agents.modules` | Per-module agent command overrides |
-| `exclude` | Directory/pattern list to skip during module scanning |
-| `projectPath` | Root project directory |
-| `roles` | Array of role agent configs (name, description, visibleModulePaths, agents.default) |
+### 配置字段
 
-When changing the schema, update both `src-backend/config/schema.ts` (Zod) and `src-backend/config/defaults.ts` (TypeScript interface + `DEFAULT_CONFIG`). Then ensure all config consumers are updated:
-- `src-backend/server.ts` (Sidecar API — config:save / config:get / project:scan)
-- `src-renderer/composables/useApi.ts` (frontend API layer)
+| 字段 | 说明 |
+|------|------|
+| `agents.default.command` / `args` | Agent 命令和参数 |
+| `exclude` | 扫描排除的目录/模式 |
+| `projectPath` | 项目根目录 |
+| `roles` | 角色 Agent 配置（名称、描述、可见模块路径、知识引用） |
+| `summarization.enabled` | 自动文档更新开关 |
 
-## Key directories
+## 主要目录
 
-| Directory | Purpose |
-|-----------|---------|
-| `src-tauri/` | Tauri Rust backend — window, Sidecar launcher, native plugins |
-| `src-backend/server.ts` | HTTP/SSE server entry — all API routes, agent lifecycle, MCP backend, role agent lifecycle |
-| `src-backend/agents/` | AgentLauncher, AgentStateManager, McpBackend, McpServerBuilder, PromptBuilder, RoleAgentManager, RoleWorkspace, WorkflowManager, WorkspaceIsolator |
-| `src-backend/config/` | ConfigLoader, schema (Zod), defaults |
-| `src-backend/core/` | ModuleScanner, ModuleGraph, ModuleParser, ModuleGenerator, ModuleAgentCore, Logger, PathUtils, ConfigPaths, ExclusionRules, ExperienceSummarizer |
-| `src-backend/protocol/acp/` | ACP connection + FsHandler + TerminalHandler |
-| `src-backend/protocol/mcp/` | MCPServer + RoleMCPServer + CommunicationBus + server entries |
-| `src-renderer/` | Vue 3 frontend — views, components, Pinia stores, router |
-| `config/` | System prompt markdown files (mainagent, subagent, roleagent) |
-| `dist-backend/` | Sidecar build output: server.cjs, mcp-server.cjs, mcp-role-server.cjs |
+| 目录 | 说明 |
+|------|------|
+| `src-tauri/` | Tauri Rust 后端 |
+| `src/` | Vue 3 前端 |
+| `config/` | 系统提示词 + 知识库 |
+| `docs/` | 文档 |
 
-### Runtime directories (created under user's project root)
+### 运行时目录（用户项目根目录下）
 
-| Directory | Purpose |
-|-----------|---------|
-| `.module-agent/` | All runtime data for a project |
-| `.module-agent/module/` | Module `.md` files — the definitive location for all module documentation |
-| `.module-agent/workspace/` | Isolated runtime copies of source code for agent execution |
-| `.module-agent/workspace/workrole/` | Role agent workspaces (copies of visible module dirs) |
-| `.module-agent/context/` | Agent conversation context storage |
-| `.module-agent.json` | Project configuration file |
+| 目录 | 说明 |
+|------|------|
+| `.module-agent/` | 所有运行时数据 |
+| `.module-agent/module/` | 模块 `.md` 文件 |
+| `.module-agent/workspace/workrole/` | 角色工作空间 |
+| `.module-agent/context/` | Agent 对话上下文 |
+| `.module-agent/knowledge/` | 知识库文件 |
+| `.module-agent.json` | 项目配置文件 |
 
-## Build details
+## 构建产物
 
-- **Frontend (renderer)**: Vite + Vue plugin → `dist-renderer/` (static files)
-- **Sidecar backend**: esbuild → self-contained CJS bundles → `dist-backend/server.cjs`, `dist-backend/mcp-server.cjs`, `dist-backend/mcp-role-server.cjs`
-- **Tauri desktop**: Cargo build → native executable (embeds `dist-renderer/` + bundles `dist-backend/` + `config/` as resources)
-- Output files in `dist-backend/`, `dist-renderer/`, and `src-tauri/target/` are gitignored
+- 前端：`dist-renderer/`（Vite）
+- 后端：Cargo target 目录
+- `dist-renderer/` 和 `src-tauri/target/` 在 gitignore 中
