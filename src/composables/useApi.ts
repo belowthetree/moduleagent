@@ -1,12 +1,3 @@
-/**
- * useApi — HTTP API client replacing window.moduleAgent IPC bridge.
- *
- * In Tauri mode: detects sidecar port from Tauri command.
- * In dev/Vite mode: uses default port 18888.
- *
- * Maintains the exact ModuleAgentApi interface so stores/components don't change.
- */
-
 import { ref } from 'vue';
 import type {
   ModuleAgentApi,
@@ -27,181 +18,114 @@ import type {
   TreeNode,
 } from '../types/preload';
 
-// ── Port detection ──
-let apiBase = 'http://127.0.0.1:18888';
+let tauriInvoke: any = null;
+let tauriListen: any = null;
 
-async function detectPort(): Promise<void> {
-  try {
-    // Try Tauri invoke first
-    if ((window as any).__TAURI__) {
-      const { invoke } = (window as any).__TAURI__.core;
-      const port = await invoke('get_backend_port');
-      apiBase = `http://127.0.0.1:${port}`;
-    }
-  } catch {
-    // Fall back to default port for dev mode
+function getTauri() {
+  if (!tauriInvoke && (window as any).__TAURI__) {
+    const core = (window as any).__TAURI__.core;
+    tauriInvoke = core.invoke;
+    tauriListen = core.listen;
   }
+  return { invoke: tauriInvoke, listen: tauriListen };
 }
 
-// Call detectPort at module init
-detectPort();
-
-// ── SSE connection ──
-let sseSource: EventSource | null = null;
-let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-interface SSECallbacks {
-  onAgentStream: ((data: AgentStreamData) => void)[];
-  onAgentStatus: ((data: AgentStatusData) => void)[];
-  onCrossContext: ((data: CrossContextData) => void)[];
-  onRoleStream: ((data: AgentStreamData) => void)[];
-  onRoleStatus: ((data: AgentStatusData) => void)[];
-}
-
-const sseCallbacks: SSECallbacks = {
-  onAgentStream: [],
-  onAgentStatus: [],
-  onCrossContext: [],
-  onRoleStream: [],
-  onRoleStatus: [],
+const sseCallbacks = {
+  onAgentStream: [] as ((data: AgentStreamData) => void)[],
+  onAgentStatus: [] as ((data: AgentStatusData) => void)[],
+  onCrossContext: [] as ((data: CrossContextData) => void)[],
+  onRoleStream: [] as ((data: AgentStreamData) => void)[],
+  onRoleStatus: [] as ((data: AgentStatusData) => void)[],
 };
 
-function connectSSE(): void {
-  if (sseSource) return;
+let unlisten: (() => void) | null = null;
 
-  const url = `${apiBase}/api/stream`;
-  sseSource = new EventSource(url);
-
-  sseSource.onopen = () => {
-    console.log('[SSE] Connected to sidecar');
-  };
-
-  sseSource.addEventListener('agent-stream', (e: MessageEvent) => {
-    try {
-      const data = JSON.parse(e.data);
-      for (const cb of sseCallbacks.onAgentStream) cb(data);
-    } catch { /* ignore parse errors */ }
-  });
-
-  sseSource.addEventListener('agent-status', (e: MessageEvent) => {
-    try {
-      const data = JSON.parse(e.data);
-      for (const cb of sseCallbacks.onAgentStatus) cb(data);
-    } catch { /* ignore */ }
-  });
-
-  sseSource.addEventListener('cross-context', (e: MessageEvent) => {
-    try {
-      const data = JSON.parse(e.data);
-      for (const cb of sseCallbacks.onCrossContext) cb(data);
-    } catch { /* ignore */ }
-  });
-
-  sseSource.addEventListener('role-stream', (e: MessageEvent) => {
-    try {
-      const data = JSON.parse(e.data);
-      for (const cb of sseCallbacks.onRoleStream) cb(data);
-    } catch { /* ignore */ }
-  });
-
-  sseSource.addEventListener('role-status', (e: MessageEvent) => {
-    try {
-      const data = JSON.parse(e.data);
-      for (const cb of sseCallbacks.onRoleStatus) cb(data);
-    } catch { /* ignore */ }
-  });
-
-  sseSource.onerror = () => {
-    console.warn('[SSE] Connection lost, reconnecting...');
-    sseSource?.close();
-    sseSource = null;
-    if (sseReconnectTimer) clearTimeout(sseReconnectTimer);
-    sseReconnectTimer = setTimeout(connectSSE, 2000);
-  };
+async function setupStreamListener() {
+  const { listen } = getTauri();
+  if (!listen || unlisten) return;
+  try {
+    unlisten = await listen('stream', (event: any) => {
+      const { type: eventType, data } = event.payload;
+      const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+      switch (eventType) {
+        case 'agent-stream':
+          sseCallbacks.onAgentStream.forEach(cb => cb(parsed));
+          break;
+        case 'agent-status':
+          sseCallbacks.onAgentStatus.forEach(cb => cb(parsed));
+          break;
+        case 'cross-context':
+          sseCallbacks.onCrossContext.forEach(cb => cb(parsed));
+          break;
+        case 'role-stream':
+          sseCallbacks.onRoleStream.forEach(cb => cb(parsed));
+          break;
+        case 'role-status':
+          sseCallbacks.onRoleStatus.forEach(cb => cb(parsed));
+          break;
+        case 'chunk-reply':
+        case 'chunk-thinking':
+        case 'chunk-tool_call':
+          sseCallbacks.onAgentStream.forEach(cb => cb(parsed as AgentStreamData));
+          break;
+      }
+    });
+  } catch {}
 }
 
-function ensureSSE(): void {
-  if (!sseSource) connectSSE();
-}
+setupStreamListener();
 
-// ── HTTP helpers ──
-async function get(path: string): Promise<any> {
-  const res = await fetch(`${apiBase}${path}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-  return res.json();
+async function invokeCmd<T = any>(cmd: string, args?: any): Promise<T> {
+  const { invoke } = getTauri();
+  if (invoke) return invoke(cmd, args);
+  throw new Error('Tauri not available');
 }
-
-async function post(path: string, body?: Record<string, unknown>): Promise<any> {
-  const res = await fetch(`${apiBase}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-  return res.json();
-}
-
-async function del(path: string): Promise<any> {
-  const res = await fetch(`${apiBase}${path}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-  return res.json();
-}
-
-// ── ModuleAgentApi implementation ──
 
 export function createModuleAgentApi(): ModuleAgentApi {
-  ensureSSE();
-
   return {
-    // ── Dialog (via Tauri or fallback) ──
     async selectDir(title: string): Promise<string | null> {
       try {
-        if ((window as any).__TAURI__) {
-          const { invoke } = (window as any).__TAURI__.core;
-          return await invoke('select_dir', { title });
-        }
-      } catch { /* fall through */ }
-      // Fallback for dev: use a simple prompt
+        const { invoke } = getTauri();
+        if (invoke) return await invoke('select_dir', { title });
+      } catch {}
       return prompt('Enter project directory path:') || null;
     },
 
-    // ── Project ──
     async scanProject(projectRoot: string): Promise<ScanResult> {
-      return post('/api/project/scan', { projectRoot });
+      return invokeCmd<ScanResult>('project_scan', { body: { projectPath: projectRoot } });
     },
 
     async generateModules(projectRoot: string): Promise<{ success: boolean; count: number; error?: string }> {
-      return post('/api/project/generate', { projectRoot });
+      return invokeCmd('project_generate', { body: { projectRoot } });
     },
 
     async getTree(): Promise<TreeNode | null> {
-      return get('/api/project/tree');
+      return invokeCmd<TreeNode | null>('project_tree');
     },
 
-    // ── Agent ──
     async startAgent(moduleName: string, cmd: string, args: string[], cwd: string): Promise<{ sessionId?: string; error?: string }> {
-      return post('/api/agent/start', { moduleName, cmd, args, cwd });
+      return invokeCmd('agent_start', { body: { name: moduleName, command: cmd, args, cwd } });
     },
 
     async sendMessage(moduleName: string, text: string, cwd?: string): Promise<{ result?: { reply: string; thinking: string; tools: string; timeline?: any[]; stopReason?: string }; error?: string }> {
-      return post('/api/agent/send', { moduleName, text, cwd });
+      return invokeCmd('agent_send', { body: { name: moduleName, text, cwd } });
     },
 
     async cancelAgent(moduleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }> {
-      return post('/api/agent/cancel', { moduleName });
+      return invokeCmd('agent_cancel', { body: { name: moduleName } });
     },
 
     async stopAgent(moduleName: string): Promise<{}> {
-      return post('/api/agent/stop', { moduleName });
+      return invokeCmd('agent_stop', { body: { name: moduleName } });
     },
 
     async isAgentRunning(moduleName: string): Promise<boolean> {
-      const agents = await get('/api/agent/running');
+      const agents = await invokeCmd<any[]>('agent_running');
       return agents.some((a: any) => a.name === moduleName);
     },
 
     async getRunningAgents(): Promise<{ name: string; status: AgentStatus }[]> {
-      return get('/api/agent/running');
+      return invokeCmd<{ name: string; status: AgentStatus }[]>('agent_running');
     },
 
     onAgentStream(callback: (data: AgentStreamData) => void): () => void {
@@ -220,38 +144,34 @@ export function createModuleAgentApi(): ModuleAgentApi {
       };
     },
 
-    // ── Config ──
     async saveAgentConfig(projectRoot: string, cmd: string, args: string[], projectPath?: string, summarizationEnabled?: boolean): Promise<{ success: boolean }> {
-      return post('/api/config/save', { projectRoot, command: cmd, args, projectPath, summarizationEnabled });
+      return invokeCmd('config_save', { body: { projectRoot, command: cmd, args, projectPath, summarizationEnabled } });
     },
 
     async getAgentConfig(projectRoot: string): Promise<{ command: string; args: string[]; projectPath?: string; summarizationEnabled?: boolean }> {
-      return get(`/api/config/get?projectRoot=${encodeURIComponent(projectRoot)}`);
+      return invokeCmd('config_get', { body: { projectRoot } });
     },
 
-    // ── Migration ──
     async migrateCheck(keys: string[]): Promise<{ needed: string[]; streamNeeded: boolean }> {
-      return post('/api/migrate/check', { keys });
+      return invokeCmd('migrate_check', { body: { keys } });
     },
 
     async migrateData(payload: MigrationData): Promise<void> {
-      await post('/api/migrate/data', payload as unknown as Record<string, unknown>);
+      await invokeCmd('migrate_data', { body: payload });
     },
 
-    // ── Context ──
     async getContext(moduleName: string): Promise<ChatMsg[]> {
-      return get(`/api/context/${encodeURIComponent(moduleName)}`);
+      return invokeCmd<ChatMsg[]>('context_get', { name: moduleName });
     },
 
     async clearContext(moduleName: string): Promise<void> {
-      await del(`/api/context/${encodeURIComponent(moduleName)}`);
+      await invokeCmd('context_clear', { name: moduleName });
     },
 
     async clearAllContexts(): Promise<void> {
-      await del('/api/context');
+      await invokeCmd('context_clear_all');
     },
 
-    // ── Cross context ──
     onCrossContext(callback: (data: CrossContextData) => void): () => void {
       sseCallbacks.onCrossContext.push(callback);
       return () => {
@@ -260,46 +180,44 @@ export function createModuleAgentApi(): ModuleAgentApi {
       };
     },
 
-    // ── Role Agent ──
     async getRoles(): Promise<RoleConfigData[]> {
-      return get('/api/roles');
+      return invokeCmd<RoleConfigData[]>('roles_list');
     },
 
     async saveRole(role: RoleConfigData): Promise<{ success: boolean }> {
-      return post('/api/roles', role as unknown as Record<string, unknown>);
+      return invokeCmd('roles_save', { body: role });
     },
 
     async deleteRole(name: string): Promise<{ success: boolean }> {
-      return del(`/api/roles/${encodeURIComponent(name)}`);
+      return invokeCmd('roles_delete', { name });
     },
 
     async startRoleAgent(roleName: string): Promise<{ sessionId?: string; error?: string }> {
-      return post(`/api/roles/${encodeURIComponent(roleName)}/start`);
+      return invokeCmd('role_start', { name: roleName });
     },
 
     async sendRoleMessage(roleName: string, text: string): Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason?: string }; error?: string }> {
-      return post(`/api/roles/${encodeURIComponent(roleName)}/send`, { text });
+      return invokeCmd('role_send', { name: roleName, body: { text } });
     },
 
     async cancelRoleAgent(roleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }> {
-      return post(`/api/roles/${encodeURIComponent(roleName)}/cancel`);
+      return invokeCmd('role_cancel', { name: roleName });
     },
 
     async stopRoleAgent(roleName: string): Promise<{}> {
-      return post(`/api/roles/${encodeURIComponent(roleName)}/stop`);
+      return invokeCmd('role_stop', { name: roleName });
     },
 
     async isRoleAgentRunning(roleName: string): Promise<boolean> {
-      // We use the status SSE to track this
-      return false; // Simplified
+      return false;
     },
 
     async getRoleContext(roleName: string): Promise<ChatMsg[]> {
-      return get(`/api/roles/${encodeURIComponent(roleName)}/context`);
+      return invokeCmd<ChatMsg[]>('role_context_get', { name: roleName });
     },
 
     async clearRoleContext(roleName: string): Promise<void> {
-      await del(`/api/roles/${encodeURIComponent(roleName)}/context`);
+      await invokeCmd('role_context_clear', { name: roleName });
     },
 
     onRoleAgentStream(callback: (data: AgentStreamData) => void): () => void {
@@ -318,81 +236,75 @@ export function createModuleAgentApi(): ModuleAgentApi {
       };
     },
 
-    // ── Knowledge ──
     async knowledgeList(): Promise<KnowledgeListItem[]> {
-      return get('/api/knowledge');
+      return invokeCmd<KnowledgeListItem[]>('knowledge_list');
     },
 
     async knowledgeRead(filename: string): Promise<KnowledgeEntry | null> {
-      return get(`/api/knowledge/${encodeURIComponent(filename)}`);
+      return invokeCmd<KnowledgeEntry | null>('knowledge_read', { filename });
     },
 
     async knowledgeSave(entry: KnowledgeEntry): Promise<{ success: boolean }> {
-      return post('/api/knowledge', entry as unknown as Record<string, unknown>);
+      return invokeCmd('knowledge_save', { body: entry });
     },
 
     async knowledgeCreate(name: string): Promise<KnowledgeEntry | { error: string }> {
-      return post('/api/knowledge', { create: true, name });
+      return invokeCmd('knowledge_save', { body: { create: true, name } });
     },
 
     async knowledgeDelete(filename: string): Promise<{ success: boolean }> {
-      return del(`/api/knowledge/${encodeURIComponent(filename)}`);
+      return invokeCmd('knowledge_delete', { filename });
     },
 
-    // ── Workflow ──
     async workflowList(): Promise<WorkflowListItem[]> {
-      return get('/api/workflows');
+      return invokeCmd<WorkflowListItem[]>('workflow_list');
     },
 
     async workflowLoad(name: string): Promise<WorkflowDetail | { error: string }> {
-      return get(`/api/workflows/${encodeURIComponent(name)}`);
+      return invokeCmd<WorkflowDetail | { error: string }>('workflow_load', { name });
     },
 
     async workflowCreate(name: string): Promise<{ success: boolean; error?: string }> {
-      return post('/api/workflows', { name });
+      return invokeCmd('workflow_create', { body: { name } });
     },
 
     async workflowDelete(name: string): Promise<{ success: boolean }> {
-      return del(`/api/workflows/${encodeURIComponent(name)}`);
+      return invokeCmd('workflow_delete', { name });
     },
 
     async workflowStepSave(wfName: string, stepName: string, content: string): Promise<{ success: boolean }> {
-      return post(`/api/workflows/${encodeURIComponent(wfName)}/steps`, { stepName, content });
+      return invokeCmd('workflow_step_save', { name: wfName, body: { content } });
     },
 
     async workflowStepDelete(wfName: string, stepName: string): Promise<{ success: boolean }> {
-      return del(`/api/workflows/${encodeURIComponent(wfName)}/steps/${encodeURIComponent(stepName)}`);
+      return invokeCmd('workflow_step_delete', { name: wfName, step: stepName });
     },
 
     async workflowStepAdd(wfName: string): Promise<{ success: boolean; stepName?: string; error?: string }> {
-      return post(`/api/workflows/${encodeURIComponent(wfName)}/steps/add`);
+      return invokeCmd('workflow_step_add', { name: wfName, body: {} });
     },
 
     async workflowExecute(name: string, userInput?: string): Promise<{ success: boolean; results?: WorkflowStepResultItem[]; error?: string }> {
-      return post(`/api/workflows/${encodeURIComponent(name)}/execute`, { userInput });
+      return invokeCmd('workflow_execute', { name, body: { input: userInput } });
     },
 
     async workflowCancel(name: string): Promise<void> {
-      await post(`/api/workflows/${encodeURIComponent(name)}/cancel`);
+      await invokeCmd('workflow_cancel', { name });
     },
 
     async workflowStatus(name: string): Promise<WorkflowStatus | null> {
-      return get(`/api/workflows/${encodeURIComponent(name)}/status`);
+      return invokeCmd<WorkflowStatus | null>('workflow_status', { name });
     },
   };
 }
 
-// Singleton
 let _api: ModuleAgentApi | null = null;
 
 export function useModuleAgent(): ModuleAgentApi {
-  if (!_api) {
-    _api = createModuleAgentApi();
-  }
+  if (!_api) _api = createModuleAgentApi();
   return _api;
 }
 
-// For direct access (replaces window.moduleAgent)
 export function getApi(): ModuleAgentApi {
   return useModuleAgent();
 }
