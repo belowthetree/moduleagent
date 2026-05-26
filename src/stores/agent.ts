@@ -203,7 +203,7 @@ export const useAgentStore = defineStore('agent', () => {
       const agentMsg = getMsgs(moduleName)[agentIdx]
       if (agentMsg) {
         agentMsg.status = 'error'
-        agentMsg.content = `通信错误: ${(err as Error).message}`
+        agentMsg.content = `通信错误: ${err instanceof Error ? err.message : String(err)}`
       }
     } finally {
       sendingLock.value = false
@@ -324,7 +324,7 @@ export const useAgentStore = defineStore('agent', () => {
   async function startRoleAgent(roleName: string): Promise<void> {
     const result = await window.moduleAgent.startRoleAgent(roleName)
     if (result.error) {
-      console.error(`Failed to start role agent ${roleName}: ${result.error}`)
+      throw new Error(result.error)
     }
   }
 
@@ -387,7 +387,7 @@ export const useAgentStore = defineStore('agent', () => {
       const agentMsg = getRoleMsgs(roleName)[agentIdx]
       if (agentMsg) {
         agentMsg.status = 'error'
-        agentMsg.content = `通信错误: ${(err as Error).message}`
+        agentMsg.content = `通信错误: ${err instanceof Error ? err.message : String(err)}`
       }
     } finally {
       roleSendingLock.value = false

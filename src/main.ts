@@ -22,11 +22,8 @@ app.use(ElementPlus, { locale })
 
 // Load saved config before first route resolves
 const configStore = useConfigStore()
-configStore.loadFromLocalStorage()
+configStore.loadLastProject()
 
-// Verify config file exists under stored path.
-// When config is missing/corrupt, loadFromProject falls back to defaults (projectPath = '.'),
-// so clear projectPath to force redirect to /setup.
 async function initApp() {
   if (configStore.projectPath) {
     try {

@@ -242,6 +242,18 @@ pub enum SessionNotification {
         output: Option<serde_json::Value>,
         error: Option<String>,
     },
+    #[serde(rename = "usage_update")]
+    UsageUpdate {
+        cost: Option<UsageCost>,
+        size: Option<u64>,
+        used: Option<u64>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageCost {
+    pub amount: f64,
+    pub currency: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

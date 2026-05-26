@@ -40,7 +40,7 @@ async function onSave(): Promise<void> {
   saving.value = true
 
   try {
-    configStore.saveToLocalStorage()
+    configStore.saveLastProject()
 
     if (configStore.projectPath) {
       await configStore.saveToProject(configStore.projectPath)

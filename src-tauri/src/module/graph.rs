@@ -36,6 +36,38 @@ impl ModuleGraph {
         // Find root — the descriptor with relative_path == "."
         if let Some(root_desc) = descriptors.iter().find(|d| d.relative_path == ".") {
             self.root = Some(root_desc.name.clone());
+        } else if !descriptors.is_empty() {
+            // Pick the module with the shallowest path as root
+            let root_idx = descriptors.iter()
+                .enumerate()
+                .min_by_key(|(_, d)| d.relative_path.split('/').count())
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            self.root = Some(descriptors[root_idx].name.clone());
+        }
+
+        // Build parent-child relationships based on relative_path hierarchy
+        let mut children: HashMap<String, Vec<String>> = HashMap::new();
+        for desc in &descriptors {
+            let path = desc.relative_path.replace('\\', "/");
+            if let Some(pos) = path.rfind('/') {
+                let parent_path = &path[..pos];
+                // Find the node whose relative_path matches the parent directory
+                for parent_desc in &descriptors {
+                    if parent_desc.relative_path == parent_path {
+                        children.entry(parent_desc.name.clone()).or_default().push(desc.name.clone());
+                        if let Some(node) = self.nodes.get_mut(&desc.name) {
+                            node.parent = Some(parent_desc.name.clone());
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        for (parent_name, child_names) in children {
+            if let Some(node) = self.nodes.get_mut(&parent_name) {
+                node.children = child_names;
+            }
         }
 
         Ok(())

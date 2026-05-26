@@ -4,7 +4,7 @@
       "name": "default",
       "agents": {
         "default": {
-          "command": "C:\\Users\\ZGG\\AppData\\Roaming\\npm\\opencode.cmd",
+          "command": "opencode",
           "args": [
             "acp"
           ]

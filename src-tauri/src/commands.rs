@@ -8,6 +8,13 @@ use crate::util::{AppError, AppResult};
 use crate::config::defaults;
 use crate::config::loader::ConfigLoader;
 use crate::config::schema::{AgentConfig, RoleConfig};
+
+/// Resolve project root: prefer request body, fallback to state, fallback to CWD.
+fn resolve_project_root(body: &Value, state: &Arc<AppState>) -> String {
+    body["projectRoot"].as_str().map(String::from)
+        .or_else(|| state.project_root.try_read().ok().and_then(|g| g.clone()))
+        .unwrap_or_else(|| ".".into())
+}
 use crate::module::scanner;
 use crate::module::graph::ModuleGraph;
 use crate::workflow::executor::{WorkflowExecutor, WorkflowStep};
@@ -73,46 +80,73 @@ pub async fn project_tree(
         return Ok(Value::Null);
     }
 
-    let root_name = match graph.root() {
-        Some(name) => name.to_string(),
-        None => return Ok(Value::Null),
-    };
-
     let project_root = state.project_root.read().await.clone().unwrap_or_else(|| ".".to_string());
-    let tree = build_tree_node(&graph, &root_name, &project_root);
+
+    // Build tree from all nodes based on path hierarchy
+    let tree = build_tree_from_graph(&graph, &project_root);
     Ok(serde_json::to_value(tree).unwrap_or(Value::Null))
 }
 
-fn build_tree_node(
-    graph: &ModuleGraph,
-    name: &str,
-    project_root: &str,
-) -> serde_json::Value {
-    let node = graph.get(name);
-    let path = node.map(|n| n.relative_path.clone()).unwrap_or_else(|| ".".into());
-    let description = node.and_then(|n| n.definition.frontmatter.description.clone());
+fn build_tree_from_graph(graph: &ModuleGraph, project_root: &str) -> serde_json::Value {
+    let nodes: Vec<&crate::module::types::ModuleGraphNode> = graph.nodes().values().collect();
+    if nodes.is_empty() {
+        return Value::Null;
+    }
 
-    // Build children: find all nodes whose relative_path starts with this node's path
-    let mut children: Vec<serde_json::Value> = Vec::new();
-    for (child_name, child_node) in graph.nodes() {
-        if child_name == name {
-            continue;
-        }
-        // A child module is one whose directory is directly inside this node's directory
-        let child_path = child_node.relative_path.replace('\\', "/");
-        let parent_path = if let Some(pos) = child_path.rfind('/') {
-            &child_path[..pos]
+    // Collect top-level modules: those whose parent path has no corresponding module
+    let mut root_children: Vec<serde_json::Value> = Vec::new();
+    for node in &nodes {
+        let relative = node.relative_path.replace('\\', "/");
+        let parent_path = if let Some(pos) = relative.rfind('/') {
+            &relative[..pos]
         } else {
             "."
         };
-        if parent_path == path {
-            children.push(build_tree_node(graph, child_name, project_root));
+        // If parent_path is "." or no module exists at parent path, it's a root-level child
+        if parent_path == "." || !nodes.iter().any(|n| n.relative_path == parent_path) {
+            root_children.push(build_subtree(&relative, project_root, &nodes));
+        }
+    }
+
+    let proj_name = project_root.replace('\\', "/");
+    let root_name = proj_name.rsplit('/').next().unwrap_or("root");
+
+    json!({
+        "name": root_name,
+        "path": ".",
+        "description": None::<String>,
+        "children": root_children,
+        "cwd": project_root,
+    })
+}
+
+fn build_subtree(
+    current_path: &str,
+    project_root: &str,
+    all_nodes: &[&crate::module::types::ModuleGraphNode],
+) -> serde_json::Value {
+    let node = all_nodes.iter().find(|n| n.relative_path == current_path);
+    let name = node.map(|n| n.name.as_str()).unwrap_or(
+        current_path.rsplit('/').next().unwrap_or(current_path)
+    );
+    let description = node.and_then(|n| n.definition.frontmatter.description.clone());
+
+    let mut children: Vec<serde_json::Value> = Vec::new();
+    for child_node in all_nodes {
+        let child_relative = child_node.relative_path.replace('\\', "/");
+        let child_parent = if let Some(pos) = child_relative.rfind('/') {
+            &child_relative[..pos]
+        } else {
+            "."
+        };
+        if child_parent == current_path && child_node.relative_path != current_path {
+            children.push(build_subtree(&child_relative, project_root, all_nodes));
         }
     }
 
     json!({
         "name": name,
-        "path": path,
+        "path": current_path,
         "description": description,
         "children": children,
         "cwd": project_root,
@@ -193,9 +227,10 @@ pub async fn agent_running(
 #[tauri::command]
 pub async fn config_get(
     state: State<'_, Arc<AppState>>,
+    body: Value,
 ) -> Result<Value, String> {
-    let project_root = state.project_root.read().await.clone().unwrap_or_else(|| ".".to_string());
-    let loader = ConfigLoader::new(&project_root);
+    let project_root = resolve_project_root(&body, &state);
+    let loader = ConfigLoader::new(project_root);
     let config = loader.load().await.map_err(|e| e.to_string())?;
     let entry = config.configs.first();
     Ok(json!({
@@ -211,8 +246,8 @@ pub async fn config_save(
     state: State<'_, Arc<AppState>>,
     body: Value,
 ) -> Result<Value, String> {
-    let project_root = state.project_root.read().await.clone().unwrap_or_else(|| ".".to_string());
-    let loader = ConfigLoader::new(&project_root);
+    let project_root = resolve_project_root(&body, &state);
+    let loader = ConfigLoader::new(project_root);
     let mut config = loader.load().await.map_err(|e| e.to_string())?;
     if let Some(entry) = config.configs.first_mut() {
         if let Some(cmd) = body["command"].as_str() { entry.config.agents.default.command = cmd.to_string(); }

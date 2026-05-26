@@ -61,7 +61,7 @@ impl AgentLauncher {
         let cwd_owned = cwd.to_path_buf();
 
         // ── Spawn the connection in a background task ──────────────
-        log::info!("正在启动 Agent [{:?}]...", config);
+        log::info!("正在启动 Agent [{}] (命令: {:?})...", name, config);
         tokio::spawn(async move {
             let result = Client
                 .builder()
@@ -85,12 +85,12 @@ impl AgentLauncher {
                 )
                 .connect_with(acp_agent, |connection: ConnectionTo<Agent>| async move {
                     // Step 1: Initialize the connection
-                    connection
+                    log::info!("[{}] 发送 ACP initialize 请求 (ProtocolVersion::V1)", name_owned);
+                    let init_resp = connection
                         .send_request(InitializeRequest::new(ProtocolVersion::V1))
                         .block_task()
                         .await?;
-
-                    log::info!("ACP 连接初始化成功 [{}]", name_owned);
+                    log::info!("[{}] ACP 初始化响应: {:?}", name_owned, init_resp.protocol_version);
 
                     // Step 2: Hand the connection handle back to the caller
                     let _ = conn_tx.send(connection);

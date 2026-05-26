@@ -6,6 +6,7 @@
 //! request permissions, and stream updates.
 
 use crate::acp::types::*;
+use log;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -123,6 +124,7 @@ impl Client for DefaultClient {
 
     async fn read_text_file(&self, params: ReadTextFileRequest) -> Result<ReadTextFileResponse, AcpError> {
         let path = self.resolve_path(&params.path)?;
+        log::debug!("Agent 读取文件: {}", path.display());
         let raw = tokio::fs::read_to_string(&path).await.map_err(|e| AcpError {
             code: -32001, message: format!("read_text_file: {}", e),
         })?;
@@ -140,6 +142,7 @@ impl Client for DefaultClient {
 
     async fn write_text_file(&self, params: WriteTextFileRequest) -> Result<(), AcpError> {
         let path = self.resolve_path(&params.path)?;
+        log::debug!("Agent 写入文件: {} ({} 字节)", path.display(), params.content.len());
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(|e| AcpError {
                 code: -32002, message: format!("write_text_file: {}", e),
@@ -167,6 +170,8 @@ impl Client for DefaultClient {
         } else {
             self.workspace_root.clone()
         };
+
+        log::debug!("Agent 创建终端: {} {:?} (cwd: {})", params.command, params.args, cwd.display());
 
         let mut cmd = TokioCommand::new(&params.command);
         cmd.args(&params.args);

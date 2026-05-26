@@ -3,6 +3,7 @@ use agent_client_protocol::{
     schema::{ContentBlock, ContentChunk, SessionNotification, SessionUpdate},
     Dispatch,
 };
+use log;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -46,6 +47,7 @@ impl StreamAccumulator {
                         ..
                     }) => {
                         let t = text.text.clone();
+                        log::debug!("收到回复片段 ({} 字符)", t.chars().count());
                         self.reply.push_str(&t);
                         self.timeline.push(TimelineEvent::ReplyChunk { text: t.clone() });
                         if let Some(h) = app_handle {
@@ -71,6 +73,7 @@ impl StreamAccumulator {
                     }
                     SessionUpdate::ToolCall(tc) => {
                         let title = if tc.title.is_empty() { "tool_call".to_string() } else { tc.title.clone() };
+                        log::info!("Agent 调用工具: {}", title);
                         self.tools.push_str(&format!("[{}] ", title));
                         self.timeline.push(TimelineEvent::ToolCall { title: title.clone(), status: None });
                         if let Some(h) = app_handle {

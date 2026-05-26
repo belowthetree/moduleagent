@@ -49,6 +49,14 @@ fn scan_dir_sync(
         let path = entry.path();
 
         if entry.file_type()?.is_dir() {
+            if name == ".module-agent" {
+                // Scan .module-agent/module/ only, skip context/workspace/...
+                let module_dir = path.join("module");
+                if module_dir.is_dir() {
+                    scan_dir_sync(&module_dir, project_root, extra_exclude, modules)?;
+                }
+                continue;
+            }
             if is_excluded(&name, extra_exclude) {
                 continue;
             }

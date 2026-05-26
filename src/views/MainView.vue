@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import SVGTree from '../components/SVGTree.vue'
 import NodeDetailPanel from '../components/NodeDetailPanel.vue'
@@ -150,11 +151,17 @@ async function rescan(): Promise<void> {
 
 async function generateModules(): Promise<void> {
   if (!configStore.projectPath) return
+  generating.value = true
 
-  // 尝试使用"模块生成角色"角色 Agent
-  await agentStore.fetchRoles()
-  const genRole = agentStore.roles.find(r => r.name === '模块生成角色')
-  if (genRole) {
+  try {
+    // 尝试使用"模块生成角色"角色 Agent
+    await agentStore.fetchRoles()
+    const genRole = agentStore.roles.find(r => r.name === '模块生成角色')
+    if (!genRole) {
+      ElMessage.warning('未找到"模块生成角色"，请在角色管理中创建')
+      return
+    }
+
     projectStore.selectedNode = null
     await agentStore.selectRoleAgentAndStart(genRole.name)
     closeDrawer()
@@ -162,22 +169,12 @@ async function generateModules(): Promise<void> {
       genRole.name,
       '请根据 Module.md 文件规范，扫描当前项目源码目录结构，为每个需要模块化的目录生成对应的 module.md 文件到 .module-agent/module/ 下。生成完成后请调用 finishSession 结束。',
     )
-    return
-  }
-
-  // 回退：基于旧版 Agent 的生成方式
-  generating.value = true
-  try {
-    const result = await window.moduleAgent.generateModules(configStore.projectPath)
-    if (result.success) {
-      scanning.value = true
-      await projectStore.scanProject(configStore.projectPath)
-    }
   } catch (err) {
-    console.error('生成模块失败:', (err as Error).message)
+    const msg = (err as Error).message || String(err)
+    console.error('生成模块失败:', msg)
+    ElMessage.error('生成模块失败: ' + msg)
   } finally {
     generating.value = false
-    scanning.value = false
   }
 }
 

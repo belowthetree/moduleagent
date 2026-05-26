@@ -2,6 +2,7 @@
 import { computed, watch } from 'vue'
 import type { TreeNode } from '../types/preload'
 import { useAgentStore } from '../stores/agent'
+import { useConfigStore } from '../stores/config'
 import ContextCards from './ContextCards.vue'
 import ChatInput from './ChatInput.vue'
 
@@ -14,6 +15,7 @@ const emit = defineEmits<{
 }>()
 
 const agentStore = useAgentStore()
+const configStore = useConfigStore()
 
 const agentCwd = computed(() => props.node?.cwd ?? '')
 
@@ -24,7 +26,30 @@ async function handleClearContext(): Promise<void> {
 
 async function handleSendMessage(text: string): Promise<void> {
   if (!props.node) return
-  await agentStore.sendMessage(props.node.name, text, agentCwd.value)
+  const name = props.node.name
+  const cwd = agentCwd.value
+  // Auto-start agent if not running
+  const running = await window.moduleAgent.isAgentRunning(name)
+  if (!running) {
+    const args = configStore.agentArgs ? configStore.agentArgs.split(/\s+/).filter(Boolean) : []
+    const result = await window.moduleAgent.startAgent(name, configStore.agentCmd, args, cwd)
+    if (result.error) {
+      // Show error in chat
+      agentStore.getMsgs(name).push({
+        id: 'm' + Date.now(),
+        role: 'agent',
+        content: `Agent 启动失败: ${result.error}`,
+        thinking: '',
+        tools: '',
+        time: new Date().toLocaleTimeString(),
+        status: 'error',
+        moduleName: name,
+        agentCmd: '',
+      })
+      return
+    }
+  }
+  await agentStore.sendMessage(name, text, cwd)
 }
 
 watch(() => props.node?.name, (newName) => {

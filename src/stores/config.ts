@@ -1,64 +1,33 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-// localStorage 键名——冻结约定，必须与 renderer.ts 完全一致
-const LS_KEYS = {
-  agentCmd: 'agentCmd',
-  agentArgs: 'agentArgs',
-  lastProject: 'lastProject',
-  autoDocUpdate: 'autoDocUpdate',
-} as const;
+// localStorage 仅用于记录上次项目路径
+const LS_KEY_LAST_PROJECT = 'lastProject';
 
 export const useConfigStore = defineStore('config', () => {
-  // ── 状态 ──
   const agentCmd = ref('opencode');
   const agentArgs = ref('acp');
   const projectPath = ref('');
   const autoDocUpdate = ref(true);
 
-  // ── localStorage 持久化 ──
-  function loadFromLocalStorage(): void {
-    agentCmd.value = localStorage.getItem(LS_KEYS.agentCmd) || 'opencode';
-    agentArgs.value = localStorage.getItem(LS_KEYS.agentArgs) || 'acp';
-    autoDocUpdate.value = localStorage.getItem(LS_KEYS.autoDocUpdate) !== 'false';
-
-    // 迁移：旧版 `lastWorkspace` 键 → `lastProject`
+  // ── 从 localStorage 恢复上次项目路径 ──
+  function loadLastProject(): void {
     const legacyWorkspace = localStorage.getItem('lastWorkspace');
     if (legacyWorkspace) {
-      localStorage.setItem(LS_KEYS.lastProject, legacyWorkspace);
+      localStorage.setItem(LS_KEY_LAST_PROJECT, legacyWorkspace);
       localStorage.removeItem('lastWorkspace');
     }
-
-    projectPath.value = localStorage.getItem(LS_KEYS.lastProject) || '';
-
-    // 清理旧版本中已移除的键
-    const removedKeys = [
-      'codeSourceType',
-      'codeSourcePath',
-      'codeSourceUrl',
-      'codeSourceBranch',
-    ];
-    for (const key of removedKeys) {
-      localStorage.removeItem(key);
-    }
+    projectPath.value = localStorage.getItem(LS_KEY_LAST_PROJECT) || '';
   }
 
-  function saveToLocalStorage(): void {
-    localStorage.setItem(LS_KEYS.agentCmd, agentCmd.value);
-    localStorage.setItem(LS_KEYS.agentArgs, agentArgs.value);
-    localStorage.setItem(LS_KEYS.lastProject, projectPath.value);
-    localStorage.setItem(LS_KEYS.autoDocUpdate, String(autoDocUpdate.value));
+  function saveLastProject(): void {
+    localStorage.setItem(LS_KEY_LAST_PROJECT, projectPath.value);
   }
 
-  // ── 项目配置持久化 ──
-  async function saveToProject(projectRoot: string): Promise<{ success: boolean }> {
-    const args = agentArgs.value ? agentArgs.value.split(/\s+/).filter(Boolean) : [];
-    return window.moduleAgent.saveAgentConfig(projectRoot, agentCmd.value, args, projectPath.value, autoDocUpdate.value);
-  }
-
+  // ── 从 .module-agent.json 加载项目配置（唯一数据源） ──
   async function loadFromProject(projectRoot: string): Promise<void> {
     const config = await window.moduleAgent.getAgentConfig(projectRoot);
-    agentCmd.value = config.command;
+    agentCmd.value = config.command || 'opencode';
     agentArgs.value = (config.args || []).join(' ');
     projectPath.value = config.projectPath || projectRoot;
     if (config.summarizationEnabled !== undefined) {
@@ -66,16 +35,20 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  // ── 保存到 .module-agent.json ──
+  async function saveToProject(projectRoot: string): Promise<{ success: boolean }> {
+    const args = agentArgs.value ? agentArgs.value.split(/\s+/).filter(Boolean) : [];
+    return window.moduleAgent.saveAgentConfig(projectRoot, agentCmd.value, args, projectPath.value, autoDocUpdate.value);
+  }
+
   return {
-    // 状态引用
     agentCmd,
     agentArgs,
     projectPath,
     autoDocUpdate,
-    // 函数
-    loadFromLocalStorage,
-    saveToLocalStorage,
-    saveToProject,
+    loadLastProject,
+    saveLastProject,
     loadFromProject,
+    saveToProject,
   };
 });

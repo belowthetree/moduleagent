@@ -157,6 +157,7 @@ impl AgentManager {
         session
             .send_prompt(prompt)
             .map_err(|e| AppError::Acp(format!("failed to send prompt: {e}")))?;
+        log::info!("[{}] 已发送提示词 ({} 字符)", name, prompt.chars().count());
 
         let mut acc = StreamAccumulator::new();
         let app_handle = &self.app_handle;
@@ -176,12 +177,20 @@ impl AgentManager {
                     log::debug!("[{}] 未知会话消息", name);
                 }
                 Err(e) => {
+                    let err_str = e.to_string();
+                    // 跳过未知会话变体或反序列化错误（如新版 agent 发送的 usage_update）
+                    if err_str.contains("unknown variant") || err_str.contains("deserialization") {
+                        log::warn!("[{}] 跳过不支持的会话消息: {}", name, err_str);
+                        continue;
+                    }
                     log::error!("Agent [{}] 会话读取错误: {}", name, e);
                     return Err(AppError::Acp(format!("session read error: {e}")));
                 }
             }
         }
 
+        log::info!("[{}] 会话结束 — 回复: {} 字符, 思考: {} 字符, 工具调用: {} 次",
+            name, acc.reply.chars().count(), acc.thinking.chars().count(), acc.timeline.iter().filter(|e| matches!(e, crate::agent::accumulator::TimelineEvent::ToolCall { .. })).count());
         Ok(acc)
     }
 

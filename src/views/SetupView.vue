@@ -16,7 +16,7 @@ async function selectProject(): Promise<void> {
   const d = await window.moduleAgent.selectDir('选择项目目录')
   if (!d) return
   configStore.projectPath = d
-  configStore.saveToLocalStorage()
+  configStore.saveLastProject()
 }
 
 // ── 确认设置 ──
@@ -24,7 +24,7 @@ async function confirmSetup(): Promise<void> {
   if (!configStore.projectPath) return
 
   error.value = ''
-  configStore.saveToLocalStorage()
+  configStore.saveLastProject()
 
   try {
     await configStore.saveToProject(configStore.projectPath)
@@ -36,7 +36,7 @@ async function confirmSetup(): Promise<void> {
 
 // ── 初始化 ──
 onMounted(() => {
-  configStore.loadFromLocalStorage()
+  configStore.loadLastProject()
 })
 </script>
 
