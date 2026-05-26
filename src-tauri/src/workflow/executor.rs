@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
+use log;
 
 use crate::agent::AgentManager;
 use crate::util::AppResult;
@@ -27,13 +28,17 @@ impl WorkflowExecutor {
         steps: &[WorkflowStep],
         user_input: &str,
     ) -> AppResult<String> {
+        log::info!("开始执行工作流，共 {} 个步骤", steps.len());
         let mut previous_output = user_input.to_string();
         let project_root = std::env::current_dir().unwrap_or_else(|_| ".".into());
 
         for step in steps {
             if self.cancel_token.is_cancelled() {
+                log::info!("工作流已取消");
                 return Err(crate::util::AppError::Internal("workflow cancelled".into()));
             }
+
+            log::info!("工作流步骤 [{}] 开始执行", step.name);
 
             let prompt = if step.input_from == "user" {
                 format!("[STEP: {}]\n{}", step.name, user_input)
@@ -48,13 +53,16 @@ impl WorkflowExecutor {
                 .await?;
 
             previous_output = result.reply;
+            log::info!("工作流步骤 [{}] 完成", step.name);
         }
 
+        log::info!("工作流执行完成");
         Ok(previous_output)
     }
 
     /// Cancel the currently running workflow.
     pub fn cancel(&self) {
+        log::info!("取消工作流");
         self.cancel_token.cancel();
     }
 }

@@ -5,6 +5,7 @@ use std::path::Path;
 
 use super::types::ModuleDescriptor;
 use super::parser::ModuleParser;
+use crate::util::path::normalize_path;
 
 pub struct ScanOptions {
     pub project_root: String,
@@ -19,15 +20,20 @@ pub async fn scan(options: &ScanOptions) -> Result<Vec<ModuleDescriptor>, crate:
         ));
     }
 
+    log::info!("开始扫描项目模块: {}", options.project_root);
+
     let extra_exclude = options.extra_exclude.clone();
     let project_root_buf = project_root.to_path_buf();
-    tokio::task::spawn_blocking(move || {
+    let modules = tokio::task::spawn_blocking(move || {
         let mut modules = Vec::new();
         scan_dir_sync(&project_root_buf, &project_root_buf, &extra_exclude, &mut modules)?;
         Ok::<_, crate::util::AppError>(modules)
     })
     .await
-    .map_err(|e| crate::util::AppError::Internal(format!("scan task panicked: {}", e)))?
+    .map_err(|e| crate::util::AppError::Internal(format!("scan task panicked: {}", e)))??;
+
+    log::info!("模块扫描完成，发现 {} 个模块", modules.len());
+    Ok(modules)
 }
 
 fn scan_dir_sync(
@@ -53,9 +59,11 @@ fn scan_dir_sync(
                     match ModuleParser::parse(&content) {
                         Ok(definition) => {
                             let root_path = path.parent().unwrap_or(project_root).to_path_buf();
-                            let relative_path = pathdiff::diff_paths(&root_path, project_root)
-                                .map(|p| p.to_string_lossy().to_string())
-                                .unwrap_or_else(|| ".".to_string());
+                            let relative_path = normalize_path(
+                                &pathdiff::diff_paths(&root_path, project_root)
+                                    .map(|p| p.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| ".".to_string())
+                            );
                             modules.push(ModuleDescriptor {
                                 name: definition.frontmatter.name.clone(),
                                 root_path,
@@ -65,12 +73,12 @@ fn scan_dir_sync(
                             });
                         }
                         Err(e) => {
-                            tracing::warn!(path = %path.display(), error = %e, "failed to parse module.md");
+                            log::warn!("解析 module.md 失败: {} ({})", path.display(), e);
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(path = %path.display(), error = %e, "failed to read module.md");
+                    log::warn!("读取 module.md 失败: {} ({})", path.display(), e);
                 }
             }
         }

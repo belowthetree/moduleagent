@@ -22,7 +22,10 @@ async fn select_dir(window: tauri::Window) -> Result<Option<String>, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    crate::util::log::init_logging();
+    log::info!("ModuleAgent 应用启动");
+
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
@@ -74,6 +77,12 @@ pub fn run() {
             commands::migrate_check,
             commands::migrate_data,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            log::info!("ModuleAgent 应用退出");
+        }
+    });
 }

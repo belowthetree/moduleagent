@@ -17,6 +17,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2",
     "@agentclientprotocol/sdk": "^0.20.0",
     "@cfworker/json-schema": "^4.1.1",
     "@element-plus/icons-vue": "^2.3.2",

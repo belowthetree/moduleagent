@@ -1,9 +1,24 @@
 import { ref, watch } from 'vue'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const THEME_KEY = 'theme'
 
-// 首次加载默认为深色主题（侘寂深色美学）
 const isDark = ref<boolean>(localStorage.getItem(THEME_KEY) !== 'light')
+
+function updateMetaThemeColor(): void {
+  const meta = document.querySelector('meta[name="theme-color"]')
+  if (meta) {
+    meta.setAttribute('content', isDark.value ? '#14161a' : '#f5f7fa')
+  }
+}
+
+function updateWindowTheme(): void {
+  try {
+    getCurrentWindow().setTheme(isDark.value ? 'dark' : 'light')
+  } catch {
+    // not running inside Tauri (e.g. web dev mode)
+  }
+}
 
 function applyTheme(): void {
   if (isDark.value) {
@@ -11,6 +26,8 @@ function applyTheme(): void {
   } else {
     document.documentElement.classList.remove('dark')
   }
+  updateMetaThemeColor()
+  updateWindowTheme()
 }
 
 function persistTheme(): void {
@@ -21,10 +38,8 @@ function toggleTheme(): void {
   isDark.value = !isDark.value
 }
 
-// 模块加载时应用初始主题类
 applyTheme()
 
-// 监听变化并持久化 + 应用
 watch(isDark, () => {
   applyTheme()
   persistTheme()

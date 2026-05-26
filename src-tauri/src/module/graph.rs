@@ -36,8 +36,6 @@ impl ModuleGraph {
         // Find root — the descriptor with relative_path == "."
         if let Some(root_desc) = descriptors.iter().find(|d| d.relative_path == ".") {
             self.root = Some(root_desc.name.clone());
-        } else if !descriptors.is_empty() {
-            self.root = Some(descriptors[0].name.clone());
         }
 
         Ok(())

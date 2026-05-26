@@ -59,6 +59,7 @@ impl ClientSideConnection {
         }
 
         let mut child = cmd.spawn().map_err(|e| ConnectionError::Spawn(e.to_string()))?;
+        log::info!("启动 Agent 子进程: {} {} (pid: {:?})", command, args.join(" "), child.id());
 
         let stdout = child
             .stdout
@@ -81,7 +82,7 @@ impl ClientSideConnection {
                         Ok(_) => {
                             let line = buf.trim();
                             if !line.is_empty() {
-                                tracing::debug!("[agent stderr] {}", line);
+                                log::debug!("[agent stderr] {}", line);
                             }
                         }
                     }
@@ -232,7 +233,7 @@ async fn dispatch_loop(
                             }),
                         };
                         if let Err(e) = writer.write_message(&response).await {
-                            tracing::error!("Failed to write client method response: {}", e);
+                            log::error!("写入客户端方法响应失败: {}", e);
                             break;
                         }
                     }
@@ -240,11 +241,11 @@ async fn dispatch_loop(
                         let _ = handle_client_notification(&client, &notif.method, notif.params.as_ref()).await;
                     }
                     Ok(None) => {
-                        tracing::info!("Agent stdout closed");
+                        log::info!("Agent stdout 已关闭，连接断开");
                         break;
                     }
                     Err(e) => {
-                        tracing::error!("Transport read error: {}", e);
+                        log::error!("传输读取错误: {}", e);
                         break;
                     }
                 }
@@ -268,7 +269,7 @@ async fn dispatch_loop(
                             params,
                         });
                         if let Err(e) = writer.write_message(&req).await {
-                            tracing::error!("Failed to send request: {}", e);
+                            log::error!("发送请求失败: {}", e);
                             break;
                         }
                     }
@@ -279,7 +280,7 @@ async fn dispatch_loop(
                             params,
                         });
                         if let Err(e) = writer.write_message(&notif).await {
-                            tracing::error!("Failed to send notification: {}", e);
+                            log::error!("发送通知失败: {}", e);
                             break;
                         }
                     }
@@ -420,7 +421,7 @@ async fn handle_client_notification(
             client.session_update(p).await
         }
         _ => {
-            tracing::debug!("Ignored unknown notification: {}", method);
+            log::debug!("Ignored unknown notification: {}", method);
             Ok(())
         }
     }

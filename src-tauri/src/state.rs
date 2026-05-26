@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 use serde::Serialize;
 
 use crate::agent::AgentManager;
+use crate::module::graph::ModuleGraph;
 use crate::role::manager::RoleAgentManager;
 use crate::workflow::executor::WorkflowExecutor;
 
@@ -24,6 +25,7 @@ pub struct AppState {
     pub role_manager: RoleAgentManager,
     pub workflow_executor: RwLock<Option<WorkflowExecutor>>,
     pub workspace_root: PathBuf,
+    pub module_graph: RwLock<Option<ModuleGraph>>,
 }
 
 impl AppState {
@@ -45,6 +47,8 @@ impl AppState {
             workspace_root.clone(),
         );
 
+        log::info!("应用状态初始化完成，配置目录: {}", config_dir.display());
+
         Ok(Arc::new(Self {
             project_root: RwLock::new(None),
             initialized: RwLock::new(false),
@@ -54,6 +58,7 @@ impl AppState {
             role_manager,
             workflow_executor: RwLock::new(None),
             workspace_root,
+            module_graph: RwLock::new(None),
         }))
     }
 

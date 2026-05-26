@@ -8,7 +8,7 @@ use agent_client_protocol::{
 };
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, RwLock};
-use tracing;
+use log;
 
 use super::accumulator::StreamAccumulator;
 use super::launcher::{AgentLauncher, LaunchedAgent};
@@ -73,7 +73,7 @@ impl AgentManager {
                 launched,
             },
         );
-        tracing::info!(agent = %name, cwd = %cwd.display(), "agent started");
+        log::info!("启动 Agent [{}]，工作目录: {}", name, cwd.display());
         Ok(())
     }
 
@@ -92,6 +92,7 @@ impl AgentManager {
                 .ok_or_else(|| AppError::AgentNotFound(name.to_string()))?;
             (entry.connection.clone(), entry.launched.cwd.clone())
         };
+        log::info!("向 Agent [{}] 发送消息 ({} 字符)", name, text.chars().count());
         self.set_status(name, AgentStatus::Streaming).await;
         let full_prompt = PromptBuilder::build(name, text, &self.base_path).await;
         let result = self.run_session(name, &connection, &cwd, &full_prompt).await;
@@ -108,6 +109,7 @@ impl AgentManager {
         let _entry = agents
             .get(name)
             .ok_or_else(|| AppError::AgentNotFound(name.to_string()))?;
+        log::info!("取消 Agent [{}]", name);
         self.set_status(name, AgentStatus::Idle).await;
         Ok(())
     }
@@ -116,7 +118,7 @@ impl AgentManager {
         let mut agents = self.agents.write().await;
         if let Some(entry) = agents.remove(name) {
             entry.launched.cancel_token.cancel();
-            tracing::info!(agent = %name, "agent stopped");
+            log::info!("停止 Agent [{}]", name);
         }
         Ok(())
     }
@@ -150,7 +152,7 @@ impl AgentManager {
             .await
             .map_err(|e| AppError::Acp(format!("failed to create session: {e}")))?;
 
-        tracing::info!(agent = %name, session = %session.session_id(), "session created");
+        log::info!("Agent [{}] 会话已创建: {}", name, session.session_id());
 
         session
             .send_prompt(prompt)
@@ -167,14 +169,14 @@ impl AgentManager {
                 Ok(SessionMessage::StopReason(reason)) => {
                     let reason_str = format!("{reason:?}");
                     acc.finish(reason_str);
-                    tracing::info!(agent = %name, stop_reason = ?reason, "session complete");
+                                log::info!("Agent [{}] 会话完成，停止原因: {:?}", name, reason);
                     break;
                 }
                 Ok(_other) => {
-                    tracing::debug!(agent = %name, "unknown session message");
+                    log::debug!("[{}] 未知会话消息", name);
                 }
                 Err(e) => {
-                    tracing::error!(agent = %name, error = %e, "session read error");
+                    log::error!("Agent [{}] 会话读取错误: {}", name, e);
                     return Err(AppError::Acp(format!("session read error: {e}")));
                 }
             }
@@ -196,7 +198,7 @@ impl AgentManager {
         if let Some(entry) = agents.get_mut(name) {
             let old_status = std::mem::replace(&mut entry.status, status.clone());
             if old_status != status {
-                tracing::debug!(agent = %name, ?old_status, ?status, "agent status change");
+                log::debug!("[{}] 状态变更: {:?} -> {:?}", name, old_status, status);
             }
         }
     }

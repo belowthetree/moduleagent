@@ -1,9 +1,11 @@
 use std::sync::Arc;
 use tauri::State;
 use serde_json::{json, Value};
+use log;
 
 use crate::state::AppState;
 use crate::util::{AppError, AppResult};
+use crate::config::defaults;
 use crate::config::loader::ConfigLoader;
 use crate::config::schema::{AgentConfig, RoleConfig};
 use crate::module::scanner;
@@ -17,6 +19,7 @@ pub async fn project_scan(
     body: Value,
 ) -> Result<Value, String> {
     let project_path = body["projectPath"].as_str().unwrap_or(".");
+    log::info!("接收项目扫描请求: {}", project_path);
     *state.project_root.write().await = Some(project_path.to_string());
 
     let options = scanner::ScanOptions {
@@ -42,11 +45,16 @@ pub async fn project_scan(
                 })))
                 .collect();
 
-            Ok(json!({ "root": graph.root().unwrap_or("root"), "nodes": nodes_json, "moduleCount": graph.len() }))
+            let root = graph.root().map(|s| Value::String(s.to_string()));
+            let result = json!({ "root": root, "nodes": nodes_json, "moduleCount": graph.len() });
+            *state.module_graph.write().await = Some(graph);
+            Ok(result)
         }
-        Err(_) => {
+        Err(e) => {
+            log::error!("项目扫描失败: {}", e);
+            *state.module_graph.write().await = None;
             *state.initialized.write().await = true;
-            Ok(json!({ "root": "root", "nodes": {}, "moduleCount": 0 }))
+            Ok(json!({ "root": null, "nodes": {}, "moduleCount": 0 }))
         }
     }
 }
@@ -55,8 +63,60 @@ pub async fn project_scan(
 pub async fn project_tree(
     state: State<'_, Arc<AppState>>,
 ) -> Result<Value, String> {
+    let graph_guard = state.module_graph.read().await;
+    let graph = match graph_guard.as_ref() {
+        Some(g) => g,
+        None => return Ok(Value::Null),
+    };
+
+    if graph.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    let root_name = match graph.root() {
+        Some(name) => name.to_string(),
+        None => return Ok(Value::Null),
+    };
+
     let project_root = state.project_root.read().await.clone().unwrap_or_else(|| ".".to_string());
-    Ok(json!({ "name": "root", "path": ".", "description": null, "children": [], "cwd": project_root }))
+    let tree = build_tree_node(&graph, &root_name, &project_root);
+    Ok(serde_json::to_value(tree).unwrap_or(Value::Null))
+}
+
+fn build_tree_node(
+    graph: &ModuleGraph,
+    name: &str,
+    project_root: &str,
+) -> serde_json::Value {
+    let node = graph.get(name);
+    let path = node.map(|n| n.relative_path.clone()).unwrap_or_else(|| ".".into());
+    let description = node.and_then(|n| n.definition.frontmatter.description.clone());
+
+    // Build children: find all nodes whose relative_path starts with this node's path
+    let mut children: Vec<serde_json::Value> = Vec::new();
+    for (child_name, child_node) in graph.nodes() {
+        if child_name == name {
+            continue;
+        }
+        // A child module is one whose directory is directly inside this node's directory
+        let child_path = child_node.relative_path.replace('\\', "/");
+        let parent_path = if let Some(pos) = child_path.rfind('/') {
+            &child_path[..pos]
+        } else {
+            "."
+        };
+        if parent_path == path {
+            children.push(build_tree_node(graph, child_name, project_root));
+        }
+    }
+
+    json!({
+        "name": name,
+        "path": path,
+        "description": description,
+        "children": children,
+        "cwd": project_root,
+    })
 }
 
 #[tauri::command]
@@ -70,6 +130,7 @@ pub async fn agent_start(
     body: Value,
 ) -> Result<Value, String> {
     let name = body["name"].as_str().ok_or("missing 'name' field")?;
+    log::info!("接收启动 Agent 请求: {}", name);
     let cwd_str = body["cwd"].as_str().unwrap_or(".");
     let cwd = std::path::Path::new(cwd_str);
     let command = body["command"].as_str().unwrap_or("npx").to_string();
@@ -90,6 +151,7 @@ pub async fn agent_send(
 ) -> Result<Value, String> {
     let name = body["name"].as_str().ok_or("missing 'name' field")?;
     let text = body["text"].as_str().ok_or("missing 'text' field")?;
+    log::info!("接收 Agent 消息请求 [{}]: {} 字符", name, text.chars().count());
     let project_root = state.project_root.read().await.clone().unwrap_or_else(|| ".".to_string());
     let project_path = std::path::Path::new(&project_root);
     let result = state.agent_manager.send_message(name, text, project_path).await.map_err(|e| e.to_string())?;
@@ -102,6 +164,7 @@ pub async fn agent_cancel(
     body: Value,
 ) -> Result<Value, String> {
     let name = body["name"].as_str().ok_or("missing 'name' field")?;
+    log::info!("接收取消 Agent 请求: {}", name);
     state.agent_manager.cancel_agent(name).await.map_err(|e| e.to_string())?;
     state.broadcast("agent-status", json!({ "name": name, "status": "idle" }));
     Ok(json!({ "reply": "", "thinking": "", "tools": "" }))
@@ -113,6 +176,7 @@ pub async fn agent_stop(
     body: Value,
 ) -> Result<Value, String> {
     let name = body["name"].as_str().ok_or("missing 'name' field")?;
+    log::info!("接收停止 Agent 请求: {}", name);
     state.agent_manager.stop_agent(name).await.map_err(|e| e.to_string())?;
     state.broadcast("agent-status", json!({ "name": name, "status": "stopped" }));
     Ok(json!({ "ok": true }))
@@ -206,7 +270,15 @@ pub async fn roles_list(
     let project_root = state.project_root.read().await.clone().unwrap_or_else(|| ".".into());
     let loader = ConfigLoader::new(&project_root);
     let config = loader.load().await.map_err(|e| e.to_string())?;
-    let roles = config.roles.unwrap_or_default();
+    let mut roles = config.roles.unwrap_or_default();
+    if roles.is_empty() {
+        let mut role = defaults::default_module_gen_role();
+        if let Some(entry) = config.configs.first() {
+            role.agents.default.command = entry.config.agents.default.command.clone();
+            role.agents.default.args = entry.config.agents.default.args.clone();
+        }
+        roles.push(role);
+    }
     Ok(serde_json::to_value(roles).unwrap_or(json!([])))
 }
 
@@ -250,6 +322,7 @@ pub async fn role_start(
     let config = loader.load().await.map_err(|e| e.to_string())?;
     let roles = config.roles.unwrap_or_default();
     let role = roles.iter().find(|r| r.name == name).ok_or(format!("role '{name}' not found"))?;
+    log::info!("接收角色启动请求: {}", name);
     let session_id = state.role_manager.start(role).await.map_err(|e| e.to_string())?;
     Ok(json!({ "sessionId": session_id }))
 }
@@ -384,6 +457,7 @@ pub async fn workflow_create(
     body: Value,
 ) -> Result<Value, String> {
     let name = body["name"].as_str().unwrap_or("new-workflow");
+    log::info!("创建工作流: {}", name);
     let dir = state.workspace_root.join("workflows").join(name);
     tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
     Ok(json!({ "ok": true }))
@@ -443,6 +517,7 @@ pub async fn workflow_execute(
     body: Value,
 ) -> Result<Value, String> {
     let user_input = body["input"].as_str().unwrap_or("");
+    log::info!("接收工作流执行请求: {}", name);
     let steps = vec![WorkflowStep { name: name.clone(), agent_name: name.clone(), input_from: "user".to_string() }];
     let executor = WorkflowExecutor::new(state.agent_manager.clone());
     *state.workflow_executor.write().await = Some(executor);

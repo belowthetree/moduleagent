@@ -39,6 +39,7 @@ impl ConfigLoader {
         let content = tokio::fs::read_to_string(&path).await?;
         let config: WorkspaceConfig = serde_json::from_str(&content)
             .map_err(|e| crate::util::AppError::Config(e.to_string()))?;
+        log::info!("加载配置文件: {}", path.display());
         Ok(config)
     }
 
@@ -50,6 +51,7 @@ impl ConfigLoader {
         }
         let json = serde_json::to_string_pretty(config)?;
         crate::util::fs::atomic_write(&path, json.as_bytes()).await?;
+        log::info!("保存配置文件: {}", path.display());
         Ok(())
     }
 

@@ -19,7 +19,7 @@ use agent_client_protocol::{
 };
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
-use tracing;
+use log;
 
 use crate::config::schema::AgentConfig;
 use crate::util::{AppError, AppResult};
@@ -89,20 +89,20 @@ impl AgentLauncher {
                         .block_task()
                         .await?;
 
-                    tracing::info!(agent = %name_owned, "ACP connection initialized");
+                    log::info!("ACP 连接初始化成功 [{}]", name_owned);
 
                     // Step 2: Hand the connection handle back to the caller
                     let _ = conn_tx.send(connection);
 
                     // Step 3: Wait until cancelled (keeps connection alive)
                     cancel_clone.cancelled().await;
-                    tracing::info!(agent = %name_owned, "agent connection shutting down");
+                    log::info!("Agent 连接已关闭 [{}]", name_owned);
                     Ok(())
                 })
                 .await;
 
             if let Err(ref e) = result {
-                tracing::error!(agent = %name_for_log, error = %e, "agent connection error");
+                log::error!("Agent 连接错误 [{}]: {}", name_for_log, e);
             }
         });
 
