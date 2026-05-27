@@ -20,12 +20,3 @@ example/
 release/
 .module-agent.json
 out/
-dist/
-dist-renderer/
-dist-backend/
-src-backup-electron/
-src-tauri/target/
-.DS_Store
-backup/
-src-backend/
-target/

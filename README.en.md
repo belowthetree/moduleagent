@@ -13,38 +13,29 @@
 - **Streaming Conversations** — Real-time display of Agent thinking, tool calls, and responses
 - **Automatic Module Generation** — Analyze source directories and auto-generate `module.md` files via Agent
 
-## Prerequisites
-
-- Node.js >= 20
-- Rust toolchain (for Tauri builds, optional)
-- An ACP-compatible Agent client (e.g., [opencode](https://github.com/opencode-ai/opencode) or Claude CLI)
-
 ## Quick Start
 
-### Desktop App (Tauri)
+### Prerequisites
+
+- Node.js >= 20
+- An ACP-compatible Agent client (e.g., [opencode](https://github.com/opencode-ai/opencode) or Claude CLI)
+
+### Installation & Running
 
 ```bash
 # Clone the repository
-git clone https://github.com/belowthetree/module-agent.git
-cd module-agent
+git clone <repo-url>
+cd ModuleAgent
 
 # Install dependencies
 npm install
 
-# Development mode (Vite HMR + Tauri window + Node.js sidecar backend)
-npm run tauri:dev
-
-# Production build
-npm run tauri:build
-```
-
-### Web Mode (frontend + backend only, no desktop shell)
-
-```bash
+# Development mode (Vite HMR with hot reload)
 npm run dev
-```
 
-After starting, the Vite dev server runs at `http://localhost:5173` and the backend API runs on a random port (communicated via SSE).
+# Build and launch production app
+npm run electron
+```
 
 ### Configuration
 
@@ -63,45 +54,24 @@ Create `.module-agent.json` in your project root:
 }
 ```
 
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed configuration reference.
+
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Tauri (Rust)                      │
-│  ┌───────────────────────────────────────────────┐  │
-│  │               WebView (Vue 3)                  │  │
-│  │  SetupView / MainView / SVGTree / ChatInput    │  │
-│  │  Pinia stores · Element Plus · Vue Router      │  │
-│  │  ┌─────────────────────────────────────────┐   │  │
-│  │  │  HTTP + SSE → http://127.0.0.1:{port}   │   │  │
-│  │  └─────────────────────────────────────────┘   │  │
-│  └───────────────────────────────────────────────┘  │
-│                          ↕                           │
-│  ┌───────────────────────────────────────────────┐  │
-│  │          Node.js Sidecar (src-backend/)        │  │
-│  │  HTTP/SSE Server · Agent Orchestration         │  │
-│  │  ModuleScanner · ModuleGraph · ConfigLoader    │  │
-│  │  McpBackend · RoleAgentManager                 │  │
-│  └───────────────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────┤
-│               Agent Layer (ACP Protocol)             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
-│  │ Agent A  │  │ Agent B  │  │ Agent C  │           │
-│  │ (ModuleA)│  │ (ModuleB)│  │ (ModuleC)│           │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘           │
-│       │              │              │                │
-│  ┌────┴──────────────┴──────────────┴────┐           │
-│  │  MCP Server Subprocess (stdio)         │           │
-│  │  (dist-backend/mcp-server.cjs)         │           │
-│  └────────────────────────────────────────┘           │
-└─────────────────────────────────────────────────────┘
+Renderer (Vue 3 + Element Plus)     ← UI, module tree, chat panels
+    ↕ Electron IPC
+Main Process (Electron)              ← Agent orchestration, MCP routing, state
+    ↕ ACP Protocol (stdio)
+Agent Subprocesses                   ← LLM inference, file operations
+    ↕ MCP Protocol (stdio)
+MCP Server                           ← Cross-module communication bus
 ```
 
 | Layer | Technology | Responsibility |
 |-------|-----------|----------------|
-| Desktop Shell | Tauri (Rust) | Window management, native APIs (file dialogs), Sidecar process management |
-| Frontend | Vue 3 + Pinia + Element Plus | Module tree visualization, chat UI, state management |
-| Backend | Node.js (Sidecar) | Agent lifecycle management, HTTP/SSE API, MCP routing |
+| Renderer | Vue 3 + Pinia + Element Plus | Module tree visualization, chat UI, state management |
+| Main Process | Electron + TypeScript | Agent lifecycle management, IPC handling, MCP HTTP backend |
 | Agent Layer | opencode / Claude (ACP) | LLM reasoning, file operations, terminal commands |
 
 For a detailed architecture analysis, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -109,28 +79,16 @@ For a detailed architecture analysis, see [docs/ARCHITECTURE.md](docs/ARCHITECTU
 ## Project Structure
 
 ```
-ModuleAgent/
-├── src-tauri/                     # Tauri Rust backend
-│   ├── src/lib.rs                 # Tauri app logic, Sidecar launcher
-│   └── tauri.conf.json            # Tauri configuration
-├── src-backend/                   # Node.js Sidecar backend
-│   ├── server.ts                  # HTTP/SSE server entry
-│   ├── agents/                    # Agent orchestration (launch, state, prompt building)
-│   ├── config/                    # Config loading, Zod validation
-│   ├── core/                      # Module scanning, parsing, graph building, path utilities
-│   ├── protocol/                  # ACP connection + MCP servers
-│   └── types/                     # Type definitions
-├── src-renderer/                  # Vue 3 frontend
-│   ├── views/                     # SetupView, MainView
-│   ├── components/                # SVGTree, ChatInput, RolePanel, etc.
-│   ├── stores/                    # Pinia state management
-│   └── router/                    # Vue Router
-├── config/                        # Agent system prompts
-│   ├── mainagentprompt.md
-│   ├── subagentprompt.md
-│   └── roleagentprompt.md
-├── dist-backend/                  # Sidecar build output
-└── dist-renderer/                 # Frontend build output
+src/
+├── main/          Electron main process, IPC handlers
+├── preload/       contextBridge API bridge
+├── renderer/      Vue 3 renderer (views, components, stores)
+├── agents/        Agent orchestration (launch, isolation, state, prompts)
+├── protocol/      ACP connection + MCP servers + communication bus
+├── core/          Module scanning, parsing, graph building, path utilities
+├── config/        Configuration loading, Zod validation, defaults
+├── cli/           CLI path (secondary, for serve/tui)
+└── types/         Shared type definitions
 ```
 
 ## Module System
@@ -147,8 +105,8 @@ Modules are defined by `module.md` files with YAML frontmatter (name, descriptio
 │   └── config/
 │       └── module.md
 ├── workspace/         ← Isolated workspace copies (Agent runtime)
-├── workrole/          ← Role Agent workspaces
-└── context/           ← Conversation history persistence
+├── context/           ← Conversation history persistence
+└── .module-agent.json ← Project configuration
 ```
 
 ## Role Agents
@@ -170,17 +128,14 @@ Role Agents are cross-cutting specialized Agents that can access multiple module
 }
 ```
 
-## Development Commands
+## Build
 
 ```bash
-npm run tauri:dev          # Tauri dev mode (Vite HMR + desktop window + Sidecar)
-npm run tauri:build        # Tauri production build
-npm run dev                # Web dev mode (frontend + Sidecar only, no desktop shell)
-npm run dev:renderer       # Frontend-only Vite dev server
-npm run typecheck          # Type checking (tsc --noEmit)
-npm run test               # Unit tests (Vitest)
-npm run build:backend      # Build Sidecar (esbuild)
-npm run build:renderer     # Build frontend (Vite)
+npm run typecheck         # Type checking
+npm run test              # Unit tests
+npm run test:e2e          # E2E tests
+npm run build:electron    # Full production build
+npm run dev               # Development mode (hot reload)
 ```
 
 ## License

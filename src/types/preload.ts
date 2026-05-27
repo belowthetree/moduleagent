@@ -87,6 +87,12 @@ export interface RoleConfigData {
   name: string;
   description: string;
   visibleModulePaths: string[];
+  agents: {
+    default: {
+      command: string;
+      args?: string[];
+    };
+  };
   knowledgeRefs?: { filename: string; name: string }[];
 }
 

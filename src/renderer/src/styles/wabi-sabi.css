@@ -1,0 +1,159 @@
+/* ============================================================
+   ModuleAgent — 侘寂 (Wabi-sabi) 主题
+   统一 Element Plus --el-* CSS 变量体系
+   亮色 (和纸/陶土) + 暗色 (墨/煤竹) 双主题
+   ============================================================ */
+
+/* ── Global reset: no scrollbars ── */
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── 亮色主题：和纸/陶土基调 ── */
+:root {
+  /* 背景层级 */
+  --el-bg-color-page: #f5f0e8;
+  --el-bg-color: #ede6db;
+  --el-bg-color-overlay: #faf7f2;
+  --el-fill-color: #ede6db;
+  --el-fill-color-light: #f0ebe2;
+  --el-fill-color-lighter: #f5f1ea;
+  --el-fill-color-blank: #faf7f2;
+
+  /* 边框 */
+  --el-border-color: #d9cfc2;
+  --el-border-color-light: #e3dbd0;
+  --el-border-color-lighter: #ede6db;
+  --el-border-color-dark: #c4b8a8;
+
+  /* 文字 */
+  --el-text-color-primary: #3d3228;
+  --el-text-color-regular: #5c4f42;
+  --el-text-color-secondary: #8c7b6b;
+  --el-text-color-placeholder: #b5a692;
+
+  /* 主色 — 苔色 (sage) */
+  --el-color-primary: #7d8c73;
+  --el-color-primary-light-3: #97a38e;
+  --el-color-primary-light-5: #acb6a5;
+  --el-color-primary-light-7: #c2c9bc;
+  --el-color-primary-light-8: #cdd3c8;
+  --el-color-primary-light-9: #d9ded5;
+  --el-color-primary-dark-2: #6b7a62;
+
+  /* 成功 — 若草色 */
+  --el-color-success: #7a9e7e;
+  --el-color-success-light-3: #95b198;
+  --el-color-success-light-5: #aac1ad;
+  --el-color-success-light-7: #c1d2c3;
+  --el-color-success-light-8: #cddbcf;
+  --el-color-success-light-9: #d9e4da;
+
+  /* 警告 — 黄土色 */
+  --el-color-warning: #c49b6a;
+  --el-color-warning-light-3: #d0af88;
+  --el-color-warning-light-5: #dac1a2;
+  --el-color-warning-light-7: #e5d3bd;
+  --el-color-warning-light-8: #ebdccb;
+  --el-color-warning-light-9: #f0e5d8;
+
+  /* 危险 — 弁柄色 */
+  --el-color-danger: #c4786a;
+  --el-color-danger-light-3: #d09388;
+  --el-color-danger-light-5: #daaaa2;
+  --el-color-danger-light-7: #e5c3bd;
+  --el-color-danger-light-8: #ebcfcb;
+  --el-color-danger-light-9: #f0dcd9;
+
+  /* 信息 — 蓝鼠色 */
+  --el-color-info: #8b9dad;
+  --el-color-info-light-3: #a2b1bd;
+  --el-color-info-light-5: #b5c1cb;
+  --el-color-info-light-7: #cad3da;
+  --el-color-info-light-8: #d5dce2;
+  --el-color-info-light-9: #e0e5e9;
+
+  /* 通用 */
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-box-shadow-light: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --el-box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+
+  /* 语义色 (element-plus 内部可能需要) */
+  --el-color-white: #faf7f2;
+  --el-color-black: #3d3228;
+}
+
+/* ── 暗色主题：墨/煤竹基调 ── */
+html.dark {
+  /* 背景层级 */
+  --el-bg-color-page: #2a241e;
+  --el-bg-color: #342e27;
+  --el-bg-color-overlay: #3a332c;
+  --el-fill-color: #342e27;
+  --el-fill-color-light: #3a332c;
+  --el-fill-color-lighter: #3f3830;
+  --el-fill-color-blank: #302a23;
+
+  /* 边框 */
+  --el-border-color: #4a4036;
+  --el-border-color-light: #53483d;
+  --el-border-color-lighter: #463c32;
+  --el-border-color-dark: #5c5145;
+
+  /* 文字 */
+  --el-text-color-primary: #e0d6c8;
+  --el-text-color-regular: #c4b8a8;
+  --el-text-color-secondary: #9e9080;
+  --el-text-color-placeholder: #6e6256;
+
+  /* 主色 — 淡苔色 */
+  --el-color-primary: #9aad8e;
+  --el-color-primary-light-3: #aebda4;
+  --el-color-primary-light-5: #becbb7;
+  --el-color-primary-light-7: #cfd9cb;
+  --el-color-primary-light-8: #d8e0d5;
+  --el-color-primary-light-9: #e1e7de;
+  --el-color-primary-dark-2: #8a9c7f;
+
+  /* 成功 */
+  --el-color-success: #8eaa8a;
+  --el-color-success-light-3: #a4bba1;
+  --el-color-success-light-5: #b6c9b4;
+  --el-color-success-light-7: #cad8c8;
+  --el-color-success-light-8: #d4e0d3;
+  --el-color-success-light-9: #dfe7de;
+
+  /* 警告 */
+  --el-color-warning: #d4a96a;
+  --el-color-warning-light-3: #ddba88;
+  --el-color-warning-light-5: #e4c9a2;
+  --el-color-warning-light-7: #ecd9bd;
+  --el-color-warning-light-8: #f0e1cb;
+  --el-color-warning-light-9: #f4e9d8;
+
+  /* 危险 */
+  --el-color-danger: #d48a7a;
+  --el-color-danger-light-3: #dda195;
+  --el-color-danger-light-5: #e4b4aa;
+  --el-color-danger-light-7: #ecc9c2;
+  --el-color-danger-light-8: #f0d4cf;
+  --el-color-danger-light-9: #f4e0dc;
+
+  /* 信息 */
+  --el-color-info: #8b9dad;
+  --el-color-info-light-3: #a2b1bd;
+  --el-color-info-light-5: #b5c1cb;
+  --el-color-info-light-7: #cad3da;
+  --el-color-info-light-8: #d5dce2;
+  --el-color-info-light-9: #e0e5e9;
+
+  /* 通用 */
+  --el-color-white: #e0d6c8;
+  --el-color-black: #2a241e;
+}

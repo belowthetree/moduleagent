@@ -15,6 +15,7 @@ ModuleAgent 中涉及项目目录及其自动创建的子目录，职责分离�
 自动创建 .module-agent/ 子目录管理扫描与隔离
 
 projectRoot/
+├── module.md
 ├── agent-cli/
 │   └── acp/module.md
 ├── server/module.md
