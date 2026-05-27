@@ -1120,3 +1120,30 @@ ACP 深度集成了 [Model Context Protocol (MCP)](https://modelcontextprotocol.
 ---
 
 > 本文档基于 https://agentclientprotocol.com 的公开文档整理，完整规范以官方文档为准。
+
+---
+
+## 本项目的 ACP 实现
+
+ModuleAgent 使用 `@agentclientprotocol/sdk` v0.20 作为 ACP 客户端实现。关键文件：
+
+| 文件 | 说明 |
+|------|------|
+| `src/protocol/acp/connection.ts` | `createAgentConnection()` — spawn 子进程 + ndJsonStream + ClientSideConnection |
+| `src/agents/AgentLauncher.ts` | `launch()` — 构建 Client 接口实现（权限、文件、终端、流式更新） |
+| `src/protocol/acp/handlers/fs.ts` | `FsHandler` — 工作空间限制的文件读写 |
+| `src/protocol/acp/handlers/terminal.ts` | `TerminalHandler` — 终端子进程管理 |
+
+**Client 接口实现**（Agent 调用的方法）：
+
+- `requestPermission` → 自动允许所有权限请求
+- `sessionUpdate` → 流式更新转发（模块/角色/工作流 Agent 各有一条转发路径）
+- `readTextFile` / `writeTextFile` → FsHandler（安全路径检查）
+- `createTerminal` / `terminalOutput` / `killTerminal` / `releaseTerminal` → TerminalHandler
+
+**会话 API 使用**：
+
+- `connection.initialize({ protocolVersion: 1, clientCapabilities, clientInfo })` → 握手
+- `connection.newSession({ cwd, mcpServers })` → 创建会话 + 注入 MCP 服务器
+- `connection.prompt({ sessionId, prompt })` → 发送消息
+- `connection.cancel({ sessionId })` → 取消请求

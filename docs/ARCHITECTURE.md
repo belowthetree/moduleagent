@@ -752,3 +752,59 @@ ConfigLoader 加载流程：
 | 工作空间隔离 | 源码复制 | 每个 Agent 获得独立上下文，互不干扰 |
 | 构建工具 | electron-vite + esbuild | electron-vite 统一三进程构建，esbuild 为 MCP/CLI 做自包含 bundle |
 | 角色 Agent MCP | 独立 server 进程 | 与模块 Agent MCP 解耦，提供不同工具集 |
+
+---
+
+## 15. 文档索引
+
+完整的模块文档列表：
+
+### 核心层 (Core)
+| 文档 | 覆盖模块 |
+|------|---------|
+| [MODULE_AGENT_SUBSYSTEM.md](./MODULE_AGENT_SUBSYSTEM.md) | ModuleAgentSubsystem — 模块 Agent 生命周期管理 |
+| [ROLE_AGENT_SUBSYSTEM.md](./ROLE_AGENT_SUBSYSTEM.md) | RoleAgentSubsystem — 角色 Agent 生命周期管理 |
+| [WORKFLOW_SUBSYSTEM.md](./WORKFLOW_SUBSYSTEM.md) | WorkflowSubsystem + WorkflowScanner — 工作流编排 |
+| [MODULE_SYSTEM.md](./MODULE_SYSTEM.md) | ModuleScanner + ModuleParser + ModuleGraph + ModuleGenerator |
+| [LOGGER.md](./LOGGER.md) | Logger — 日志系统 |
+| [EXPERIENCE_SUMMARIZER.md](./EXPERIENCE_SUMMARIZER.md) | ExperienceSummarizer — 对话经验总结 |
+| [PATH_UTILS.md](./PATH_UTILS.md) | PathUtils + ExclusionRules — 路径工具与排除规则 |
+
+### Agent 层
+| 文档 | 覆盖模块 |
+|------|---------|
+| [AGENT_LAUNCHER.md](./AGENT_LAUNCHER.md) | AgentLauncher + AgentStateManager — Agent 启动与状态管理 |
+| [PROMPT_BUILDER.md](./PROMPT_BUILDER.md) | PromptBuilder + McpServerBuilder — 提示构建与 MCP 配置 |
+| [ROLE_AGENT.md](./ROLE_AGENT.md) | RoleAgentManager + RoleWorkspace — 角色 Agent 管理 |
+| [WORKFLOW_AGENTS.md](./WORKFLOW_AGENTS.md) | WorkflowManager + WorkflowWorkspace — 工作流 Agent 管理 |
+| [WORKSPACE_ISOLATOR.md](./WORKSPACE_ISOLATOR.md) | WorkspaceIsolator — 工作空间隔离 |
+| [CONTEXT_MANAGER.md](./CONTEXT_MANAGER.md) | ContextManager + FileStore — 对话上下文持久化 |
+
+### 协议层 (Protocol)
+| 文档 | 覆盖模块 |
+|------|---------|
+| [MCP_BACKEND.md](./MCP_BACKEND.md) | McpBackend + CommunicationBus — MCP 后端与通信总线 |
+| [MCP_SERVER.md](./MCP_SERVER.md) | MCPServer + RoleMCPServer — MCP 服务端 |
+| [ACP协议文档.md](./ACP协议文档.md) | ACP 协议规范 |
+
+### 桥接层 (Bridge)
+| 文档 | 覆盖模块 |
+|------|---------|
+| [ELECTRON_BRIDGE.md](./ELECTRON_BRIDGE.md) | ElectronBridge + preload — Electron IPC 桥接 |
+| [TUI_BRIDGE.md](./TUI_BRIDGE.md) | TuiBridge — TUI SolidJS 桥接 |
+
+### 配置与 CLI
+| 文档 | 覆盖模块 |
+|------|---------|
+| [CONFIG_SYSTEM.md](./CONFIG_SYSTEM.md) | ConfigPaths + ConfigLoader + schema + defaults |
+| [CLI.md](./CLI.md) | CLI 命令系统 |
+
+### 设计文档
+| 文档 | 内容 |
+|------|------|
+| [DESIGN.md](./DESIGN.md) | 原始设计方案 |
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | 开发指南（构建、调试、已知问题） |
+| [MODULE_FORMAT.md](./MODULE_FORMAT.md) | module.md 格式规范 |
+| [CLI_PROTOCOL.md](./CLI_PROTOCOL.md) | CLI 通信协议 |
+| [OPENTUI_DOCS.md](./OPENTUI_DOCS.md) | OpenTUI 框架文档 |
+| [项目方案.md](./项目方案.md) | 项目方案

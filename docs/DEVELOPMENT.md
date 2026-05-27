@@ -550,3 +550,25 @@ Renderer                              Main Process
 - [x] 生产构建基础配置（electron-builder.yml + `npm run dist`）
 - [ ] Mac/Linux 平台测试
 - [ ] 集成测试覆盖（Vitest 单元/组件测试 + Playwright e2e 框架已搭好，用例待扩充）
+
+---
+
+## 11. 模块文档索引
+
+每个系统模块均有独立文档说明，详见 [ARCHITECTURE.md §15](./ARCHITECTURE.md#15-文档索引)。快速导航：
+
+| 文档 | 说明 |
+|------|------|
+| [MODULE_AGENT_SUBSYSTEM.md](./MODULE_AGENT_SUBSYSTEM.md) | 模块 Agent 子系统 — 配置加载、Agent 启动、消息发送、跨模块通信 |
+| [ROLE_AGENT_SUBSYSTEM.md](./ROLE_AGENT_SUBSYSTEM.md) | 角色 Agent 子系统 — 持续性角色 Agent 生命周期 |
+| [WORKFLOW_SUBSYSTEM.md](./WORKFLOW_SUBSYSTEM.md) | 工作流子系统 — 多步骤工作流编排与执行 |
+| [MODULE_SYSTEM.md](./MODULE_SYSTEM.md) | 模块系统 — Scanner / Parser / Graph / Generator |
+| [CONFIG_SYSTEM.md](./CONFIG_SYSTEM.md) | 配置系统 — ConfigPaths / ConfigLoader / Schema / Defaults |
+| [AGENT_LAUNCHER.md](./AGENT_LAUNCHER.md) | Agent 启动器 + 状态管理器 |
+| [PROMPT_BUILDER.md](./PROMPT_BUILDER.md) | 提示构建器 + MCP 配置构建器 |
+| [MCP_BACKEND.md](./MCP_BACKEND.md) | MCP HTTP 后端 + 通信总线 |
+| [MCP_SERVER.md](./MCP_SERVER.md) | MCP 服务端（模块 + 角色） |
+| [WORKSPACE_ISOLATOR.md](./WORKSPACE_ISOLATOR.md) | 工作空间隔离 |
+| [ELECTRON_BRIDGE.md](./ELECTRON_BRIDGE.md) | Electron IPC 桥接层 |
+| [TUI_BRIDGE.md](./TUI_BRIDGE.md) | TUI SolidJS 桥接层 |
+| [CLI.md](./CLI.md) | CLI 命令系统 |
