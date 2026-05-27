@@ -3,7 +3,7 @@ import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
-import './styles/wabi-sabi.css'
+import './styles/slate.css'
 import locale from 'element-plus/es/locale/lang/zh-cn'
 import router from './router'
 import App from './App.vue'
@@ -34,6 +34,11 @@ if (configStore.projectPath) {
   } catch {
     configStore.projectPath = ''
   }
+}
+
+// macOS hiddenInset 标题栏适配：为 traffic lights 预留顶部安全区
+if (navigator.platform.toLowerCase().includes('mac')) {
+  document.documentElement.classList.add('os-mac')
 }
 
 app.mount('#app')

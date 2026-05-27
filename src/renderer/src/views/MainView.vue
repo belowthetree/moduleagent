@@ -532,11 +532,23 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 44px;
-  padding: 0 12px;
+  height: 40px;
+  padding: 0 16px;
   background: var(--el-bg-color);
   border-bottom: 1px solid var(--el-border-color);
   flex-shrink: 0;
+  backdrop-filter: blur(8px);
+  -webkit-app-region: drag;       /* 可从工具栏区域拖拽窗口 */
+}
+
+.toolbar :deep(button),
+.toolbar :deep(.el-button) {
+  -webkit-app-region: no-drag;    /* 按钮区域不拦截拖拽 */
+}
+
+/* macOS hiddenInset: 为 traffic lights 预留顶部空间 */
+html.os-mac .toolbar {
+  padding-left: 80px;             /* 避开左侧红黄绿按钮 (约 70px) */
 }
 
 .toolbar-left,
@@ -578,7 +590,7 @@ onUnmounted(() => {
   left: 52px;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.08);
   z-index: 50;
   opacity: 0;
   pointer-events: none;
@@ -601,7 +613,7 @@ onUnmounted(() => {
   z-index: 60;
   transform: translateX(calc(-100% - 52px));
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 1px 0 6px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
 }
@@ -644,13 +656,13 @@ onUnmounted(() => {
 .status-bar {
   display: flex;
   align-items: center;
-  height: 32px;
+  height: 28px;
   padding: 0 16px;
   background: var(--el-bg-color);
   border-top: 1px solid var(--el-border-color);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--el-text-color-secondary);
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 

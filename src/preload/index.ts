@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus } from '../types/preload.js';
+import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus, DiffSummary, WorkspaceDiffReadyData } from '../types/preload.js';
 
 const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke('dialog:selectDir', title) as Promise<string | null>,
@@ -153,6 +153,25 @@ const api: ModuleAgentApi = {
 
   workflowStatus: (name: string) =>
     ipcRenderer.invoke('workflow:status', name) as Promise<WorkflowStatus | null>,
+
+  // ── 工作区 Diff API ──
+  workspaceDiff: (moduleName: string) =>
+    ipcRenderer.invoke('workspace:diff', moduleName) as Promise<DiffSummary | { error: string }>,
+
+  workspaceDiffFile: (moduleName: string, filePath: string) =>
+    ipcRenderer.invoke('workspace:diff-file', moduleName, filePath) as Promise<{ hunks: string } | { error: string }>,
+
+  workspaceApply: (moduleName: string, files?: string[]) =>
+    ipcRenderer.invoke('workspace:apply', moduleName, files) as Promise<{ applied: number; errors: string[] }>,
+
+  workspaceDiscard: (moduleName: string) =>
+    ipcRenderer.invoke('workspace:discard', moduleName) as Promise<{ success: boolean }>,
+
+  onWorkspaceDiffReady: (callback: (data: WorkspaceDiffReadyData) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: WorkspaceDiffReadyData) => callback(data);
+    ipcRenderer.on('workspace:diff-ready', handler);
+    return () => ipcRenderer.removeListener('workspace:diff-ready', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('moduleAgent', api);

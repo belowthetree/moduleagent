@@ -167,7 +167,8 @@ onUnmounted(() => {
   z-index: 100;
   display: flex;
   flex-direction: column;
-  transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.06);
+  transition: right 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .drawer.open {

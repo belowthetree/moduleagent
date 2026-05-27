@@ -79,19 +79,23 @@ function sendMessage() {
 }
 
 .chat-input :deep(.el-button) {
-  background: none;
+  background: var(--el-color-primary);
   border: none;
+  border-radius: 6px;
   box-shadow: none;
-  color: var(--el-color-primary);
+  color: #fff;
+  padding: 6px 14px;
+  font-size: 13px;
+  transition: background 0.15s;
 }
 
 .chat-input :deep(.el-button:hover) {
-  background: var(--el-fill-color-light);
-  color: var(--el-color-primary-light-3);
+  background: var(--el-color-primary-dark-2);
+  color: #fff;
 }
 
 .chat-input :deep(.el-button.is-disabled) {
-  background: none;
+  background: var(--el-fill-color);
   border: none;
   color: var(--el-text-color-placeholder);
 }

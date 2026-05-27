@@ -33,22 +33,22 @@ const tabs = [
 
 <style scoped>
 .tab-bar {
-  width: 52px;
+  width: 48px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 4px;
+  gap: 2px;
+  padding: 6px 2px;
   background: var(--el-bg-color);
   border-right: 1px solid var(--el-border-color);
   flex-shrink: 0;
 }
 
 .tab-btn {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   cursor: pointer;
   display: flex;
@@ -61,13 +61,13 @@ const tabs = [
 }
 
 .tab-btn:hover {
-  background: var(--el-fill-color-light);
+  background: var(--el-fill-color);
   color: var(--el-text-color-primary);
 }
 
 .tab-btn.active {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
+  background: var(--el-color-primary);
+  color: #fff;
 }
 
 .tab-icon {

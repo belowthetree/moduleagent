@@ -293,13 +293,14 @@ function onCancelStream() {
 }
 
 .ctx-top-controls .btn-sm {
-  padding: 3px 10px;
+  padding: 2px 10px;
   font-size: 11px;
   border: 1px solid var(--el-border-color);
-  border-radius: 5px;
+  border-radius: 4px;
   background: transparent;
-  color: var(--el-color-danger);
+  color: var(--el-text-color-secondary);
   cursor: pointer;
+  transition: all 0.12s;
 }
 
 .ctx-top-controls .btn-sm:hover {
@@ -327,10 +328,10 @@ function onCancelStream() {
 
 /* ── 卡片 ── */
 .ctx-card {
-  padding: 10px 16px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--el-border-color-lighter);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.12s;
   user-select: text;
   -webkit-user-select: text;
 }
@@ -376,30 +377,51 @@ function onCancelStream() {
   color: var(--el-color-warning);
 }
 
-/* ── 状态徽章 ── */
+/* ── 状态徽章 — 小圆点 + 文字 ── */
 .ctx-status {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 8px;
-  letter-spacing: 0.5px;
+  font-size: 10px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.st-sent        { background: var(--el-color-info-light-8);    color: var(--el-color-info); }
-.st-pending     { background: var(--el-color-warning-light-7); color: var(--el-color-warning); }
-.st-thinking    { background: var(--el-color-primary-light-7); color: var(--el-color-primary); }
-.st-executing   { background: var(--el-color-success-light-7); color: var(--el-color-success); }
-.st-completed   { background: var(--el-color-success-light-8); color: var(--el-color-success); }
-.st-error       { background: var(--el-color-danger-light-7);  color: var(--el-color-danger); }
-.st-interrupted { background: var(--el-color-warning-light-8); color: var(--el-color-warning); }
+.ctx-status::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.st-sent        { color: var(--el-color-info); }
+.st-sent::before        { background: var(--el-color-info); }
+.st-pending     { color: var(--el-color-warning); }
+.st-pending::before     { background: var(--el-color-warning); }
+.st-thinking    { color: var(--el-color-primary); }
+.st-thinking::before    { background: var(--el-color-primary); }
+.st-executing   { color: var(--el-color-success); }
+.st-executing::before   { background: var(--el-color-success); animation: pulse-dot 1.2s infinite; }
+.st-completed   { color: var(--el-color-success); }
+.st-completed::before   { background: var(--el-color-success); }
+.st-error       { color: var(--el-color-danger); }
+.st-error::before       { background: var(--el-color-danger); }
+.st-interrupted { color: var(--el-color-warning); }
+.st-interrupted::before { background: var(--el-color-warning); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
 
 /* ── 跨阶段标签 ── */
 .ctx-phase-tag {
   font-size: 9px;
-  font-weight: 700;
-  padding: 1px 7px;
-  border-radius: 8px;
-  background: var(--el-color-info-light-8);
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--el-color-info-light-9);
   color: var(--el-color-info);
   margin-left: 4px;
 }
@@ -407,8 +429,8 @@ function onCancelStream() {
 /* ── 内容 ── */
 .ctx-card .ctx-preview {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
-  line-height: 1.4;
+  color: var(--el-text-color-regular);
+  line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
   user-select: text;
@@ -592,27 +614,26 @@ function onCancelStream() {
 }
 
 .ctx-tag {
-  font-size: 8px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
   margin-right: 4px;
   vertical-align: middle;
-  letter-spacing: 0.5px;
 }
 
 .tag-thinking {
-  background: var(--el-fill-color-light);
+  background: var(--el-fill-color);
   color: var(--el-text-color-secondary);
 }
 
 .tag-tools {
-  background: var(--el-color-warning-light-8);
+  background: var(--el-color-warning-light-9);
   color: var(--el-color-warning);
 }
 
 .tag-cross {
-  background: var(--el-color-success-light-7);
+  background: var(--el-color-success-light-9);
   color: var(--el-color-success);
 }
 

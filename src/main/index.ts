@@ -16,6 +16,17 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 700,
     title: 'ModuleAgent',
+    backgroundColor: '#0f1117',               // 暗色主题页面底色，消除加载白闪
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    ...(process.platform === 'darwin'
+      ? { trafficLightPosition: { x: 14, y: 14 } }
+      : {
+          titleBarOverlay: {
+            color: '#1a1d27',                  // 与暗色主题卡片背景一致
+            symbolColor: '#9ca3af',            // 与暗色主题次要文字色一致
+            height: 36,
+          },
+        }),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
