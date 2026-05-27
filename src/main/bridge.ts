@@ -10,6 +10,7 @@ import { AgentStateManager } from '../agents/AgentStateManager.js';
 import { McpBackendServer } from '../agents/McpBackend.js';
 import { ExperienceSummarizer } from '../core/ExperienceSummarizer.js';
 import { cleanupRoleWorkspace } from '../agents/RoleWorkspace.js';
+import * as WorkspaceDiff from '../core/WorkspaceDiff.js';
 import { ModuleScanner } from '../core/ModuleScanner.js';
 import { ModuleGraph } from '../core/ModuleGraph.js';
 import { ModuleGenerator } from '../core/ModuleGenerator.js';
@@ -29,7 +30,7 @@ import {
 } from '../agents/WorkspaceIsolator.js';
 import { getPromptConfigDir, ensureConfigFiles, getUserConfigRoot, configExplorer } from '../core/ConfigPaths.js';
 import type { ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../types/module.js';
-import type { ChatMsg, TreeNode } from '../types/preload.js';
+import type { ChatMsg, TreeNode, DiffSummary } from '../types/preload.js';
 import type { CoreCallbacks } from '../core/CoreTypes.js';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,7 @@ export class ElectronBridge {
   private agentStatus = new Map<string, 'idle' | 'streaming' | 'error'>();
   private sendLock = new Map<string, Promise<void>>();
   private roleSendLock = new Map<string, Promise<void>>();
+  private diffCache = new Map<string, DiffSummary>();
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
@@ -597,6 +599,9 @@ DO NOT overwrite existing module.md files.`,
             self.logger.warn(`Summarizer error [${moduleName}]: ${(err as Error).message}`);
           });
         }
+
+        // ── 触发工作区变更检测（后台异步） ──
+        self._triggerWorkspaceDiff(moduleName, entry.launched.cwd, projectRoot);
 
         self.agentStatus.set(moduleName, 'idle');
         self.mainWindow?.webContents.send('agent:status', { name: moduleName, status: 'idle' });
@@ -1218,6 +1223,125 @@ DO NOT overwrite existing module.md files.`,
         self.logger.error(`knowledge:delete failed [${filename}]: ${(err as Error).message}`);
         return { success: false };
       }
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // 工作区 Diff
+  // -----------------------------------------------------------------------
+
+  /**
+   * 在 Agent session 完成后触发工作区变更检测。
+   * 异步执行，不阻塞主流程。
+   */
+  private _triggerWorkspaceDiff(moduleName: string, workspaceCwd: string, projectRoot: string): void {
+    // 根模块 (relativePath === '.') 没有工作区隔离，跳过
+    if (!workspaceCwd || !projectRoot) return;
+
+    // 检查 workspaceCwd 是否在 .module-agent/workspace 下
+    const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
+    if (!workspaceCwd.startsWith(workspaceBase)) return;
+
+    // 从 workspace cwd 反推源目录
+    // workspaceCwd = <projectRoot>/.module-agent/workspace/<relativePath>
+    const relPath = path.relative(workspaceBase, workspaceCwd);
+    const sourceDir = relPath ? path.join(projectRoot, relPath) : projectRoot;
+
+    // 异步执行 diff（不阻塞 agent:send 返回）
+    setImmediate(() => {
+      try {
+        this.logger.info(`WorkspaceDiff: analyzing ${workspaceCwd} vs ${sourceDir}`);
+        const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir);
+        summary.moduleName = moduleName;
+        this.diffCache.set(moduleName, summary);
+
+        if (summary.files.length > 0) {
+          this.logger.info(`WorkspaceDiff [${moduleName}]: ${summary.addedCount} added, ${summary.modifiedCount} modified, ${summary.deletedCount} deleted`);
+        }
+
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('workspace:diff-ready', {
+            moduleName,
+            summary: summary.files.length > 0 ? summary : null,
+          });
+        }
+      } catch (err) {
+        this.logger.error(`WorkspaceDiff error [${moduleName}]: ${(err as Error).message}`);
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('workspace:diff-ready', {
+            moduleName,
+            summary: null,
+          });
+        }
+      }
+    });
+  }
+
+  private _registerWorkspaceDiffHandlers(): void {
+    const self = this;
+
+    // 获取模块的完整 diff 摘要
+    ipcMain.handle('workspace:diff', async (_event, moduleName: string) => {
+      const cached = self.diffCache.get(moduleName);
+      if (cached) return cached;
+
+      // 缓存未命中，尝试重新计算
+      const entry = self.core.modules.getAgent(moduleName);
+      if (!entry) return { error: 'no active agent for this module' };
+
+      const projectRoot = self.core.getProjectRoot();
+      if (!projectRoot) return { error: 'no project root' };
+
+      const workspaceCwd = entry.launched.cwd;
+      const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
+      if (!workspaceCwd.startsWith(workspaceBase)) return { error: 'module has no workspace isolation' };
+
+      const relPath = path.relative(workspaceBase, workspaceCwd);
+      const sourceDir = relPath ? path.join(projectRoot, relPath) : projectRoot;
+
+      const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir);
+      summary.moduleName = moduleName;
+      self.diffCache.set(moduleName, summary);
+      return summary;
+    });
+
+    // 获取单个文件的统一 diff
+    ipcMain.handle('workspace:diff-file', async (_event, moduleName: string, filePath: string) => {
+      const cached = self.diffCache.get(moduleName);
+      if (!cached) return { error: 'no diff data — call workspace:diff first' };
+
+      const file = cached.files.find(f => f.relativePath === filePath);
+      if (!file) return { error: `file not found in diff: ${filePath}` };
+
+      const hunks = WorkspaceDiff.unifiedDiff(file.workspacePath, file.sourcePath);
+      return { hunks };
+    });
+
+    // 将变更写回源文件
+    ipcMain.handle('workspace:apply', async (_event, moduleName: string, files?: string[]) => {
+      const cached = self.diffCache.get(moduleName);
+      if (!cached) return { applied: 0, errors: ['no diff data'] };
+
+      const result = await WorkspaceDiff.apply(cached.workspaceDir, cached.sourceDir, files, cached.files);
+      self.logger.info(`WorkspaceDiff: applied ${result.applied} files for [${moduleName}]`);
+
+      // 重新计算 diff（写回后变更应被清除）
+      const newSummary = WorkspaceDiff.analyze(cached.workspaceDir, cached.sourceDir);
+      newSummary.moduleName = moduleName;
+      self.diffCache.set(moduleName, newSummary);
+
+      return result;
+    });
+
+    // 丢弃工作区变更（删除工作区目录）
+    ipcMain.handle('workspace:discard', async (_event, moduleName: string) => {
+      const cached = self.diffCache.get(moduleName);
+      if (cached) {
+        await WorkspaceDiff.discardWorkspace(cached.workspaceDir);
+        self.diffCache.delete(moduleName);
+        self.logger.info(`WorkspaceDiff: discarded workspace for [${moduleName}]`);
+      }
+      return { success: true };
     });
   }
 

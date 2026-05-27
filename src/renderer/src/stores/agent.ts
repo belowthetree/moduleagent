@@ -24,6 +24,35 @@ export const useAgentStore = defineStore('agent', () => {
   let streamCleanup: (() => void) | null = null
   let roleStreamCleanup: (() => void) | null = null
 
+  // ── 工作区 Diff 状态 ──
+  const pendingDiffModule = ref<string | null>(null)
+  const pendingDiffCount = ref(0)
+  const showDiffPanel = ref(false)
+  let diffListenerCleanup: (() => void) | null = null
+
+  function ensureDiffListener(): void {
+    if (diffListenerCleanup) return
+    diffListenerCleanup = window.moduleAgent.onWorkspaceDiffReady((data) => {
+      if (data.summary) {
+        pendingDiffModule.value = data.moduleName
+        pendingDiffCount.value = data.summary.files.length
+      }
+    })
+  }
+
+  function openDiffPanel(): void {
+    showDiffPanel.value = true
+  }
+
+  function closeDiffPanel(): void {
+    showDiffPanel.value = false
+  }
+
+  function clearDiffNotification(): void {
+    pendingDiffModule.value = null
+    pendingDiffCount.value = 0
+  }
+
   // ── 辅助方法 ──
   function now(): string {
     return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -499,5 +528,14 @@ export const useAgentStore = defineStore('agent', () => {
     clearRoleContext,
     ensureRoleStatusListener,
     stopRoleRunningPoll,
+
+    // 工作区 Diff
+    pendingDiffModule,
+    pendingDiffCount,
+    showDiffPanel,
+    ensureDiffListener,
+    openDiffPanel,
+    closeDiffPanel,
+    clearDiffNotification,
   }
 })
