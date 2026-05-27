@@ -96,8 +96,29 @@
 
 | 事件类型 | 数据 | 说明 |
 |----------|------|------|
-| `chunk-reply` | `{ text }` | Agent 回复片段 |
-| `chunk-thinking` | `{ text }` | Agent 思考片段 |
-| `chunk-tool_call` | `{ text }` | 工具调用通知 |
+| `chunk-reply` | `{ reply, thinking, tools, timeline, moduleName }` | 累积回复片段（含全部累积态） |
+| `chunk-thinking` | `{ reply, thinking, tools, timeline, moduleName }` | 累积思考片段（连续思考合并到同一 timeline 项） |
+| `chunk-tool_call` | `{ reply, thinking, tools, timeline, moduleName }` | 工具调用通知（每个工具调用独立的 timeline 项） |
 | `agent-status` | `{ name, status }` | Agent 状态变更 |
-| `role-status` | `{ name, status }` | 角色 Agent 状态变更 |
+
+### 流事件数据结构
+
+每个 `chunk-*` 事件携带 **完整累积态**：
+
+```json
+{
+  "type": "chunk-reply",
+  "data": {
+    "reply": "累积回复文本",
+    "thinking": "累积思考文本",
+    "tools": "[tool1] [tool2] ",
+    "timeline": [
+      { "type": "thinking", "content": "思考内容" },
+      { "type": "tool_call", "content": "工具名称" }
+    ],
+    "moduleName": "模块名称"
+  }
+}
+```
+
+前端 stream listener (`agent.ts`) 实时将 `data.reply/thinking/tools/timeline` 写入当前 Agent 占位消息，驱动 UI 流式更新。

@@ -25,6 +25,7 @@ ModuleAgent 是一个**模块化 Agent 编排框架**。以 `module.md` 为模�
 | 前端 | Vue 3 + Element Plus + Pinia | SFC 组件、状态管理、模块树可视化 |
 | 构建 | Vite (前端) + Cargo (Rust) | 前端 Vite 构建、后端 Cargo 编译 |
 | ACP 协议 | `agent-client-protocol` 0.12 | Agent 通信协议 |
+| MCP 桥接 | `agent-client-protocol-rmcp` 0.11 | rmcp → ACP session MCP server 桥接 |
 | MCP 协议 | `rmcp` 1.x | 跨模块 MCP 工具路由 |
 | 日志 | `log` + `log4rs` | 文件日志到 `logs/` 目录 |
 
@@ -94,10 +95,14 @@ ModuleAgent 是一个**模块化 Agent 编排框架**。以 `module.md` 为模�
   → AgentManager::send_message()
   → 获取 per-agent SendLock
   → PromptBuilder::build() → 构建提示词
+  → connection.build_session(cwd)
+      .with_mcp_server(mcp_server)   ← 注入 MCP 工具（module_call 等）
+      .block_task()
+      .start_session()
   → session.send_prompt() → 发送到 Agent
   → loop { session.read_update() }
     → StreamAccumulator::process_dispatch()
-    → 实时 emit stream 事件到前端
+    → 实时 emit stream 事件到前端（含完整累积态）
   → 返回累积结果 (reply, thinking, tools)
 ```
 

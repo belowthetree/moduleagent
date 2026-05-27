@@ -5,7 +5,7 @@
 //! - `module_query` — query another module for information
 //! - `list_modules` — list all available modules
 
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use rmcp::{
     ErrorData as McpError,
@@ -43,19 +43,24 @@ pub struct ModuleQueryParams {
 
 /// MCP tools exposed to every agent session.
 ///
-/// Holds references to shared state via [`Arc`].
+/// Holds a [`Weak`] reference to the shared [`AgentManager`].
 #[derive(Clone)]
 pub struct ModuleAgentTools {
-    agent_manager: Arc<AgentManager>,
+    agent_manager: Weak<AgentManager>,
     tool_router: ToolRouter<Self>,
 }
 
 impl ModuleAgentTools {
-    pub fn new(agent_manager: Arc<AgentManager>) -> Self {
+    pub fn new(agent_manager: Weak<AgentManager>) -> Self {
         Self {
             agent_manager,
             tool_router: Self::tool_router(),
         }
+    }
+
+    fn manager(&self) -> Result<Arc<AgentManager>, McpError> {
+        self.agent_manager.upgrade()
+            .ok_or_else(|| McpError::internal_error("AgentManager no longer available", None))
     }
 }
 
@@ -67,9 +72,10 @@ impl ModuleAgentTools {
         &self,
         Parameters(params): Parameters<ModuleCallParams>,
     ) -> Result<CallToolResult, McpError> {
+        let mgr = self.manager()?;
         let project_root = std::env::current_dir().unwrap_or_else(|_| ".".into());
 
-        match self.agent_manager
+        match mgr
             .send_message(&params.target_module, &params.task, &project_root)
             .await
         {
@@ -88,10 +94,11 @@ impl ModuleAgentTools {
         &self,
         Parameters(params): Parameters<ModuleQueryParams>,
     ) -> Result<CallToolResult, McpError> {
+        let mgr = self.manager()?;
         let project_root = std::env::current_dir().unwrap_or_else(|_| ".".into());
         let prompt = format!("[QUERY] {}", params.query);
 
-        match self.agent_manager
+        match mgr
             .send_message(&params.target_module, &prompt, &project_root)
             .await
         {
@@ -107,7 +114,8 @@ impl ModuleAgentTools {
     /// List all currently running modules.
     #[tool(description = "List all available module agents and their statuses")]
     async fn list_modules(&self) -> Result<CallToolResult, McpError> {
-        let agents = self.agent_manager.list_agents().await;
+        let mgr = self.manager()?;
+        let agents = mgr.list_agents().await;
         let text = agents
             .iter()
             .map(|a| format!("- {} ({})", a.name, a.status_str()))

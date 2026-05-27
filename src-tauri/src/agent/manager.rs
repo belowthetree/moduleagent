@@ -1,19 +1,23 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use agent_client_protocol::{
     role::acp::Agent,
+    mcp_server::McpServer,
     ConnectionTo, SessionMessage,
 };
+use agent_client_protocol_rmcp::McpServerExt;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
 use log;
 
 use super::accumulator::StreamAccumulator;
 use super::launcher::{AgentLauncher, LaunchedAgent};
 use super::prompt::PromptBuilder;
 use crate::config::schema::AgentConfig;
+use crate::mcp::ModuleAgentTools;
 use crate::util::{AppError, AppResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,9 +38,11 @@ type SendLock = Arc<Mutex<()>>;
 pub struct AgentManager {
     agents: RwLock<HashMap<String, AgentEntry>>,
     send_locks: std::sync::Mutex<HashMap<String, SendLock>>,
+    session_cancels: std::sync::Mutex<HashMap<String, CancellationToken>>,
     app_handle: AppHandle,
     base_path: PathBuf,
     config_dir: PathBuf,
+    mcp_tools: ModuleAgentTools,
 }
 
 impl AgentManager {
@@ -44,13 +50,16 @@ impl AgentManager {
         app_handle: AppHandle,
         base_path: impl Into<PathBuf>,
         config_dir: impl Into<PathBuf>,
+        weak_self: Weak<Self>,
     ) -> Self {
         Self {
             agents: RwLock::new(HashMap::new()),
             send_locks: std::sync::Mutex::new(HashMap::new()),
+            session_cancels: std::sync::Mutex::new(HashMap::new()),
             app_handle,
             base_path: base_path.into(),
             config_dir: config_dir.into(),
+            mcp_tools: ModuleAgentTools::new(weak_self),
         }
     }
 
@@ -94,8 +103,17 @@ impl AgentManager {
         };
         log::info!("向 Agent [{}] 发送消息 ({} 字符)", name, text.chars().count());
         self.set_status(name, AgentStatus::Streaming).await;
+        let cancel_token = CancellationToken::new();
+        {
+            let mut cancels = self.session_cancels.lock().unwrap();
+            cancels.insert(name.to_string(), cancel_token.clone());
+        }
         let full_prompt = PromptBuilder::build(name, text, &self.base_path).await;
-        let result = self.run_session(name, &connection, &cwd, &full_prompt).await;
+        let result = self.run_session(name, &connection, &cwd, &full_prompt, &cancel_token).await;
+        {
+            let mut cancels = self.session_cancels.lock().unwrap();
+            cancels.remove(name);
+        }
         let final_status = match &result {
             Ok(_) => AgentStatus::Idle,
             Err(_) => AgentStatus::Error,
@@ -110,6 +128,9 @@ impl AgentManager {
             .get(name)
             .ok_or_else(|| AppError::AgentNotFound(name.to_string()))?;
         log::info!("取消 Agent [{}]", name);
+        if let Some(token) = self.session_cancels.lock().unwrap().get(name) {
+            token.cancel();
+        }
         self.set_status(name, AgentStatus::Idle).await;
         Ok(())
     }
@@ -144,9 +165,14 @@ impl AgentManager {
         connection: &ConnectionTo<Agent>,
         cwd: &Path,
         prompt: &str,
+        cancel_token: &CancellationToken,
     ) -> AppResult<StreamAccumulator> {
+        let tools = self.mcp_tools.clone();
+        let mcp_server = McpServer::<Agent>::from_rmcp("module-agent-tools", move || tools.clone());
         let mut session = connection
             .build_session(&cwd)
+            .with_mcp_server(mcp_server)
+            .map_err(|e| AppError::Acp(format!("failed to attach MCP server: {e}")))?
             .block_task()
             .start_session()
             .await
@@ -165,7 +191,7 @@ impl AgentManager {
         loop {
             match session.read_update().await {
                 Ok(SessionMessage::SessionMessage(dispatch)) => {
-                    acc.process_dispatch(dispatch, Some(app_handle)).await?;
+                    acc.process_dispatch(dispatch, Some(app_handle), name).await?;
                 }
                 Ok(SessionMessage::StopReason(reason)) => {
                     let reason_str = format!("{reason:?}");
@@ -178,13 +204,17 @@ impl AgentManager {
                 }
                 Err(e) => {
                     let err_str = e.to_string();
-                    // 跳过未知会话变体或反序列化错误（如新版 agent 发送的 usage_update）
-                    if err_str.contains("unknown variant") || err_str.contains("deserialization") {
-                        log::warn!("[{}] 跳过不支持的会话消息: {}", name, err_str);
-                        continue;
+                    // I/O 错误（连接断开）→ 终止会话
+                    if err_str.contains("connection closed")
+                        || err_str.contains("channel closed")
+                        || err_str.contains("broken pipe")
+                    {
+                        log::error!("Agent [{}] 会话连接断开: {}", name, e);
+                        return Err(AppError::Acp(format!("session connection lost: {e}")));
                     }
-                    log::error!("Agent [{}] 会话读取错误: {}", name, e);
-                    return Err(AppError::Acp(format!("session read error: {e}")));
+                    // 其他错误（如 SDK 反序列化失败、未知变体）→ 记录并继续
+                    log::warn!("[{}] 跳过会话错误 (继续): {}", name, err_str);
+                    continue;
                 }
             }
         }

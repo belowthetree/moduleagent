@@ -10,9 +10,14 @@ use tauri::{AppHandle, Emitter};
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum TimelineEvent {
-    ReplyChunk { text: String },
-    ThoughtChunk { text: String },
+    #[serde(rename = "thinking")]
+    ThoughtChunk {
+        #[serde(rename = "content")]
+        text: String,
+    },
+    #[serde(rename = "tool_call")]
     ToolCall {
+        #[serde(rename = "content")]
         title: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         status: Option<String>,
@@ -38,6 +43,7 @@ impl StreamAccumulator {
         &mut self,
         dispatch: Dispatch,
         app_handle: Option<&AppHandle>,
+        module_name: &str,
     ) -> Result<(), crate::util::AppError> {
         MatchDispatch::new(dispatch)
             .if_notification(async |notif: SessionNotification| {
@@ -49,11 +55,16 @@ impl StreamAccumulator {
                         let t = text.text.clone();
                         log::debug!("收到回复片段 ({} 字符)", t.chars().count());
                         self.reply.push_str(&t);
-                        self.timeline.push(TimelineEvent::ReplyChunk { text: t.clone() });
                         if let Some(h) = app_handle {
                             let _ = h.emit("stream", serde_json::json!({
                                 "type": "chunk-reply",
-                                "data": { "text": &t }
+                                "data": {
+                                    "reply": self.reply,
+                                    "thinking": self.thinking,
+                                    "tools": self.tools,
+                                    "timeline": &self.timeline,
+                                    "moduleName": module_name
+                                }
                             }));
                         }
                     }
@@ -63,11 +74,26 @@ impl StreamAccumulator {
                     }) => {
                         let t = text.text.clone();
                         self.thinking.push_str(&t);
-                        self.timeline.push(TimelineEvent::ThoughtChunk { text: t.clone() });
+                        // Merge consecutive thought chunks into a single timeline entry
+                        let merged = if let Some(TimelineEvent::ThoughtChunk { text: last_text }) = self.timeline.last_mut() {
+                            last_text.push_str(&t);
+                            true
+                        } else {
+                            false
+                        };
+                        if !merged {
+                            self.timeline.push(TimelineEvent::ThoughtChunk { text: t });
+                        }
                         if let Some(h) = app_handle {
                             let _ = h.emit("stream", serde_json::json!({
                                 "type": "chunk-thinking",
-                                "data": { "text": &t }
+                                "data": {
+                                    "reply": self.reply,
+                                    "thinking": self.thinking,
+                                    "tools": self.tools,
+                                    "timeline": &self.timeline,
+                                    "moduleName": module_name
+                                }
                             }));
                         }
                     }
@@ -79,7 +105,13 @@ impl StreamAccumulator {
                         if let Some(h) = app_handle {
                             let _ = h.emit("stream", serde_json::json!({
                                 "type": "chunk-tool_call",
-                                "data": { "text": &title }
+                                "data": {
+                                    "reply": self.reply,
+                                    "thinking": self.thinking,
+                                    "tools": self.tools,
+                                    "timeline": &self.timeline,
+                                    "moduleName": module_name
+                                }
                             }));
                         }
                     }

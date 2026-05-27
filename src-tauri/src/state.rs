@@ -36,11 +36,14 @@ impl AppState {
         let base_path = config_dir.join("context");
         let workspace_root = config_dir.join("workspace");
 
-        let agent_manager = Arc::new(AgentManager::new(
-            app_handle.clone(),
-            base_path,
-            config_dir.clone(),
-        ));
+        let agent_manager = Arc::new_cyclic(|weak| {
+            AgentManager::new(
+                app_handle.clone(),
+                base_path,
+                config_dir.clone(),
+                weak.clone(),
+            )
+        });
 
         let role_manager = RoleAgentManager::new(
             agent_manager.clone(),

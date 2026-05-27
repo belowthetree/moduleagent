@@ -1,4 +1,3 @@
-pub mod acp;
 pub mod agent;
 pub mod commands;
 pub mod config;

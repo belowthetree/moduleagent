@@ -17,7 +17,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-fs = "2"
-agent-client-protocol = "0.12"
+agent-client-protocol = { version = "0.12", features = ["unstable_session_usage"] }
 agent-client-protocol-rmcp = "0.11"
 rmcp = { version = "1", features = ["server", "macros", "schemars"] }
 tokio = { version = "1", features = ["full"] }
