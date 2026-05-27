@@ -2,7 +2,7 @@
 import { computed, reactive, watch, onMounted } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { useKnowledgeStore } from '../stores/knowledge'
-import type { RoleConfigData } from '../../../types/preload'
+import type { RoleConfigData } from '../../../types/shared'
 
 const props = defineProps<{
   visible: boolean

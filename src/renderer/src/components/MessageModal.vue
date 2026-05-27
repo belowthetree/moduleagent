@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { ChatMsg } from '../../../types/preload'
+import type { ChatMsg } from '../../../types/shared'
 
 const props = defineProps<{
   visible: boolean

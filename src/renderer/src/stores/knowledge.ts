@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { KnowledgeEntry, KnowledgeListItem } from '../../../types/preload'
+import type { KnowledgeEntry, KnowledgeListItem } from '../../../types/shared'
 
 export const useKnowledgeStore = defineStore('knowledge', () => {
   // ── 状态 ──

@@ -1,11 +1,9 @@
+import type { ChatMsg } from '../types/shared.js';
+
 export type AgentStatus = 'idle' | 'streaming' | 'error' | 'disconnected' | 'loading';
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'agent' | 'system';
-  content: string;
-  time: string;
-}
+/** TUI 消息类型 — 派生自共享 ChatMsg，仅使用 TUI 所需的字段子集 */
+export type ChatMessage = Pick<ChatMsg, 'id' | 'role' | 'content' | 'time'>;
 
 export interface CommandDef {
   name: string;

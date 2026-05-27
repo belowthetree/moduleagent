@@ -82,7 +82,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { TreeNode, LayoutNode, AgentStatus } from '../../../types/preload'
+import type { TreeNode, LayoutNode, AgentStatus } from '../../../types/shared'
 
 // ── 属性 ──
 const props = defineProps<{

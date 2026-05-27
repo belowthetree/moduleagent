@@ -1,6 +1,6 @@
 import { ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
-import type { AgentStatus, ChatMsg, RoleConfigData } from '../../../types/preload'
+import type { AgentStatus, ChatMsg, RoleConfigData } from '../../../types/shared'
 
 export const useAgentStore = defineStore('agent', () => {
   // ── 状态 ──

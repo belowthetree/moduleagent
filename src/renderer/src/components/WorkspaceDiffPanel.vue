@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { DiffFile, DiffSummary } from '../../types/preload'
+import type { DiffFile, DiffSummary } from '../../types/shared'
 
 const props = defineProps<{
   moduleName: string

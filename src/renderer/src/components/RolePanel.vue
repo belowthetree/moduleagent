@@ -12,7 +12,7 @@ const emit = defineEmits<{
 }>()
 
 const showConfigDialog = ref(false)
-const editingRole = ref<import('../../../types/preload').RoleConfigData | null>(null)
+const editingRole = ref<import('../../../types/shared').RoleConfigData | null>(null)
 
 onMounted(() => {
   agentStore.fetchRoles()
@@ -34,12 +34,12 @@ function openAddDialog(): void {
   showConfigDialog.value = true
 }
 
-function openEditDialog(role: import('../../../types/preload').RoleConfigData): void {
+function openEditDialog(role: import('../../../types/shared').RoleConfigData): void {
   editingRole.value = { ...role }
   showConfigDialog.value = true
 }
 
-async function onSaveRole(role: import('../../../types/preload').RoleConfigData): Promise<void> {
+async function onSaveRole(role: import('../../../types/shared').RoleConfigData): Promise<void> {
   await agentStore.saveRole(role)
   showConfigDialog.value = false
   editingRole.value = null

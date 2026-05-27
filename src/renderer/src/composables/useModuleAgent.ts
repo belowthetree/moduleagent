@@ -1,4 +1,4 @@
-import type { ModuleAgentApi } from '../../../types/preload'
+import type { ModuleAgentApi } from '../../../types/shared'
 
 export function useModuleAgent(): ModuleAgentApi {
   if (!window.moduleAgent) {

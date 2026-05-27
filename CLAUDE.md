@@ -21,8 +21,13 @@ The codebase has been refactored into a layered architecture:
 
 - **Core layer** (`src/core/`): `ModuleAgentCore` is the unified entry point for all agent orchestration. It composes `ModuleAgentSubsystem` (module agent lifecycle: scan → graph → agent → MCP) and `RoleAgentSubsystem` (role agent lifecycle). Core is 100% UI-agnostic — no Electron, Vue, SolidJS, or TUI dependencies.
 - **Bridge layer**: Thin adapters that connect Core to UI frameworks:
-  - `src/main/bridge.ts` — `ElectronBridge`: translates CoreCallbacks → IPC events, registers all `ipcMain.handle()` handlers
+  - `src/main/bridge.ts` — `ElectronBridge` (228行编排层): 持有 `HandlerContext`，委托 11 个领域 handler 注册 IPC
+  - `src/main/handlers/` — 领域 IPC handler 模块: `agentHandlers`, `roleHandlers`, `workflowHandlers`, `knowledgeHandlers`, `projectHandlers`, `configHandlers`, `contextHandlers`, `migrationHandlers`, `dialogHandlers`, `workspaceDiffHandlers`
+  - `src/main/handlers/HandlerContext.ts` — 所有 handler 共享的上下文接口（14 字段 + 2 方法）
+  - `src/main/handlers/sendPipeline.ts` — `agent:send` / `role:send` 共享的锁→流→保存管道
+  - `src/protocol/IpcChannels.ts` — 全部 52 个 IPC 通道名的集中常量注册表
   - `src/tui/bridge.ts` — `TuiBridge`: translates CoreCallbacks → SolidJS signals
+  - 两座桥接均实现 `IAgentBridge` 接口（定义于 `CoreTypes.ts`）
 - **UI layer**: Pure presentation
   - Electron: `src/main/index.ts` (window creation only), Vue 3 renderer in `src/renderer/src/`
   - TUI: `src/tui/renderer.tsx` (OpenTUI startup), SolidJS components in `src/tui/components/`
@@ -113,8 +118,13 @@ When changing the schema, update both `src/config/schema.ts` (Zod) and `src/conf
 | `src/core/CoreTypes.ts` | `CoreCallbacks`, `CoreStatus`, `CoreMessage`, `InitResult`, `AgentInfo` — shared interfaces. |
 | `src/core/` (other) | ModuleScanner, ModuleGraph, ModuleParser, ModuleGenerator, Logger, PathUtils, ExclusionRules |
 | `src/main/index.ts` | Electron main process — window creation only. All agent logic delegated to `ElectronBridge`. |
-| `src/main/bridge.ts` | **ElectronBridge** — connects `ModuleAgentCore` to Electron IPC. Handles McpBackend, AgentStateManager, all `ipcMain.handle()` registration. |
-| `src/tui/bridge.ts` | **TuiBridge** — connects `ModuleAgentCore` to TUI SolidJS state via CoreCallbacks. |
+| `src/main/bridge.ts` | **ElectronBridge** (228行) — 编排层，持有 HandlerContext 并委托给 11 个领域 handler。实现 IAgentBridge 接口。 |
+| `src/main/handlers/` | **IPC handler 模块** — 每个领域一个文件，导出 `registerXxxHandlers(ctx)` 函数：agent/role/workflow/knowledge/project/config/context/migration/dialog/workspaceDiff |
+| `src/main/handlers/HandlerContext.ts` | 共享上下文接口 — core, mainWindow, stateManager, diffCache, prompts, logger, summarizer, locks 等 |
+| `src/main/handlers/sendPipeline.ts` | **共享 send 管道** — `agent:send` 与 `role:send` 的公共锁→流→保存逻辑提取为 `executeSendPipeline()` |
+| `src/protocol/IpcChannels.ts` | **IPC 通道常量注册表** — 52 个 invoke/push 通道名集中定义；bridge.ts 和 preload 都必须引用此类常量 |
+| `src/core/WorkspaceDiff.ts` | **工作区 Diff 引擎** — analyze / unifiedDiff / apply / discardWorkspace |
+| `src/tui/bridge.ts` | **TuiBridge** — connects `ModuleAgentCore` to TUI SolidJS state via CoreCallbacks. Implements IAgentBridge. |
 | `src/tui/renderer.tsx` | TUI entry point — creates TuiBridge, wires `globalThis.__tui*` hooks. |
 | `src/renderer/src/` | Vue 3 renderer — views, components, Pinia stores, router |
 | `src/preload/index.ts` | `contextBridge` API (`window.moduleAgent`) |

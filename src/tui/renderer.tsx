@@ -63,7 +63,7 @@ export async function startTui(projectRoot: string) {
   };
 
   (globalThis as any).__tuiSendMessage = async (text: string) => {
-    await bridge.sendMessage(text);
+    await bridge.sendMessage(bridge.getCurrentAgent(), text);
   };
 
   (globalThis as any).__tuiCancelStream = async () => {

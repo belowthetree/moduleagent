@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-import type { ChatMsg, TimelineEvent } from '../types/preload.js';
+import type { ChatMsg, TimelineEvent } from '../types/shared.js';
 
 // ── Types ──
 

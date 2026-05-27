@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';
 import { defaultLogger, type Logger } from './Logger.js';
-import type { ChatMsg } from '../types/preload.js';
+import type { ChatMsg } from '../types/shared.js';
 import type { ContentBlock } from '@agentclientprotocol/sdk';
 
 export interface SummarizeParams {

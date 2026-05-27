@@ -1,176 +1,176 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus, DiffSummary, WorkspaceDiffReadyData } from '../types/preload.js';
+import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus, DiffSummary, WorkspaceDiffReadyData } from '../types/shared.js';
 
 const api: ModuleAgentApi = {
-  selectDir: (title: string) => ipcRenderer.invoke('dialog:selectDir', title) as Promise<string | null>,
+  selectDir: (title: string) => ipcRenderer.invoke(IpcChannel.Dialog.SelectDir, title) as Promise<string | null>,
 
   scanProject: (projectRoot: string) =>
-    ipcRenderer.invoke('project:scan', projectRoot) as Promise<ScanResult>,
+    ipcRenderer.invoke(IpcChannel.Project.Scan, projectRoot) as Promise<ScanResult>,
 
   generateModules: (projectRoot: string) =>
-    ipcRenderer.invoke('project:generateModules', projectRoot) as Promise<{ success: boolean; count: number; error?: string }>,
+    ipcRenderer.invoke(IpcChannel.Project.GenerateModules, projectRoot) as Promise<{ success: boolean; count: number; error?: string }>,
 
-  getTree: () => ipcRenderer.invoke('project:getTree') as Promise<Record<string, unknown> | null>,
+  getTree: () => ipcRenderer.invoke(IpcChannel.Project.GetTree) as Promise<Record<string, unknown> | null>,
 
   // Agent API
   startAgent: (moduleName: string, cmd: string, args: string[], cwd: string) =>
-    ipcRenderer.invoke('agent:start', moduleName, cmd, args, cwd) as Promise<{ sessionId?: string; error?: string }>,
+    ipcRenderer.invoke(IpcChannel.Agent.Start, moduleName, cmd, args, cwd) as Promise<{ sessionId?: string; error?: string }>,
 
   sendMessage: (moduleName: string, text: string, cwd?: string) =>
-    ipcRenderer.invoke('agent:send', moduleName, text, cwd) as Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason: string }; error?: string }>,
+    ipcRenderer.invoke(IpcChannel.Agent.Send, moduleName, text, cwd) as Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason: string }; error?: string }>,
 
-  cancelAgent: (moduleName: string) => ipcRenderer.invoke('agent:cancel', moduleName) as Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>,
+  cancelAgent: (moduleName: string) => ipcRenderer.invoke(IpcChannel.Agent.Cancel, moduleName) as Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>,
 
-  stopAgent: (moduleName: string) => ipcRenderer.invoke('agent:stop', moduleName) as Promise<{}>,
+  stopAgent: (moduleName: string) => ipcRenderer.invoke(IpcChannel.Agent.Stop, moduleName) as Promise<{}>,
 
-  isAgentRunning: (moduleName: string) => ipcRenderer.invoke('agent:isRunning', moduleName) as Promise<boolean>,
+  isAgentRunning: (moduleName: string) => ipcRenderer.invoke(IpcChannel.Agent.IsRunning, moduleName) as Promise<boolean>,
 
-  getRunningAgents: () => ipcRenderer.invoke('agent:getRunning') as Promise<{ name: string; status: AgentStatus }[]>,
+  getRunningAgents: () => ipcRenderer.invoke(IpcChannel.Agent.GetRunning) as Promise<{ name: string; status: AgentStatus }[]>,
 
   onAgentStream: (callback: (data: AgentStreamData) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: AgentStreamData) => callback(data);
-    ipcRenderer.on('agent:stream', handler);
-    return () => ipcRenderer.removeListener('agent:stream', handler);
+    ipcRenderer.on(IpcChannel.Push.AgentStream, handler);
+    return () => ipcRenderer.removeListener(IpcChannel.Push.AgentStream, handler);
   },
 
   onAgentStatus: (callback: (data: AgentStatusData) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: AgentStatusData) => callback(data);
-    ipcRenderer.on('agent:status', handler);
-    return () => ipcRenderer.removeListener('agent:status', handler);
+    ipcRenderer.on(IpcChannel.Push.AgentStatus, handler);
+    return () => ipcRenderer.removeListener(IpcChannel.Push.AgentStatus, handler);
   },
 
   // 配置 API
   saveAgentConfig: (projectRoot: string, cmd: string, args: string[], projectPath?: string, summarizationEnabled?: boolean, fastModel?: string, normalModel?: string, autoSwitchModel?: boolean) =>
-    ipcRenderer.invoke('config:save', projectRoot, { command: cmd, args, projectPath, summarizationEnabled, fastModel, normalModel, autoSwitchModel }) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Config.Save, projectRoot, { command: cmd, args, projectPath, summarizationEnabled, fastModel, normalModel, autoSwitchModel }) as Promise<{ success: boolean }>,
 
   getAgentConfig: (projectRoot: string) =>
-    ipcRenderer.invoke('config:get', projectRoot) as Promise<{ command: string; args: string[]; projectPath?: string; summarizationEnabled?: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Config.Get, projectRoot) as Promise<{ command: string; args: string[]; projectPath?: string; summarizationEnabled?: boolean }>,
 
   // 迁移 API
-  migrateCheck: (keys: string[]) => ipcRenderer.invoke('migrate:check', keys) as Promise<{ needed: string[]; streamNeeded: boolean }>,
+  migrateCheck: (keys: string[]) => ipcRenderer.invoke(IpcChannel.Migrate.Check, keys) as Promise<{ needed: string[]; streamNeeded: boolean }>,
 
-  migrateData: (payload: MigrationData) => ipcRenderer.invoke('migrate:data', payload) as Promise<void>,
+  migrateData: (payload: MigrationData) => ipcRenderer.invoke(IpcChannel.Migrate.Data, payload) as Promise<void>,
 
   // 上下文 API
-  getContext: (moduleName: string) => ipcRenderer.invoke('context:get', moduleName) as Promise<ChatMsg[]>,
+  getContext: (moduleName: string) => ipcRenderer.invoke(IpcChannel.Context.Get, moduleName) as Promise<ChatMsg[]>,
 
-  clearContext: (moduleName: string) => ipcRenderer.invoke('context:clear', moduleName) as Promise<void>,
+  clearContext: (moduleName: string) => ipcRenderer.invoke(IpcChannel.Context.Clear, moduleName) as Promise<void>,
 
-  clearAllContexts: () => ipcRenderer.invoke('context:clearAll') as Promise<void>,
+  clearAllContexts: () => ipcRenderer.invoke(IpcChannel.Context.ClearAll) as Promise<void>,
 
   // 跨模块上下文事件
   onCrossContext: (callback: (data: CrossContextData) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: CrossContextData) => callback(data);
-    ipcRenderer.on('agent:cross-context', handler);
-    return () => ipcRenderer.removeListener('agent:cross-context', handler);
+    ipcRenderer.on(IpcChannel.Push.CrossContext, handler);
+    return () => ipcRenderer.removeListener(IpcChannel.Push.CrossContext, handler);
   },
 
   // ── 角色 Agent API ──
-  getRoles: () => ipcRenderer.invoke('role:list') as Promise<RoleConfigData[]>,
+  getRoles: () => ipcRenderer.invoke(IpcChannel.Role.List) as Promise<RoleConfigData[]>,
 
   saveRole: (role: RoleConfigData) =>
-    ipcRenderer.invoke('role:save', role) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Role.Save, role) as Promise<{ success: boolean }>,
 
   deleteRole: (name: string) =>
-    ipcRenderer.invoke('role:delete', name) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Role.Delete, name) as Promise<{ success: boolean }>,
 
   startRoleAgent: (roleName: string) =>
-    ipcRenderer.invoke('role:start', roleName) as Promise<{ sessionId?: string; error?: string }>,
+    ipcRenderer.invoke(IpcChannel.Role.Start, roleName) as Promise<{ sessionId?: string; error?: string }>,
 
   sendRoleMessage: (roleName: string, text: string) =>
-    ipcRenderer.invoke('role:send', roleName, text) as Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason?: string }; error?: string }>,
+    ipcRenderer.invoke(IpcChannel.Role.Send, roleName, text) as Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason?: string }; error?: string }>,
 
   cancelRoleAgent: (roleName: string) =>
-    ipcRenderer.invoke('role:cancel', roleName) as Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>,
+    ipcRenderer.invoke(IpcChannel.Role.Cancel, roleName) as Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>,
 
   stopRoleAgent: (roleName: string) =>
-    ipcRenderer.invoke('role:stop', roleName) as Promise<{}>,
+    ipcRenderer.invoke(IpcChannel.Role.Stop, roleName) as Promise<{}>,
 
   isRoleAgentRunning: (roleName: string) =>
-    ipcRenderer.invoke('role:isRunning', roleName) as Promise<boolean>,
+    ipcRenderer.invoke(IpcChannel.Role.IsRunning, roleName) as Promise<boolean>,
 
   getRoleContext: (roleName: string) =>
-    ipcRenderer.invoke('role:getContext', roleName) as Promise<ChatMsg[]>,
+    ipcRenderer.invoke(IpcChannel.Role.GetContext, roleName) as Promise<ChatMsg[]>,
 
   clearRoleContext: (roleName: string) =>
-    ipcRenderer.invoke('role:clearContext', roleName) as Promise<void>,
+    ipcRenderer.invoke(IpcChannel.Role.ClearContext, roleName) as Promise<void>,
 
   onRoleAgentStream: (callback: (data: AgentStreamData) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: AgentStreamData) => callback(data);
-    ipcRenderer.on('role:stream', handler);
-    return () => ipcRenderer.removeListener('role:stream', handler);
+    ipcRenderer.on(IpcChannel.Push.RoleStream, handler);
+    return () => ipcRenderer.removeListener(IpcChannel.Push.RoleStream, handler);
   },
 
   onRoleAgentStatus: (callback: (data: AgentStatusData) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: AgentStatusData) => callback(data);
-    ipcRenderer.on('role:status', handler);
-    return () => ipcRenderer.removeListener('role:status', handler);
+    ipcRenderer.on(IpcChannel.Push.RoleStatus, handler);
+    return () => ipcRenderer.removeListener(IpcChannel.Push.RoleStatus, handler);
   },
 
   // ── 知识 API ──
   knowledgeList: () =>
-    ipcRenderer.invoke('knowledge:list') as Promise<KnowledgeListItem[]>,
+    ipcRenderer.invoke(IpcChannel.Knowledge.List) as Promise<KnowledgeListItem[]>,
 
   knowledgeRead: (filename: string) =>
-    ipcRenderer.invoke('knowledge:read', filename) as Promise<KnowledgeEntry | null>,
+    ipcRenderer.invoke(IpcChannel.Knowledge.Read, filename) as Promise<KnowledgeEntry | null>,
 
   knowledgeSave: (entry: KnowledgeEntry) =>
-    ipcRenderer.invoke('knowledge:save', entry) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Knowledge.Save, entry) as Promise<{ success: boolean }>,
 
   knowledgeCreate: (name: string) =>
-    ipcRenderer.invoke('knowledge:create', name) as Promise<KnowledgeEntry | { error: string }>,
+    ipcRenderer.invoke(IpcChannel.Knowledge.Create, name) as Promise<KnowledgeEntry | { error: string }>,
 
   knowledgeDelete: (filename: string) =>
-    ipcRenderer.invoke('knowledge:delete', filename) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Knowledge.Delete, filename) as Promise<{ success: boolean }>,
 
   // ── 工作流 API ──
   workflowList: () =>
-    ipcRenderer.invoke('workflow:list') as Promise<WorkflowListItem[]>,
+    ipcRenderer.invoke(IpcChannel.Workflow.List) as Promise<WorkflowListItem[]>,
 
   workflowLoad: (name: string) =>
-    ipcRenderer.invoke('workflow:load', name) as Promise<WorkflowDetail | { error: string }>,
+    ipcRenderer.invoke(IpcChannel.Workflow.Load, name) as Promise<WorkflowDetail | { error: string }>,
 
   workflowCreate: (name: string) =>
-    ipcRenderer.invoke('workflow:create', name) as Promise<{ success: boolean; error?: string }>,
+    ipcRenderer.invoke(IpcChannel.Workflow.Create, name) as Promise<{ success: boolean; error?: string }>,
 
   workflowDelete: (name: string) =>
-    ipcRenderer.invoke('workflow:delete', name) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Workflow.Delete, name) as Promise<{ success: boolean }>,
 
   workflowStepSave: (wfName: string, stepName: string, content: string) =>
-    ipcRenderer.invoke('workflow:stepSave', wfName, stepName, content) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Workflow.StepSave, wfName, stepName, content) as Promise<{ success: boolean }>,
 
   workflowStepDelete: (wfName: string, stepName: string) =>
-    ipcRenderer.invoke('workflow:stepDelete', wfName, stepName) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Workflow.StepDelete, wfName, stepName) as Promise<{ success: boolean }>,
 
   workflowStepAdd: (wfName: string) =>
-    ipcRenderer.invoke('workflow:stepAdd', wfName) as Promise<{ success: boolean; stepName?: string; error?: string }>,
+    ipcRenderer.invoke(IpcChannel.Workflow.StepAdd, wfName) as Promise<{ success: boolean; stepName?: string; error?: string }>,
 
   workflowExecute: (name: string, userInput?: string) =>
-    ipcRenderer.invoke('workflow:execute', name, userInput) as Promise<{ success: boolean; results?: WorkflowStepResultItem[]; error?: string }>,
+    ipcRenderer.invoke(IpcChannel.Workflow.Execute, name, userInput) as Promise<{ success: boolean; results?: WorkflowStepResultItem[]; error?: string }>,
 
   workflowCancel: (name: string) =>
-    ipcRenderer.invoke('workflow:cancel', name) as Promise<void>,
+    ipcRenderer.invoke(IpcChannel.Workflow.Cancel, name) as Promise<void>,
 
   workflowStatus: (name: string) =>
-    ipcRenderer.invoke('workflow:status', name) as Promise<WorkflowStatus | null>,
+    ipcRenderer.invoke(IpcChannel.Workflow.Status, name) as Promise<WorkflowStatus | null>,
 
   // ── 工作区 Diff API ──
   workspaceDiff: (moduleName: string) =>
-    ipcRenderer.invoke('workspace:diff', moduleName) as Promise<DiffSummary | { error: string }>,
+    ipcRenderer.invoke(IpcChannel.WorkspaceDiff.Diff, moduleName) as Promise<DiffSummary | { error: string }>,
 
   workspaceDiffFile: (moduleName: string, filePath: string) =>
-    ipcRenderer.invoke('workspace:diff-file', moduleName, filePath) as Promise<{ hunks: string } | { error: string }>,
+    ipcRenderer.invoke(IpcChannel.WorkspaceDiff.DiffFile, moduleName, filePath) as Promise<{ hunks: string } | { error: string }>,
 
   workspaceApply: (moduleName: string, files?: string[]) =>
-    ipcRenderer.invoke('workspace:apply', moduleName, files) as Promise<{ applied: number; errors: string[] }>,
+    ipcRenderer.invoke(IpcChannel.WorkspaceDiff.Apply, moduleName, files) as Promise<{ applied: number; errors: string[] }>,
 
   workspaceDiscard: (moduleName: string) =>
-    ipcRenderer.invoke('workspace:discard', moduleName) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.WorkspaceDiff.Discard, moduleName) as Promise<{ success: boolean }>,
 
   onWorkspaceDiffReady: (callback: (data: WorkspaceDiffReadyData) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: WorkspaceDiffReadyData) => callback(data);
-    ipcRenderer.on('workspace:diff-ready', handler);
-    return () => ipcRenderer.removeListener('workspace:diff-ready', handler);
+    ipcRenderer.on(IpcChannel.Push.WorkspaceDiffReady, handler);
+    return () => ipcRenderer.removeListener(IpcChannel.Push.WorkspaceDiffReady, handler);
   },
 };
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
-import type { AgentStreamData } from '../../../types/preload'
+import type { AgentStreamData } from '../../../types/shared'
 import ChatInput from './ChatInput.vue'
 import { useConfigStore } from '../stores/config'
 

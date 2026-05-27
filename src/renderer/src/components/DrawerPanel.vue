@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { TreeNode } from '../../../types/preload'
+import type { TreeNode } from '../../../types/shared'
 import { useAgentStore } from '../stores/agent'
 import ContextCards from './ContextCards.vue'
 import ChatInput from './ChatInput.vue'

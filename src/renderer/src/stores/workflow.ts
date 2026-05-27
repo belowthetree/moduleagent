@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import type { WorkflowListItem, WorkflowDetail, WorkflowStatus, StepEditData } from '../../../types/preload'
+import type { WorkflowListItem, WorkflowDetail, WorkflowStatus, StepEditData } from '../../../types/shared'
 
 export const useWorkflowStore = defineStore('workflow', () => {
   // ── 状态 ──

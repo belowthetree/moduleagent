@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import type { ChatMsg, TimelineEvent } from '../../../types/preload'
+import type { ChatMsg, TimelineEvent } from '../../../types/shared'
 import { useAgentStore } from '../stores/agent'
 
 const props = defineProps<{

@@ -4,9 +4,9 @@ import { ModuleAgentCore } from '../core/ModuleAgentCore.js';
 import { defaultLogger } from '../core/Logger.js';
 import { ExperienceSummarizer } from '../core/ExperienceSummarizer.js';
 import type { AgentStatus, ChatMessage } from './types.js';
-import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from '../core/CoreTypes.js';
+import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult, IAgentBridge } from '../core/CoreTypes.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
-import type { ChatMsg } from '../types/preload.js';
+import type { ChatMsg } from '../types/shared.js';
 import { tuiState } from './state.js';
 
 function findRepoRoot(): string {
@@ -20,7 +20,7 @@ function findRepoRoot(): string {
   return process.cwd();
 }
 
-export class TuiBridge {
+export class TuiBridge implements IAgentBridge {
   core: ModuleAgentCore;
   private status: AgentStatus = 'idle';
   private loadedModules = new Set<string>();
@@ -102,7 +102,7 @@ export class TuiBridge {
   // Agent 交互
   // -----------------------------------------------------------------------
 
-  async sendMessage(text: string): Promise<void> {
+  async sendMessage(_moduleName: string, text: string): Promise<{ result?: { reply: string }; error?: string }> {
     try {
       // 向 UI 添加用户消息
       const userMsg: ChatMessage = {
@@ -164,7 +164,13 @@ export class TuiBridge {
       };
       tuiState.setMessages([...tuiState.messages(), msg]);
       this.setStatus('error');
+      return { error: (err as Error).message };
     }
+    return { result: { reply: '' } };
+  }
+
+  async cancelAgent(_moduleName: string): Promise<void> {
+    return this.cancel();
   }
 
   async cancel(): Promise<void> {

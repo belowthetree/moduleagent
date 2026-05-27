@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import SVGTree from '../SVGTree.vue'
-import type { TreeNode, AgentStatus } from '../../../../types/preload'
+import type { TreeNode, AgentStatus } from '../../../../types/shared'
 
 function tn(name: string, children: TreeNode[] = []): TreeNode {
   return { name, path: `/path/${name}`, description: `Description for ${name}`, children }

@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useKnowledgeStore } from '../stores/knowledge'
 import KnowledgeEditDialog from './KnowledgeEditDialog.vue'
-import type { KnowledgeEntry } from '../../../types/preload'
+import type { KnowledgeEntry } from '../../../types/shared'
 
 const knowledgeStore = useKnowledgeStore()
 

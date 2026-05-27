@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import fse from 'fs-extra';
 import crypto from 'crypto';
-import type { DiffFile, DiffStatus, DiffSummary } from '../types/preload.js';
+import type { DiffFile, DiffStatus, DiffSummary } from '../types/shared.js';
 import { defaultLogger } from './Logger.js';
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 import { computed, reactive, watch } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { useKnowledgeStore } from '../stores/knowledge'
-import type { WorkflowStepDetail } from '../../../types/preload'
+import type { WorkflowStepDetail } from '../../../types/shared'
 
 const props = defineProps<{
   visible: boolean

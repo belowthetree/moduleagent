@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAgentStore } from '../agent'
 import { createMockModuleAgentApi, triggerStream, triggerCrossContext, triggerStatus } from '../../__mocks__/moduleAgent'
-import type { ChatMsg } from '../../../../types/preload'
+import type { ChatMsg } from '../../../../types/shared'
 
 function makeMock() {
   const mock = createMockModuleAgentApi()

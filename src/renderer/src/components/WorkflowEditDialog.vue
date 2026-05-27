@@ -2,7 +2,7 @@
 import { reactive, watch, ref } from 'vue'
 import { useWorkflowStore } from '../stores/workflow'
 import StepEditDialog from './StepEditDialog.vue'
-import type { WorkflowStepDetail } from '../../../types/preload'
+import type { WorkflowStepDetail } from '../../../types/shared'
 
 const props = defineProps<{
   visible: boolean

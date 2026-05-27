@@ -8,7 +8,7 @@ import type {
   TreeNode,
   ChatMsg,
   MigrationData,
-} from '../../../types/preload';
+} from '../../../types/shared';
 
 interface MockInternals {
   streamCallbacks: Array<(data: AgentStreamData) => void>;

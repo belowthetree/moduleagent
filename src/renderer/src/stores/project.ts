@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { TreeNode, LayoutNode, ScanResult } from '../../../types/preload'
+import type { TreeNode, LayoutNode, ScanResult } from '../../../types/shared'
 
 const NODE_W = 180
 const NODE_H = 50
