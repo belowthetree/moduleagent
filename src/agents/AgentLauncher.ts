@@ -1,4 +1,4 @@
-import { createAgentConnection } from '../protocol/acp/connection.js';
+import { createAgentConnection, type AgentConnection } from '../protocol/acp/connection.js';
 import { FsHandler } from '../protocol/acp/handlers/fs.js';
 import { TerminalHandler } from '../protocol/acp/handlers/terminal.js';
 import type { ClientSideConnection, Client, SessionNotification, AgentCapabilities } from '@agentclientprotocol/sdk';
@@ -12,8 +12,18 @@ export interface AgentConfig {
   env?: Record<string, string>;
 }
 
+/** 连接工厂函数签名 — 允许测试注入 FauxAcpAgent。
+ * 与 createAgentConnection 签名一致，但 faux 实现忽略 processOptions 中的 command/args，
+ * 仅使用 clientFactory 构建内存连接。 */
+export type ConnectionFactory = (
+  processOptions: { command: string; args?: string[]; env?: Record<string, string>; cwd?: string; logger?: Logger },
+  clientFactory: (agent: unknown) => Client,
+) => AgentConnection;
+
 export interface LaunchOptions {
   subModuleDirs?: string[];
+  /** 测试注入：替换 spawn 连接为内存 faux connection */
+  createConnection?: ConnectionFactory;
 }
 
 export interface LaunchedAgent {
@@ -75,16 +85,11 @@ export class AgentLauncher {
       releaseTerminal: (params) => terminalHandler.release(params),
     });
 
-    const { connection, process } = createAgentConnection(
-      {
-        command: config.command,
-        args: config.args,
-        env: config.env,
-        cwd,
-        logger: log,
-      },
+    const connectionFactory = options?.createConnection ?? createAgentConnection;
+    const { connection, process } = connectionFactory(
+      { command: config.command, args: config.args, env: config.env, cwd, logger: log },
       clientFactory,
-    );
+    ) as AgentConnection & { connection: ClientSideConnection; process: ChildProcess };
 
     const initResult = await connection.initialize({
       protocolVersion: 1,

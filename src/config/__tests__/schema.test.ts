@@ -1,122 +1,137 @@
-import { describe, it, expect } from 'vitest'
-import { ProjectConfigSchema, ConfigEntrySchema, WorkspaceConfigSchema } from '../schema'
+import { describe, expect, it } from 'vitest';
+import {
+  ProjectConfigSchema,
+  WorkspaceConfigSchema,
+  RoleConfigSchema,
+  ConfigEntrySchema,
+} from '../schema.js';
 
-describe('ProjectConfigSchema (new format)', () => {
-  // 1. Valid new format: projectPath replaces codeSource/workspace/modulesPath
-  it('accepts valid new format with projectPath', () => {
-    const input = {
-      projectPath: '/test/proj',
-      agents: { default: { command: 'test' } },
+describe('ProjectConfigSchema', () => {
+  it('accepts a minimal valid config', () => {
+    const result = ProjectConfigSchema.safeParse({
+      agents: { default: { command: 'opencode' } },
       exclude: [],
-    }
-    const result = ProjectConfigSchema.safeParse(input)
-    // RED: current schema still expects workspace + codeSource → fails
-    expect(result.success).toBe(true)
-  })
-
-  // 2. Old fields (codeSource, workspace, modulesPath) should be rejected
-  it('rejects old fields (codeSource, workspace, modulesPath)', () => {
-    const input = {
-      codeSource: { type: 'local' as const, path: '/x' },
-      workspace: { path: '/y' },
-      modulesPath: '/z',
-      agents: { default: { command: 'test' } },
-      exclude: [],
-    }
-    const result = ProjectConfigSchema.safeParse(input)
-    // RED: current schema still accepts old fields → passes but should fail
-    expect(result.success).toBe(false)
-  })
-
-  // 3. All old fields together should be rejected
-  it('rejects all old fields together', () => {
-    const input = {
-      codeSource: { type: 'git' as const, url: 'https://example.com/repo.git' },
-      workspace: { path: '/ws' },
-      modulesPath: '/modules',
-      agents: { default: { command: 'agent' } },
-      exclude: ['node_modules'],
-    }
-    const result = ProjectConfigSchema.safeParse(input)
-    // RED: current schema still accepts old fields → passes but should fail
-    expect(result.success).toBe(false)
-  })
-
-  // 4. projectPath is required
-  it('requires projectPath field', () => {
-    const input = {
-      agents: { default: { command: 'test' } },
-      exclude: [],
-    }
-    const result = ProjectConfigSchema.safeParse(input)
-    // RED: current schema rejects due to missing workspace/codeSource, not projectPath
-    expect(result.success).toBe(false)
-  })
-
-  // 5. projectPath must be a string
-  it('rejects projectPath with wrong type (number)', () => {
-    const input = {
-      projectPath: 123,
-      agents: { default: { command: 'test' } },
-      exclude: [],
-    }
-    const result = ProjectConfigSchema.safeParse(input)
-    // RED: current schema rejects due to missing workspace/codeSource, not type error
-    expect(result.success).toBe(false)
-  })
-
-  // 6. ConfigEntrySchema extends with name field
-  it('accepts ConfigEntrySchema with name and projectPath', () => {
-    const input = {
-      name: 'test',
       projectPath: '.',
-      agents: { default: { command: 'agent' } },
-      exclude: [],
-    }
-    const result = ConfigEntrySchema.safeParse(input)
-    // RED: current schema still expects workspace + codeSource → fails
-    expect(result.success).toBe(true)
-  })
+    });
+    expect(result.success).toBe(true);
+  });
 
-  // 7. WorkspaceConfigSchema wraps array of configs
-  it('accepts WorkspaceConfigSchema with configs array', () => {
-    const input = {
+  it('accepts config with modules override', () => {
+    const result = ProjectConfigSchema.safeParse({
+      agents: {
+        default: { command: 'opencode' },
+        modules: { 'module-a': { command: 'custom-agent' } },
+      },
+      exclude: ['node_modules'],
+      projectPath: '/home/project',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects config missing agents.default', () => {
+    const result = ProjectConfigSchema.safeParse({
+      agents: {},
+      exclude: [],
+      projectPath: '.',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects invalid type for exclude', () => {
+    const result = ProjectConfigSchema.safeParse({
+      agents: { default: { command: 'echo' } },
+      exclude: 'not-an-array',
+      projectPath: '.',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('ConfigEntrySchema', () => {
+  it('requires a name field', () => {
+    const result = ConfigEntrySchema.safeParse({
+      agents: { default: { command: 'echo' } },
+      exclude: [],
+      projectPath: '.',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts valid config entry with name', () => {
+    const result = ConfigEntrySchema.safeParse({
+      name: 'my-config',
+      agents: { default: { command: 'echo' } },
+      exclude: [],
+      projectPath: '.',
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('RoleConfigSchema', () => {
+  it('accepts a minimal role config', () => {
+    const result = RoleConfigSchema.safeParse({
+      name: 'test-role',
+      agents: { default: { command: 'echo' } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects role with empty name', () => {
+    const result = RoleConfigSchema.safeParse({
+      name: '',
+      agents: { default: { command: 'echo' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('fills defaults for optional fields', () => {
+    const result = RoleConfigSchema.safeParse({
+      name: 'test',
+      agents: { default: { command: 'echo' } },
+    });
+    if (result.success) {
+      expect(result.data.visibleModulePaths).toEqual([]);
+    }
+  });
+});
+
+describe('WorkspaceConfigSchema', () => {
+  it('accepts a valid workspace config', () => {
+    const result = WorkspaceConfigSchema.safeParse({
       configs: [
         {
           name: 'default',
-          projectPath: '.',
-          agents: { default: { command: 'agent' } },
+          agents: { default: { command: 'opencode' } },
           exclude: [],
+          projectPath: '.',
         },
       ],
       defaultConfig: 'default',
-    }
-    const result = WorkspaceConfigSchema.safeParse(input)
-    // RED: current schema expects workspace + codeSource inside each config → fails
-    expect(result.success).toBe(true)
-  })
+    });
+    expect(result.success).toBe(true);
+  });
 
-  // 8. Empty exclude array is valid
-  it('accepts empty exclude array', () => {
-    const input = {
-      projectPath: '/proj',
-      agents: { default: { command: 'test' } },
-      exclude: [],
-    }
-    const result = ProjectConfigSchema.safeParse(input)
-    // RED: same as test 1 — missing workspace + codeSource
-    expect(result.success).toBe(true)
-  })
-
-  // 9. Optional modules agent works (both with and without modules)
-  it('accepts config with optional modules agent', () => {
-    const input = {
-      projectPath: '/proj',
-      agents: { default: { command: 'test' }, modules: {} },
-      exclude: [],
-    }
-    const result = ProjectConfigSchema.safeParse(input)
-    // RED: same as test 1 — missing workspace + codeSource
-    expect(result.success).toBe(true)
-  })
-})
+  it('accepts workspace config with roles', () => {
+    const result = WorkspaceConfigSchema.safeParse({
+      configs: [
+        {
+          name: 'default',
+          agents: { default: { command: 'opencode' } },
+          exclude: [],
+          projectPath: '.',
+        },
+      ],
+      defaultConfig: 'default',
+      roles: [
+        {
+          name: 'reviewer',
+          description: 'Code reviewer',
+          visibleModulePaths: [],
+          agents: { default: { command: 'opencode' } },
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+});

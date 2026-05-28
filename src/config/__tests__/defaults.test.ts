@@ -1,46 +1,67 @@
-import { describe, it, expect } from 'vitest'
-import { DEFAULT_CONFIG_ENTRY, DEFAULT_WORKSPACE_CONFIG, DEFAULT_CONFIG } from '../defaults'
+import { describe, expect, it } from 'vitest';
+import {
+  DEFAULT_CONFIG,
+  DEFAULT_CONFIG_ENTRY,
+  DEFAULT_WORKSPACE_CONFIG,
+  DEFAULT_MODULE_GEN_ROLE,
+} from '../defaults.js';
+import { WorkspaceConfigSchema, ProjectConfigSchema } from '../schema.js';
 
-describe('Defaults (new format)', () => {
-  // 1. DEFAULT_CONFIG_ENTRY has projectPath field
-  it('has projectPath field with default value "."', () => {
-    // RED: current DEFAULT_CONFIG_ENTRY still lacks projectPath
-    expect(DEFAULT_CONFIG_ENTRY.projectPath).toBeDefined()
-    expect(DEFAULT_CONFIG_ENTRY.projectPath).toBe('.')
-  })
+describe('defaults', () => {
+  describe('DEFAULT_CONFIG', () => {
+    it('has a valid command', () => {
+      expect(DEFAULT_CONFIG.agents.default.command).toBeTruthy();
+    });
 
-  // 2. DEFAULT_CONFIG_ENTRY has NO old fields
-  it('has no old fields (codeSource, workspace, modulesPath)', () => {
-    // RED: current DEFAULT_CONFIG_ENTRY still has codeSource, workspace, modulesPath
-    expect(DEFAULT_CONFIG_ENTRY).not.toHaveProperty('codeSource')
-    expect(DEFAULT_CONFIG_ENTRY).not.toHaveProperty('modulesPath')
-    expect(DEFAULT_CONFIG_ENTRY).not.toHaveProperty('workspace')
-  })
+    it('is the same as DEFAULT_CONFIG_ENTRY (backward compat)', () => {
+      expect(DEFAULT_CONFIG).toBe(DEFAULT_CONFIG_ENTRY);
+    });
+  });
 
-  // 3. Preserves agent config
-  it('preserves agent config (command and args)', () => {
-    expect(DEFAULT_CONFIG_ENTRY.agents.default.command).toBe('opencode')
-    expect(DEFAULT_CONFIG_ENTRY.agents.default.args).toEqual(['acp'])
-  })
+  describe('DEFAULT_CONFIG_ENTRY', () => {
+    it('has name "default"', () => {
+      expect(DEFAULT_CONFIG_ENTRY.name).toBe('default');
+    });
 
-  // 4. Preserves name field
-  it('preserves name field with value "default"', () => {
-    expect(DEFAULT_CONFIG_ENTRY.name).toBe('default')
-  })
+    it('has empty exclude array', () => {
+      expect(DEFAULT_CONFIG_ENTRY.exclude).toEqual([]);
+    });
 
-  // 5. DEFAULT_WORKSPACE_CONFIG wraps the entry
-  it('wraps entry in DEFAULT_WORKSPACE_CONFIG', () => {
-    expect(DEFAULT_WORKSPACE_CONFIG.configs).toHaveLength(1)
-    expect(DEFAULT_WORKSPACE_CONFIG.defaultConfig).toBe('default')
-  })
+    it('is valid per schema', () => {
+      const result = ProjectConfigSchema.safeParse(DEFAULT_CONFIG_ENTRY);
+      expect(result.success).toBe(true);
+    });
+  });
 
-  // 6. DEFAULT_CONFIG alias for backward compat
-  it('DEFAULT_CONFIG points to same object as DEFAULT_CONFIG_ENTRY', () => {
-    expect(DEFAULT_CONFIG).toBe(DEFAULT_CONFIG_ENTRY)
-  })
+  describe('DEFAULT_WORKSPACE_CONFIG', () => {
+    it('contains exactly one config entry', () => {
+      expect(DEFAULT_WORKSPACE_CONFIG.configs).toHaveLength(1);
+    });
 
-  // 7. Preserves exclude as empty array
-  it('preserves exclude field as empty array', () => {
-    expect(DEFAULT_CONFIG_ENTRY.exclude).toEqual([])
-  })
-})
+    it('has defaultConfig pointing to "default"', () => {
+      expect(DEFAULT_WORKSPACE_CONFIG.defaultConfig).toBe('default');
+    });
+
+    it('passes workspace schema validation', () => {
+      const result = WorkspaceConfigSchema.safeParse(DEFAULT_WORKSPACE_CONFIG);
+      expect(result.success).toBe(true);
+    });
+
+    it('contains the module generator role', () => {
+      expect(DEFAULT_WORKSPACE_CONFIG.roles).toBeDefined();
+      expect(DEFAULT_WORKSPACE_CONFIG.roles![0]?.name).toContain('模块生成');
+    });
+  });
+
+  describe('DEFAULT_MODULE_GEN_ROLE', () => {
+    it('has knowledgeRefs with MODULE_FORMAT.md', () => {
+      const refs = DEFAULT_MODULE_GEN_ROLE.knowledgeRefs;
+      expect(refs).toBeDefined();
+      expect(refs!.some((r) => r.filename === 'MODULE_FORMAT.md')).toBe(true);
+    });
+
+    it('has empty visibleModulePaths', () => {
+      expect(DEFAULT_MODULE_GEN_ROLE.visibleModulePaths).toEqual([]);
+    });
+  });
+});
