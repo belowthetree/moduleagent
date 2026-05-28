@@ -5,15 +5,15 @@ This file provides guidance to AI coding assistants when working in this reposit
 ## Build & verify
 
 ```bash
-npm run dev               # Dev mode with Vite HMR (renderer + main + preload with hot reload)
-npm run build:electron    # Full production build: electron-vite + MCP server + CLI
-npm run electron          # Build then launch Electron app
-npm run typecheck         # Type-check only (no emit)
-npm run test              # Vitest unit/component tests
-npm run test:e2e          # Playwright end-to-end tests
+pnpm run dev              # Dev mode with Vite HMR (renderer + main + preload with hot reload)
+pnpm run build:electron   # Full production build: electron-vite + MCP server + CLI
+pnpm run electron         # Build then launch Electron app
+pnpm run typecheck        # Type-check only (no emit)
+pnpm run test             # Vitest unit/component tests
+pnpm run test:e2e         # Playwright end-to-end tests
 ```
 
-Type-check (`npm run typecheck`) is the primary guardrail. No linter or formatter configured.
+Type-check (`pnpm run typecheck`) is the primary guardrail. No linter or formatter configured.
 
 ## Architecture: two parallel code paths
 
@@ -24,7 +24,7 @@ The codebase has **two parallel implementations** for the same concepts:
 
 They share `AgentLauncher`, `ModuleScanner`, `ModuleGraph`, and the protocol layer. But agent lifecycle management is duplicated. When changing one path, check if the other needs the same change.
 
-`docs/DEVELOPMENT.md` claims CLI was removed — this is **stale**. `src/cli/` still exists and is actively built via `npm run build:cli`.
+`docs/DEVELOPMENT.md` claims CLI was removed — this is **stale**. `src/cli/` still exists and is actively built via `pnpm run build:cli`.
 
 ### Renderer architecture (Vue 3)
 

@@ -29,11 +29,11 @@ EOF
 gui() {
     if [ ! -d "node_modules" ] || [ ! -d "node_modules/electron-vite" ]; then
         echo "Installing dependencies..."
-        npm install --silent || exit 1
+        pnpm install --silent || exit 1
     fi
 
     echo "Building and launching ModuleAgent GUI..."
-    npm run build:electron --silent || exit 1
+    pnpm run build:electron --silent || exit 1
 
     if [ -f "$ROOT/node_modules/electron/dist/electron" ]; then
         "$ROOT/node_modules/electron/dist/electron" "$ROOT"
@@ -46,7 +46,7 @@ gui() {
 tui() {
     if [ ! -d "node_modules" ] || [ ! -d "node_modules/electron-vite" ]; then
         echo "Installing dependencies..."
-        npm install --silent || exit 1
+        pnpm install --silent || exit 1
     fi
 
     if ! command -v bun &> /dev/null; then
@@ -77,10 +77,10 @@ tui() {
 cli() {
     if [ ! -d "node_modules" ] || [ ! -d "node_modules/electron-vite" ]; then
         echo "Installing dependencies..."
-        npm install --silent || exit 1
+        pnpm install --silent || exit 1
     fi
 
-    npm run build:cli --silent || exit 1
+    pnpm run build:cli --silent || exit 1
 
     if [ "$MODE" = "get" ]; then
         MODULE_NAME="${2:-}"
@@ -105,9 +105,9 @@ case "$MODE" in
         export MODULE_AGENT_DEV=1
         if [ ! -d "node_modules" ] || [ ! -d "node_modules/electron-vite" ]; then
             echo "Installing dependencies..."
-            npm install --silent || exit 1
+            pnpm install --silent || exit 1
         fi
-        npx electron-vite dev
+        pnpm exec electron-vite dev
         ;;
     tui) tui ;;
     list|get|serve) cli ;;

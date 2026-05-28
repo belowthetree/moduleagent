@@ -31,31 +31,31 @@ echo =========================================
 echo.
 if not exist "node_modules\" (
     echo Installing dependencies...
-    call npm install --silent
+    call pnpm install --silent
 ) else if not exist "node_modules\electron-vite\" (
     echo New dependencies detected - reinstalling...
-    call npm install --silent
+    call pnpm install --silent
 )
 if errorlevel 1 exit /b 1
 echo Starting electron-vite dev server...
 echo   HMR:   active
 echo   DevTools: auto-open
 echo.
-call npx electron-vite dev
+call pnpm exec electron-vite dev
 exit /b !errorlevel!
 
 :gui
 if not exist "node_modules\" (
     echo Installing dependencies...
-    call npm install --silent
+    call pnpm install --silent
 ) else if not exist "node_modules\electron-vite\" (
     echo New dependencies detected - reinstalling...
-    call npm install --silent
+    call pnpm install --silent
 )
 if errorlevel 1 exit /b 1
 
 echo Building and launching ModuleAgent GUI...
-call npm run build:electron --silent
+call pnpm run build:electron --silent
 if errorlevel 1 exit /b 1
 
 if exist "%ROOT%\node_modules\electron\dist\electron.exe" (
@@ -69,10 +69,10 @@ goto :eof
 :tui
 if not exist "node_modules\" (
     echo Installing dependencies...
-    call npm install --silent
+    call pnpm install --silent
 ) else if not exist "node_modules\electron-vite\" (
     echo New dependencies detected - reinstalling...
-    call npm install --silent
+    call pnpm install --silent
 )
 if errorlevel 1 exit /b 1
 
@@ -107,14 +107,14 @@ goto :eof
 :cli
 if not exist "node_modules\" (
     echo Installing dependencies...
-    call npm install --silent
+    call pnpm install --silent
 ) else if not exist "node_modules\electron-vite\" (
     echo New dependencies detected - reinstalling...
-    call npm install --silent
+    call pnpm install --silent
 )
 if errorlevel 1 exit /b 1
 
-call npm run build:cli --silent
+call pnpm run build:cli --silent
 if errorlevel 1 exit /b 1
 
 if "%MODE%"=="get" (

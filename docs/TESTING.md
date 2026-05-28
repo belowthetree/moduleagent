@@ -198,16 +198,16 @@ expect(faux.getReceivedPrompts()[0].text).toBe('hello');
 
 ```bash
 # 全部 L1 测试
-node node_modules/vitest/vitest.mjs run --root . src/core/__tests__/ src/config/__tests__/ src/context/__tests__/ src/protocol/__tests__/
+pnpm exec vitest run --root . src/core/__tests__/ src/config/__tests__/ src/context/__tests__/ src/protocol/__tests__/
 
 # 全部测试 (含已有)
-npm run test
+pnpm run test
 
 # E2E
-npm run test:e2e
+pnpm run test:e2e
 
 # 类型守卫
-npm run typecheck
+pnpm run typecheck
 ```
 
 ## 八、待补充测试（按优先级）

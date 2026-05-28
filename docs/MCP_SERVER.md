@@ -51,7 +51,7 @@ MCP Server 子进程（stdio 传输）
 
 ### 构建与部署
 
-- **构建**：`npm run build:mcp-server` → `dist/mcp-server.cjs`
+- **构建**：`pnpm run build:mcp-server` → `dist/mcp-server.cjs`
 - **运行**：`node dist/mcp-server.cjs --graph-file <path> --module-name <name> [--backend-url <url>]`
 - **注入**：由 `McpServerBuilder.buildMcpServers()` 构建配置，通过 ACP `newSession` 的 `mcpServers` 参数注入
 
@@ -88,7 +88,7 @@ private resolvePath(filePath: string): string {
 
 ### 构建与部署
 
-- **构建**：`npm run build:mcp-role-server` → `dist/mcp-role-server.cjs`
+- **构建**：`pnpm run build:mcp-role-server` → `dist/mcp-role-server.cjs`
 - **运行**：`node dist/mcp-role-server.cjs --workspace <path>`
 
 ---

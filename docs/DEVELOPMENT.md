@@ -22,7 +22,7 @@
 
 ### 与旧文档的差异
 
-项目方案和 DESIGN.md 描述的是 CLI + Ink 方案（Phase 1 设计），**实际实现是 Electron GUI 方案（Vue 3）**。CLI 路径（`src/cli/`）作为次级路径保留，仍在 `npm run build:cli` 时构建。
+项目方案和 DESIGN.md 描述的是 CLI + Ink 方案（Phase 1 设计），**实际实现是 Electron GUI 方案（Vue 3）**。CLI 路径（`src/cli/`）作为次级路径保留，仍在 `pnpm run build:cli` 时构建。
 
 ---
 
@@ -359,36 +359,36 @@ interface ChatMsg {
 
 ```bash
 # 安装依赖
-npm install
+pnpm install
 
 # 开发模式（Vite HMR，渲染进程 + 主进程 + preload 热重载）
-npm run dev
+pnpm run dev
 
 # 类型检查（无 emit）
-npm run typecheck
+pnpm run typecheck
 
 # 单元/组件测试（Vitest）
-npm run test
+pnpm run test
 
 # E2E 测试（Playwright）
-npm run test:e2e
+pnpm run test:e2e
 
 # 生产构建（electron-vite + MCP server + CLI）
-npm run build:electron
+pnpm run build:electron
 
 # 构建并启动 Electron 应用
-npm run electron
+pnpm run electron
 
 # 打包为可分发格式
-npm run dist
+pnpm run dist
 
 # 独立测试 ACP SDK 通信
-npx tsx test_acp.ts [workspace_dir]
+pnpm exec tsx test_acp.ts [workspace_dir]
 ```
 
 ### 构建工具分工
 
-**electron-vite** (`npm run build:electron` 的第一步):
+**electron-vite** (`pnpm run build:electron` 的第一步):
 - 主进程 (`src/main/`) → `out/main/index.cjs`（CJS，external: electron, fs-extra, gray-matter, marked, simple-git, zod, @agentclientprotocol/sdk）
 - 预加载 (`src/preload/`) → `out/preload/index.cjs`（CJS，external: electron）
 - 渲染进程 (`src/renderer/`) → `out/renderer/`（Vite 产物，含 Vue 3 SFC 编译）
@@ -399,7 +399,7 @@ npx tsx test_acp.ts [workspace_dir]
 - `build:mcp-role-server` → `dist/mcp-role-server.cjs`（角色 Agent 用 MCP Server）
 - `build:cli` → `dist/cli.cjs`（自包含 CJS，external: @opentui/*）
 
-`npm run dev` 时 electron-vite 以 Vite HMR 模式运行，渲染进程和主进程均支持热重载，无需手动重启。
+`pnpm run dev` 时 electron-vite 以 Vite HMR 模式运行，渲染进程和主进程均支持热重载，无需手动重启。
 
 ---
 
@@ -502,7 +502,7 @@ Renderer                              Main Process
 - **electron-vite**: 渲染进程（Vue 3）用 Vite 打包，主进程和 preload 用 esbuild。三者在 `electron.vite.config.ts` 统一配置。
 - **模块别名**: 渲染进程中 `@` → `src/renderer/src/`，主进程中 `@` → `src/`。两者在 `electron.vite.config.ts` 中分别配置。
 - **多 tsconfig**: `tsconfig.json`（根，含所有路径引用）、`tsconfig.node.json`（主进程/preload）、`tsconfig.web.json`（渲染进程）。
-- **Vite HMR**: `npm run dev` 时渲染进程 HMR 自动替换 Vue 组件，主进程和 preload 的改动用 electron-vite 的 watch 模式重建并重载窗口。
+- **Vite HMR**: `pnpm run dev` 时渲染进程 HMR 自动替换 Vue 组件，主进程和 preload 的改动用 electron-vite 的 watch 模式重建并重载窗口。
 - **CSP 管理**: Content Security Policy 在 `src/main/index.ts` 中通过 `session.defaultSession.webRequest.onHeadersReceived()` 设置，**不在 HTML `<meta>` 标签**。开发模式下必须允许 `ws://` 和 inline scripts 以支持 Vite HMR。
 - **`app.getAppPath()`**: MCP Server 和 CLI bundle 路径在 `package.json` 的 `files` 数组中必须包含，`electron-builder` 打包时确保这些文件被打入 asar。
 
@@ -547,7 +547,7 @@ Renderer                              Main Process
 - [ ] `module_call` 的 HTTP 后端需要处理超时和大响应
 - [ ] AgentManager/AgentRouter 与 Electron 路径整合（目前两套并行代码，Electron 用 AgentOrchestrator，CLI 用 AgentManager/AgentRouter）
 - [ ] 模块代码同步到工作区（WorkspaceIsolator 已实现 workspace 目录隔离，但模块源码自动同步待完善）
-- [x] 生产构建基础配置（electron-builder.yml + `npm run dist`）
+- [x] 生产构建基础配置（electron-builder.yml + `pnpm run dist`）
 - [ ] Mac/Linux 平台测试
 - [ ] 集成测试覆盖（Vitest 单元/组件测试 + Playwright e2e 框架已搭好，用例待扩充）
 

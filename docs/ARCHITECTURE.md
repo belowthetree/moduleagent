@@ -617,7 +617,7 @@ MCP Server → Agent A
 ### 10.1 构建工具链
 
 ```
-electron-vite (npm run dev / npm run build:electron 第一步)
+electron-vite (pnpm run dev / pnpm run build:electron 第一步)
   ├─ src/main/      → out/main/index.cjs    (esbuild, CJS)
   ├─ src/preload/   → out/preload/index.cjs (esbuild, CJS)
   └─ src/renderer/  → out/renderer/         (Vite, 含 Vue SFC)
@@ -678,7 +678,7 @@ ConfigLoader 加载流程：
 | 流式推送 | `agent:stream` IPC 通道 | `StreamHandler` 转发到 Ink/OpenTUI |
 | UI | Vue 3 SFC + Element Plus | Ink (React) / OpenTUI (Solid) |
 | 状态管理 | Pinia stores | Ink 组件状态 |
-| 构建 | `npm run build:electron` | `npm run build:cli` |
+| 构建 | `pnpm run build:electron` | `pnpm run build:cli` |
 
 共享的层：
 - `AgentLauncher`（子进程启动 + ACP 连接）

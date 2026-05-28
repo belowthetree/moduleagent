@@ -5,15 +5,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & verify
 
 ```bash
-npm run dev               # Dev mode with Vite HMR (renderer + main + preload with hot reload)
-npm run build:electron    # Full production build: electron-vite + MCP server + CLI
-npm run electron          # Build then launch Electron app
-npm run typecheck         # Type-check only (no emit)
-npm run test              # Vitest unit/component tests
-npm run test:e2e          # Playwright end-to-end tests
+pnpm run dev              # Dev mode with Vite HMR (renderer + main + preload with hot reload)
+pnpm run build:electron   # Full production build: electron-vite + MCP server + CLI
+pnpm run electron         # Build then launch Electron app
+pnpm run typecheck        # Type-check only (no emit)
+pnpm run test             # Vitest unit/component tests
+pnpm run test:e2e         # Playwright end-to-end tests
 ```
 
-Type-check (`npm run typecheck`) is the primary guardrail. No linter or formatter configured.
+Type-check (`pnpm run typecheck`) is the primary guardrail. No linter or formatter configured.
 
 ## Architecture: unified Core layer with UI bridges
 

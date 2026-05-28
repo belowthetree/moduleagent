@@ -87,7 +87,7 @@ module-agent config [--project <path>]
 ## 构建与分发
 
 ```bash
-npm run build:cli   # esbuild bundle → dist/cli.cjs
+pnpm run build:cli   # esbuild bundle → dist/cli.cjs
 ```
 
 `dist/cli.cjs` 是自包含 CJS bundle（external: `@opentui/core`, `@opentui/solid`, `@opentui/keymap`）。

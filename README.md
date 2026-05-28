@@ -30,7 +30,7 @@ Windows 用户推荐使用 NSIS 安装程序，安装后会在开始菜单和桌
 ### CLI 命令行
 
 ```bash
-npm install -g @belowthetree/module-agent
+pnpm add -g @belowthetree/module-agent
 ```
 
 安装后即可在终端使用 `module-agent` 命令：
@@ -57,13 +57,13 @@ git clone https://github.com/belowthetree/module-agent.git
 cd module-agent
 
 # 安装依赖
-npm install
+pnpm install
 
 # 开发模式启动（Vite HMR 热重载）
-npm run dev
+pnpm run dev
 
 # 生产构建并启动
-npm run electron
+pnpm run electron
 ```
 
 ### 配置
@@ -160,20 +160,20 @@ src/
 ## 构建
 
 ```bash
-npm run typecheck         # 类型检查
-npm run test              # 单元测试
-npm run test:e2e          # E2E 测试
-npm run build:electron    # 完整生产构建
-npm run dev               # 开发模式（热重载）
+pnpm run typecheck         # 类型检查
+pnpm run test              # 单元测试
+pnpm run test:e2e          # E2E 测试
+pnpm run build:electron    # 完整生产构建
+pnpm run dev               # 开发模式（热重载）
 ```
 
 **本地打包**：
 
 ```bash
-npm run dist:win         # 仅构建 Windows 包
-npm run dist:mac         # 仅构建 macOS 包
-npm run dist:linux       # 仅构建 Linux 包
-npm run dist             # 构建当前平台
+pnpm run dist:win         # 仅构建 Windows 包
+pnpm run dist:mac         # 仅构建 macOS 包
+pnpm run dist:linux       # 仅构建 Linux 包
+pnpm run dist             # 构建当前平台
 ```
 
 打包产物输出到 `release/` 目录。

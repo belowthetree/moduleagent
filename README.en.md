@@ -28,13 +28,13 @@ git clone <repo-url>
 cd ModuleAgent
 
 # Install dependencies
-npm install
+pnpm install
 
 # Development mode (Vite HMR with hot reload)
-npm run dev
+pnpm run dev
 
 # Build and launch production app
-npm run electron
+pnpm run electron
 ```
 
 ### Configuration
@@ -131,11 +131,11 @@ Role Agents are cross-cutting specialized Agents that can access multiple module
 ## Build
 
 ```bash
-npm run typecheck         # Type checking
-npm run test              # Unit tests
-npm run test:e2e          # E2E tests
-npm run build:electron    # Full production build
-npm run dev               # Development mode (hot reload)
+pnpm run typecheck         # Type checking
+pnpm run test              # Unit tests
+pnpm run test:e2e          # E2E tests
+pnpm run build:electron    # Full production build
+pnpm run dev               # Development mode (hot reload)
 ```
 
 ## License
