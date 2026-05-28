@@ -55,8 +55,6 @@ import { registerWorkspaceDiffHandlers } from './handlers/workspaceDiffHandlers.
 // ============================================================================
 
 export class ElectronBridge implements IAgentBridge {
-
-export class ElectronBridge implements IAgentBridge {
   private mainWindow: BrowserWindow;
   private core: ModuleAgentCore;
   private stateManager: AgentStateManager | null = null;
