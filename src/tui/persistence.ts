@@ -31,10 +31,11 @@ export class TuiPersistence {
   /** 保存当前对话 */
   async save(moduleName: string, messages: ChatMessage[]): Promise<void> {
     await fs.ensureDir(this.sessionsDir);
+    const filteredMsgs = messages.filter(m => m.content.trim());
     const file: SessionFile = {
       moduleName,
       savedAt: new Date().toISOString(),
-      messages: messages.map(m => ({
+      messages: filteredMsgs.map(m => ({
         id: m.id,
         role: m.role,
         msgType: m.msgType,
@@ -44,7 +45,7 @@ export class TuiPersistence {
     };
     const fp = this._filePath(moduleName);
     await fs.writeFile(fp, JSON.stringify(file, null, 2), 'utf-8');
-    defaultLogger.info(`TuiPersistence: saved ${messages.length} msgs for [${moduleName}] to ${fp}`);
+    defaultLogger.info(`TuiPersistence: saved ${filteredMsgs.length}/${messages.length} msgs for [${moduleName}] to ${fp}`);
   }
 
   /** 加载历史对话 */

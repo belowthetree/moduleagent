@@ -367,6 +367,13 @@ export class ModuleAgentSubsystem {
 
       launched = await this.launcher.launch(agentConfig, moduleName, cwd, this.logger, { subModuleDirs });
 
+      // 打印 Agent 能力
+      const caps = launched.agentCapabilities;
+      this.logger.info(`[${moduleName}] agent capabilities: ${JSON.stringify(caps)}`);
+      const sessionCaps = (caps as any)?.sessionCapabilities;
+      this.logger.info(`[${moduleName}] session capabilities: ${JSON.stringify(sessionCaps)}`);
+      const hasResume = !!(sessionCaps?.resume);
+
       // 连接会话更新 → CoreCallbacks + 外部监听器
       const self = this;
       launched.onSessionUpdate = (name, sessionId, notification) => {
@@ -416,8 +423,37 @@ export class ModuleAgentSubsystem {
         graphFile: this.mcpGraphFile,
       });
 
-      const result = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
-      const sessionId = result.sessionId;
+      let sessionId: string;
+
+      // 尝试恢复上次会话
+      const savedSessionId = this._loadSessionId(moduleName);
+      this.logger.info(`[${moduleName}] savedSessionId=${savedSessionId || '(none)'} hasResume=${hasResume}`);
+
+      if (hasResume && savedSessionId) {
+        try {
+          this.logger.info(`[${moduleName}] attempting session/resume id=${savedSessionId}`);
+          await launched.connection.resumeSession!({
+            sessionId: savedSessionId,
+            cwd: launched.cwd,
+            mcpServers,
+          });
+          sessionId = savedSessionId;
+          this.logger.info(`[${moduleName}] resumed session ${sessionId}`);
+        } catch (err) {
+          this.logger.warn(`[${moduleName}] resume failed, creating new session: ${(err as Error).message}`);
+          const result = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
+          sessionId = result.sessionId;
+        }
+      } else {
+        if (savedSessionId && !hasResume) {
+          this.logger.info(`[${moduleName}] agent doesn't support resume, creating new session`);
+        }
+        const result = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
+        sessionId = result.sessionId;
+      }
+
+      // 持久化 sessionId
+      this._saveSessionId(moduleName, sessionId);
 
       this.sessionPrompted.delete(moduleName);
 
@@ -440,6 +476,37 @@ export class ModuleAgentSubsystem {
       this.logger.error(`startAgent [${moduleName}] failed: ${(err as Error).message}`);
       throw err;
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Session 持久化（用于 resume）
+  // -----------------------------------------------------------------------
+
+  private _sessionStoreDir(): string {
+    return path.join(this.projectRoot, '.module-agent', 'sessions');
+  }
+
+  private _saveSessionId(moduleName: string, sessionId: string): void {
+    try {
+      const dir = this._sessionStoreDir();
+      fs.ensureDirSync(dir);
+      const file = path.join(dir, `${moduleName}.json`);
+      fs.writeJsonSync(file, { sessionId, savedAt: new Date().toISOString() });
+      this.logger.info(`[session] saved ${moduleName} → ${sessionId}`);
+    } catch (err) {
+      this.logger.warn(`[session] failed to save sessionId: ${(err as Error).message}`);
+    }
+  }
+
+  private _loadSessionId(moduleName: string): string | null {
+    try {
+      const file = path.join(this._sessionStoreDir(), `${moduleName}.json`);
+      if (fs.existsSync(file)) {
+        const data = fs.readJsonSync(file) as { sessionId: string };
+        return data.sessionId || null;
+      }
+    } catch { /* ignore */ }
+    return null;
   }
 
   // -----------------------------------------------------------------------

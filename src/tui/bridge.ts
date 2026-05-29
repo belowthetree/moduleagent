@@ -227,8 +227,22 @@ export class TuiBridge implements IAgentBridge {
 
     // 尝试加载上次对话
     const rootAgent = result.rootAgent;
-    if (rootAgent) {
-      const history = await this.persistence.load(rootAgent);
+    if (rootAgent && this.persistence) {
+      defaultLogger.info(`TuiBridge: looking for history — rootAgent=[${rootAgent}]`);
+      let history = await this.persistence.load(rootAgent);
+      defaultLogger.info(`TuiBridge: rootAgent history: ${history.length} msgs`);
+      // 如果 rootAgent 无历史，尝试加载第一个已保存的模块
+      if (history.length === 0) {
+        const sessions = await this.persistence.list();
+        defaultLogger.info(`TuiBridge: available sessions: [${sessions.join(', ')}]`);
+        if (sessions.length > 0) {
+          history = await this.persistence.load(sessions[0]!);
+          defaultLogger.info(`TuiBridge: first session [${sessions[0]}] has ${history.length} msgs`);
+          if (history.length > 0) {
+            defaultLogger.info(`TuiBridge: no history for [${rootAgent}], loaded [${sessions[0]}]`);
+          }
+        }
+      }
       if (history.length > 0) {
         tuiState.setMessages(history);
         const collapsed = new Set<string>();
@@ -379,7 +393,9 @@ export class TuiBridge implements IAgentBridge {
 
     // 加载该模块的历史对话
     if (this.persistence) {
+      defaultLogger.info(`TuiBridge: loading history for switched module [${name}]`);
       const history = await this.persistence.load(name);
+      defaultLogger.info(`TuiBridge: [${name}] history: ${history.length} msgs`);
       if (history.length > 0) {
         tuiState.setMessages(history);
         const collapsed = new Set<string>();
@@ -391,10 +407,17 @@ export class TuiBridge implements IAgentBridge {
         tuiState.setCollapsedThoughts(collapsed);
         defaultLogger.info(`TuiBridge: loaded ${history.length} msgs for [${name}]`);
       } else {
-        // 该模块无历史，从空白开始
         tuiState.setMessages([]);
         tuiState.setCollapsedThoughts(new Set());
       }
+    }
+
+    // 立即初始化 Agent（触发 session resume）
+    try {
+      await this.core.modules.startAgent(name);
+      defaultLogger.info(`TuiBridge: agent [${name}] started eagerly`);
+    } catch (err) {
+      defaultLogger.warn(`TuiBridge: failed to start agent [${name}]: ${(err as Error).message}`);
     }
   }
 
@@ -618,7 +641,8 @@ export class TuiBridge implements IAgentBridge {
 
   /** 在每次对话完成后自动保存 */
   public autoSave(): void {
-    this.saveSession().catch(() => {});
+    defaultLogger.info(`TuiBridge: autoSave — [${this.core.getCurrentAgent()}] ${tuiState.messages().length} msgs`);
+    this.saveSession().catch((err) => defaultLogger.warn(`TuiBridge: autoSave error: ${(err as Error).message}`));
   }
 
   /** 保存输入历史 */
