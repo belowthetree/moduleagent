@@ -67,7 +67,8 @@ ModuleAgent 是一个**模块化 Agent 编排框架**，以 `module.md` 为模�
 | 层级 | 技术栈 | 职责 |
 |------|--------|------|
 | **渲染进程** | Vue 3 + Element Plus + Pinia | UI 呈现、用户交互、状态管理 |
-| **主进程** | Electron + TypeScript | IPC 处理、Agent 生命周期、MCP 路由、状态持久化 |
+| **主进程 / TUI** | Electron + TypeScript / Bun + SolidJS | IPC 处理 / 直接调用、Agent 生命周期、MCP 路由、状态持久化 |
+| **Core 层** | TypeScript | 统一编排：ModuleAgentCore 管理 MCP 后端、子系统初始化和 session 管理 |
 | **Agent 层** | opencode / claude (ACP) + MCP Server | 实际 LLM 推理、模块间通信 |
 
 ---

@@ -30,16 +30,19 @@ export class Logger {
     Logger.defaultDir = dir;
   }
 
-  configure(dir: string, level: LogLevel) {
+  configure(dir: string, level?: LogLevel) {
     this.close();
     this.dir = dir;
-    this.level = level;
+    if (level !== undefined) this.level = level;
+  }
+
+  private getLogFileName(): string {
+    const now = new Date();
+    return `module-agent-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}.log`;
   }
 
   private getLogFile(): string {
-    const now = new Date();
-    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    return path.join(this.dir, `module-agent-${date}.log`);
+    return path.join(this.dir, this.getLogFileName());
   }
 
   private async ensureStream(): Promise<void> {
@@ -70,21 +73,25 @@ export class Logger {
 
   private writeSync(level: string, message: string): void {
     try {
-      const file = this.getLogFile();
+      const dir = this.dir || path.join(process.cwd(), 'logs');
+      const file = path.join(dir, `${this.getLogFileName()}`);
       if (this.stream && this.currentDate !== file) {
-        this.stream.end();
+        try { this.stream.end(); } catch { /* ignore */ }
         this.stream = null;
       }
       if (!this.stream) {
-        fs.ensureDirSync(this.dir);
+        fs.ensureDirSync(dir);
         this.stream = fs.createWriteStream(file, { flags: 'a' });
         this.currentDate = file;
       }
-      this.stream.write(this.format(level, message));
+      if (this.stream) {
+        this.stream.write(this.format(level, message));
+      }
     } catch {
       try {
-        const file = this.getLogFile();
-        fs.ensureDirSync(this.dir);
+        const dir = this.dir || path.join(process.cwd(), 'logs');
+        const file = path.join(dir, `${this.getLogFileName()}`);
+        fs.ensureDirSync(dir);
         fs.appendFileSync(file, this.format(level, message));
       } catch {
         process.stderr.write(`[LOGGER] ${level}: ${message}\n`);
@@ -92,10 +99,10 @@ export class Logger {
     }
   }
 
-  debug(message: string) { if (this.level <= LogLevel.DEBUG) this.writeSync('DEBUG', message); }
-  info(message: string, detail?: string) { if (this.level <= LogLevel.INFO) this.writeSync('INFO', detail ? `${message} (${detail})` : message); }
-  warn(message: string) { if (this.level <= LogLevel.WARN) this.writeSync('WARN', message); }
-  error(message: string) { if (this.level <= LogLevel.ERROR) this.writeSync('ERROR', message); }
+  debug(message: string) { if ((this.level ?? LogLevel.INFO) <= LogLevel.DEBUG) this.writeSync('DEBUG', message); }
+  info(message: string, detail?: string) { if ((this.level ?? LogLevel.INFO) <= LogLevel.INFO) this.writeSync('INFO', detail ? `${message} (${detail})` : message); }
+  warn(message: string) { if ((this.level ?? LogLevel.INFO) <= LogLevel.WARN) this.writeSync('WARN', message); }
+  error(message: string) { if ((this.level ?? LogLevel.INFO) <= LogLevel.ERROR) this.writeSync('ERROR', message); }
 
   rpc(dir: 'send' | 'recv', method: string, detail?: string) {
     const arrow = dir === 'send' ? '→' : '←';

@@ -6,9 +6,37 @@
 
 将 TUI 从「单模块 Agent 聊天终端」提升为与 GUI 功能平齐的「全功能 Agent 编排终端」，补齐角色 Agent、工作流、消息分类、对话持久化、输入历史等核心能力。
 
-## 实施内容
+> 最后更新: 2026-05-30 | 状态: ✅ 已完成
 
-### Phase 1: TuiBridge 架构升级 ✅
+## 已完成
+
+### 会话管理
+- ✅ Session Resume: Agent 启动时自动尝试 `session/resume` 恢复上次对话上下文
+- ✅ Session 持久化: `.module-agent/sessions/{name}.json` 存储 sessionId
+- ✅ `/clear` 同时清除对话文件和 session 记录
+
+### 跨模块通信
+- ✅ MCP 后端启动: `ModuleAgentCore.initAll()` 自动启动 McpBackendServer
+- ✅ TUI 支持 `module_call` / `module_query` 跨模块通信
+- ✅ 跨模块消息通知（蓝色 🔗 前缀，含源/目标 + 方向）
+
+### 模块树
+- ✅ 交互式模块树面板 (`/tree`)
+- ✅ ↑↓←→ 导航（父/子/兄弟节点移动）
+- ✅ Enter 切换模块，Esc 关闭
+- ✅ 实时显示模块状态（● ▶ ✗ ◌）
+
+### 设置向导
+- ✅ 5 步向导: 命令 → 模型 → 参数 → 项目目录 → 确认
+- ✅ 模型字段: `--model` 参数自动追加
+- ✅ 配置保存到用户指定的项目目录
+
+### 其他
+- ✅ `/rescan` 命令重新扫描模块
+- ✅ `/mode` 切换模块时自动加载历史 + 立即启动 Agent
+- ✅ 工具调用显示（名称 + 路径/参数 + 跨模块方向）
+- ✅ 日志目录跟随项目目录切换
+- ✅ 退出时保存对话（Ctrl+D / /quit）
 
 **改动**: `src/tui/bridge.ts`, `src/tui/renderer.tsx`
 

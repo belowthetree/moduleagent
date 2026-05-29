@@ -40,13 +40,24 @@
 
 ```
 init(projectRoot)
-  ├── ModuleAgentCore.init(projectRoot)     → 扫描模块、构建图
-  ├── ConfigLoader.load()                   → 获取 roles + projectPath
-  ├── core.initRoles(projectPath, wsRoot)   → 角色子系统（如有 roles 配置）
-  ├── core.initWorkflows(projectPath, wsRoot) → 工作流子系统
+  ├── ModuleAgentCore.initAll(projectRoot)
+  │     ├── 扫描模块、构建图
+  │     ├── 加载系统提示词
+  │     ├── initRoles + initWorkflows (auto)
+  │     └── startMcpBackend()               → HTTP 后端 (跨模块通信)
   ├── TuiPersistence(projectRoot)           → 初始化持久化
   ├── InputHistoryPersistence.load()        → 恢复输入历史
   └── persistence.load(rootAgent)           → 恢复上次对话
+```
+
+### Agent 启动与 Session 管理
+
+```
+启动 Agent 时:
+  ├── 检查 .module-agent/sessions/{name}.json → 读取上次 sessionId
+  ├── 检查 Agent 是否支持 sessionCapabilities.resume
+  ├── 支持 → connection.resumeSession({ sessionId, cwd, mcpServers })  ← 恢复上下文
+  └── 不支持 → connection.newSession({ cwd, mcpServers })               ← 新建会话
 ```
 
 ### 三目标系统（module / role / workflow）
@@ -125,9 +136,11 @@ roleStatuses:   Map<string, AgentStatus>  // 角色名 → idle|streaming|error
 ### 对话持久化
 
 - **保存**: `TuiPersistence.save(moduleName, messages)` → `.module-agent/tui_sessions/{name}.json`
-- **加载**: `TuiPersistence.load(moduleName)` → 恢复消息列表
-- **自动保存**: 每次对话完成后 2 秒 debounce
+- **加载**: `TuiPersistence.load(moduleName)` → 恢复消息列表，启动时自动加载 rootAgent 历史
+- **自动保存**: 每次对话完成后立即保存
 - **命令**: `/save [name]` 手动保存，`/load [name]` 手动加载
+- **清除**: `/clear` 同时删除对话文件和 session 记录（下次启动创建新会话）
+- **切换模块**: `/mode` 自动加载目标模块的历史对话
 
 ### 输入历史
 
@@ -145,7 +158,7 @@ roleStatuses:   Map<string, AgentStatus>  // 角色名 → idle|streaming|error
 | 流式累加 | AgentStateManager | 按 msgType 分别累加 |
 | 角色 Agent | 9 个 IPC 通道 | 直接调用 RoleAgentSubsystem |
 | 工作流 | 9 个 IPC 通道 | 直接调用 WorkflowSubsystem |
-| MCP 后端 | McpBackendServer (HTTP) | 无（CLI/TUI 路径不需要） |
+| MCP 后端 | McpBackendServer (HTTP) | McpBackendServer (Core 自动启动) |
 | 对话持久化 | AgentStateManager + FileStore | TuiPersistence |
 | 输入历史 | 浏览器原生 | InputHistoryPersistence |
 | 跨模块通信通知 | IPC cross-context 推送 | 系统消息 |
@@ -154,9 +167,10 @@ roleStatuses:   Map<string, AgentStatus>  // 角色名 → idle|streaming|error
 
 ### 模块命令
 - `/list` — 列出所有模块
-- `/tree` — 显示模块树形结构（含状态标记 ● ▶ ✗ ◌）
+- `/tree` — 交互式模块树面板（↑↓←→ 导航，Enter 切换，Esc 关闭）
+- `/rescan` — 重新扫描模块
 - `/get <name>` — 查看模块详情
-- `/mode <id>` — 切换模块 Agent
+- `/mode <id>` — 切换模块 Agent（自动加载历史 + 启动 Agent）
 
 ### 角色命令
 - `/role list` — 列出所有角色
@@ -208,4 +222,6 @@ App.tsx
 | `src/tui/components/InputBox.tsx` | 输入框 + 历史导航 |
 | `src/tui/components/StatusBar.tsx` | 状态栏 |
 | `src/tui/components/CommandPalette.tsx` | / 命令候选面板 |
-| `src/tui/components/SetupWizard.tsx` | 设置向导 |
+| `src/tui/components/SetupWizard.tsx` | 设置向导（5 步：命令→模型→参数→项目目录→确认） |
+| `src/tui/components/ModuleTree.tsx` | 交互式模块树面板 |
+| `src/tui/cjk.ts` | CJK 字符宽度计算工具 |

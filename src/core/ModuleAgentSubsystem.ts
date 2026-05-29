@@ -398,7 +398,7 @@ export class ModuleAgentSubsystem {
           const toolName = tc.title || 'unknown';
           const toolStatus = tc.status || 'running';
           const detail = tc.input ? JSON.stringify(tc.input).slice(0, 200) : undefined;
-          self.logger.info(`[${name}] tool_call: ${toolName}`);
+          self.logger.info(`[${name}] tool_call: ${toolName} input=${detail || '(none)'}`);
           self.callbacks.onToolCall?.(name, toolName, toolStatus, detail);
           if (tc.status === 'error') {
             self.callbacks.onStreamError(name, `Tool call failed: ${toolName}`);

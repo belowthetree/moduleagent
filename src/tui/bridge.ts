@@ -101,6 +101,8 @@ export class TuiBridge implements IAgentBridge {
         self.currentReplyMsgId = `reply-${Date.now()}`;
         self.currentThoughtMsgId = `thought-${Date.now()}`;
 
+        defaultLogger.info(`[TUI] onToolCall: module=${moduleName} tool=${toolName} status=${toolStatus} detail=${toolDetail || '(none)'}`);
+
         const statusIcon = toolStatus === 'completed' ? '✓' : toolStatus === 'error' ? '✗' : '…';
         // 清理工具名：module-agent_module_query → module_query
         const displayName = toolName.includes('_') ? toolName.replace(/^[^_]+_/, '') : toolName;
@@ -213,6 +215,28 @@ export class TuiBridge implements IAgentBridge {
 
   async init(projectRoot: string): Promise<InitResult> {
     const result = await this.core.initAll(projectRoot);
+
+    // 注入 TUI 特有的 MCP 回调（跨模块通知）
+    try {
+      const self = this;
+      await this.core.startMcpBackend({
+        sendCrossContext(source, target, direction, phase, content) {
+          const arrow = direction === 'sent' ? '→' : '←';
+          const label = phase === 'request' ? '请求' : '响应';
+          const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
+          tuiState.setMessages([...tuiState.messages(), {
+            id: `cross-${Date.now()}`, role: 'system', msgType: 'cross_context',
+            content: `${arrow} ${source} → ${target} [${label}]: ${shortContent}`,
+            time: new Date().toLocaleTimeString(),
+          }]);
+        },
+        setAgentStatus(moduleName, status) {
+          self.moduleStatuses.set(moduleName, status);
+        },
+      });
+    } catch (err) {
+      defaultLogger.warn(`TuiBridge: MCP backend failed to start: ${(err as Error).message}`);
+    }
 
     // 初始化持久化
     this.persistence = new TuiPersistence(projectRoot);
@@ -348,10 +372,21 @@ export class TuiBridge implements IAgentBridge {
     const name = moduleName || this.core.getCurrentAgent();
     if (name) {
       tuiState.setMessages([]);
-      // 同时清除持久化的会话文件
+      // 同时清除持久化的对话文件和 session 文件
       if (this.persistence) {
         await this.persistence.remove(name);
         defaultLogger.info(`TuiBridge: cleared persisted session [${name}]`);
+      }
+      // 删除 sessionId 记录，下次启动将创建新会话
+      try {
+        const sessionsDir = path.join(this.core.getProjectRoot(), '.module-agent', 'sessions');
+        const sessionFile = path.join(sessionsDir, `${name}.json`);
+        if (fs.existsSync(sessionFile)) {
+          fs.unlinkSync(sessionFile);
+          defaultLogger.info(`TuiBridge: removed sessionId file [${name}]`);
+        }
+      } catch (err) {
+        defaultLogger.warn(`TuiBridge: failed to remove sessionId: ${(err as Error).message}`);
       }
     }
   }

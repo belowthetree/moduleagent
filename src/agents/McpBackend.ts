@@ -224,9 +224,12 @@ export class McpBackendServer {
   private log(level: 'info' | 'warn' | 'error', message: string): void {
     if (this.callbacks.onLog) {
       this.callbacks.onLog(level, message);
+    } else if (level === 'error') {
+      defaultLogger.error(message);
+    } else if (level === 'warn') {
+      defaultLogger.warn(message);
     } else {
-      const fn = level === 'error' ? defaultLogger.error : level === 'warn' ? defaultLogger.warn : defaultLogger.info;
-      fn(message);
+      defaultLogger.info(message);
     }
   }
 }

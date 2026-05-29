@@ -78,6 +78,7 @@ export class RoleAgentSubsystem {
           } else if (update === 'tool_call') {
             const tc = data as { title?: string; status?: string; input?: Record<string, unknown> };
             const detail = tc.input ? JSON.stringify(tc.input).slice(0, 200) : undefined;
+            self.logger.info(`[${roleName}] tool_call: ${tc.title} input=${detail || '(none)'}`);
             self.callbacks.onToolCall?.(roleName, tc.title || 'unknown', tc.status || 'running', detail);
             if (tc.status === 'error') {
               self.callbacks.onStreamError(roleName, `Tool call failed: ${tc.title || 'unknown'}`);

@@ -3,6 +3,7 @@ import { defaultLogger, type Logger } from './Logger.js';
 import { ModuleAgentSubsystem } from './ModuleAgentSubsystem.js';
 import { RoleAgentSubsystem } from './RoleAgentSubsystem.js';
 import { WorkflowSubsystem } from './WorkflowSubsystem.js';
+import { McpBackendServer, type McpBackendCallbacks } from '../agents/McpBackend.js';
 import type {
   CoreCallbacks,
   CoreStatus,
@@ -48,6 +49,7 @@ export class ModuleAgentCore {
   modules: ModuleAgentSubsystem;
   roles: RoleAgentSubsystem | null = null;
   workflows: WorkflowSubsystem | null = null;
+  private mcpBackend: McpBackendServer | null = null;
 
   private projectRoot = '';
   private initialized = false;
@@ -115,11 +117,45 @@ export class ModuleAgentCore {
 
       this.initWorkflows(resolvedProjectPath, workspaceRoot);
       this.logger.info('ModuleAgentCore: auto-initialised workflow subsystem');
+
+      // 启动 MCP 后端（跨模块通信）
+      await this.startMcpBackend();
     } catch (err) {
-      this.logger.warn(`ModuleAgentCore: role/workflow init skipped: ${(err as Error).message}`);
+      this.logger.warn(`ModuleAgentCore: role/workflow/mcp init skipped: ${(err as Error).message}`);
     }
 
     return result;
+  }
+
+  /** 启动 MCP HTTP 后端，使模块间可以通过 module_call/module_query 通信 */
+  async startMcpBackend(extraCallbacks?: Partial<McpBackendCallbacks>): Promise<void> {
+    if (this.mcpBackend) return;
+    const callbacks: McpBackendCallbacks = {
+      getAgentEntry: (moduleName) => {
+        const entry = this.modules.getAgent(moduleName);
+        if (!entry) return undefined;
+        return { launched: { connection: entry.launched.connection, onSessionUpdate: entry.launched.onSessionUpdate }, sessionId: entry.sessionId };
+      },
+      startAgent: async (moduleName) => {
+        await this.modules.startAgent(moduleName);
+        return true;
+      },
+      buildPromptBlocks: (moduleName, userText) => this.modules.buildPromptBlocksForModule(moduleName, userText),
+      ...extraCallbacks,
+    };
+    this.mcpBackend = new McpBackendServer(callbacks);
+    const port = await this.mcpBackend.start();
+    this.modules.mcpBackendPort = port;
+    this.logger.info(`ModuleAgentCore: MCP backend started on port ${port}`);
+  }
+
+  /** 停止 MCP 后端 */
+  async stopMcpBackend(): Promise<void> {
+    if (this.mcpBackend) {
+      await this.mcpBackend.stop();
+      this.mcpBackend = null;
+      this.modules.mcpBackendPort = 0;
+    }
   }
 
   /**
@@ -167,6 +203,7 @@ export class ModuleAgentCore {
 
   async dispose(): Promise<void> {
     this.logger.info('ModuleAgentCore: disposing');
+    await this.stopMcpBackend();
     await this.modules.dispose();
     if (this.roles) {
       await this.roles.dispose();
