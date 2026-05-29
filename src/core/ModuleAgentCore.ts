@@ -85,9 +85,38 @@ export class ModuleAgentCore {
       return result;
     } catch (err) {
       this.logger.warn(`Core init: module scan failed (no modules?): ${(err as Error).message}`);
-      this.initialized = true; // Still mark as initialized so roles can work
+      this.initialized = true;
       return { moduleNames: [], rootAgent: '' };
     }
+  }
+
+  /**
+   * 完整初始化：扫描模块 + 加载角色 + 初始化工作流。
+   * 替代手动调用 init() → initRoles() → initWorkflows() 的编排模式。
+   */
+  async initAll(projectRoot: string): Promise<InitResult> {
+    const result = await this.init(projectRoot);
+
+    try {
+      const { ConfigLoader } = await import('../config/ConfigLoader.js');
+      const workspaceConfig = await ConfigLoader.load(projectRoot);
+      const config = ConfigLoader.getDefaultConfig(workspaceConfig);
+      const resolvedProjectPath = config.projectPath || projectRoot;
+      const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
+
+      const roles = workspaceConfig.roles;
+      if (roles && roles.length > 0) {
+        this.initRoles(resolvedProjectPath, workspaceRoot);
+        this.logger.info(`ModuleAgentCore: auto-initialised ${roles.length} role(s)`);
+      }
+
+      this.initWorkflows(resolvedProjectPath, workspaceRoot);
+      this.logger.info('ModuleAgentCore: auto-initialised workflow subsystem');
+    } catch (err) {
+      this.logger.warn(`ModuleAgentCore: role/workflow init skipped: ${(err as Error).message}`);
+    }
+
+    return result;
   }
 
   /**
@@ -156,6 +185,11 @@ export class ModuleAgentCore {
 
   async cancel(): Promise<void> {
     await this.modules.cancel();
+  }
+
+  async clearContext(moduleName?: string): Promise<void> {
+    this._ensureInit();
+    await this.modules.clearContext(moduleName);
   }
 
   async setCurrentAgent(name: string): Promise<void> {

@@ -16,12 +16,14 @@ export default function SetupWizard(props: SetupWizardProps) {
 
   // 回退和占位符的现有/默认值
   const fallbackCommand = existing.command || defaultConfig.agents.default.command;
+  const fallbackModel = existing.model || '';
   const fallbackArgs = existing.args || (defaultConfig.agents.default.args ?? []).join(" ");
   const fallbackProjectPath = existing.projectPath || tuiState.workingDir() || process.cwd();
 
   // ── 本地编辑状态（初始为空，用户输入需显式确认） ─────
   const [command, setCommand] = createSignal("");
-  const [args, setArgs] = createSignal("");
+  const [model, setModel] = createSignal("");
+  const [extraArgs, setExtraArgs] = createSignal("");
   const [projectPath, setProjectPath] = createSignal("");
 
   // ── 键盘导航 ─────────────────────────────────────────────
@@ -29,10 +31,10 @@ export default function SetupWizard(props: SetupWizardProps) {
     const step = tuiState.setupStep();
 
     if (key.name === "return") {
-      if (step < 2) {
+      if (step < 4) {
         saveStepData(step);
         tuiState.setSetupStep(step + 1);
-      } else if (step === 2) {
+      } else if (step === 4) {
         handleComplete();
       }
     } else if (key.name === "escape") {
@@ -51,9 +53,14 @@ export default function SetupWizard(props: SetupWizardProps) {
     switch (step) {
       case 0:
         data.command = command() || fallbackCommand;
-        data.args = args() || fallbackArgs;
         break;
       case 1:
+        data.model = model() || fallbackModel;
+        break;
+      case 2:
+        data.args = extraArgs() || fallbackArgs;
+        break;
+      case 3:
         data.projectPath = projectPath() || fallbackProjectPath;
         break;
     }
@@ -63,21 +70,33 @@ export default function SetupWizard(props: SetupWizardProps) {
   async function handleComplete(): Promise<void> {
     const data = tuiState.setupData();
 
+    // 构建 args：model 参数 + 额外参数
+    const parts: string[] = [];
+    if (data.model) {
+      parts.push('--model', data.model);
+    }
+    if (data.args) {
+      parts.push(...data.args.split(/\s+/).filter(Boolean));
+    }
+
+    const resolvedProjectPath = data.projectPath || fallbackProjectPath;
+
     const merged = {
       agents: {
         default: {
-          command:
-            data.command || defaultConfig.agents.default.command,
-          args: (data.args || "")
-            .split(/\s+/)
-            .filter(Boolean),
+          command: data.command || defaultConfig.agents.default.command,
+          args: parts.length > 0 ? parts : defaultConfig.agents.default.args,
         },
       },
-      projectPath: data.projectPath || fallbackProjectPath,
+      projectPath: resolvedProjectPath,
     };
 
-    const root = tuiState.workingDir() || process.cwd();
-    await writeModuleAgentJson(root, merged);
+    // 将配置保存到用户指定的项目目录
+    await writeModuleAgentJson(resolvedProjectPath, merged);
+
+    // 更新工作目录并通知外部
+    tuiState.setSetupData({ ...data, savedTo: resolvedProjectPath });
+    tuiState.setWorkingDir(resolvedProjectPath);
     props.onComplete();
   }
 
@@ -88,8 +107,10 @@ export default function SetupWizard(props: SetupWizardProps) {
     const data = tuiState.setupData();
     const lines: string[] = [];
 
+    const modelPart = data.model ? ` --model ${data.model}` : '';
+    const argsPart = data.args ? ` ${data.args}` : '';
     lines.push(
-      `Agent 命令: ${data.command || defaultConfig.agents.default.command} ${data.args || (defaultConfig.agents.default.args ?? []).join(" ")}`,
+      `Agent 命令: ${data.command || defaultConfig.agents.default.command}${modelPart}${argsPart}`,
     );
     lines.push(`项目目录: ${data.projectPath || fallbackProjectPath}`);
     lines.push(`配置保存目录: ${tuiState.workingDir() || process.cwd()}`);
@@ -100,29 +121,53 @@ export default function SetupWizard(props: SetupWizardProps) {
   // ── 渲染 ──────────────────────────────────────────────────────────
   return (
     <box flexDirection="column" padding={1} gap={1}>
-      {/* ── 步骤 0：Agent 配置 ──────────────────────────────────────── */}
+      {/* ── 步骤 0：Agent 命令 ──────────────────────────────────────── */}
       {step() === 0 && (
         <>
-          <text>Agent 配置</text>
-          <text dim>当前: {fallbackCommand} {fallbackArgs}</text>
-          <text>命令:</text>
+          <text>Agent 命令</text>
+          <text dim>当前: {fallbackCommand}</text>
           <input
             focused={true}
             value={command()}
             placeholder={fallbackCommand}
             onInput={(v: string) => setCommand(v)}
           />
-          <text>参数 (空格分隔):</text>
+        </>
+      )}
+
+      {/* ── 步骤 1：模型 ──────────────────────────────────────── */}
+      {step() === 1 && (
+        <>
+          <text>模型</text>
+          <text dim>例如: gpt-4, claude-sonnet-4-20250514, deepseek-v3</text>
+          <text dim>当前: {fallbackModel || '(未设置)'}</text>
           <input
-            value={args()}
+            focused={true}
+            value={model()}
+            placeholder={fallbackModel || 'gpt-4'}
+            onInput={(v: string) => setModel(v)}
+          />
+          <text dim>留空则使用 Agent 默认模型。</text>
+        </>
+      )}
+
+      {/* ── 步骤 2：额外参数 ──────────────────────────────────────── */}
+      {step() === 2 && (
+        <>
+          <text>额外参数</text>
+          <text dim>其他需要传递给 Agent 的命令行参数。</text>
+          <text dim>当前: {fallbackArgs || '(无)'}</text>
+          <input
+            focused={true}
+            value={extraArgs()}
             placeholder={fallbackArgs}
-            onInput={(v: string) => setArgs(v)}
+            onInput={(v: string) => setExtraArgs(v)}
           />
         </>
       )}
 
-      {/* ── 步骤 1：项目目录 ──────────────────────────────────────── */}
-      {step() === 1 && (
+      {/* ── 步骤 3：项目目录 ──────────────────────────────────────── */}
+      {step() === 3 && (
         <>
           <text>项目目录</text>
           <text dim>输入项目根目录路径。</text>
@@ -137,8 +182,8 @@ export default function SetupWizard(props: SetupWizardProps) {
         </>
       )}
 
-      {/* ── 步骤 2：确认设置 ───────────────────────────────────────── */}
-      {step() === 2 && (
+      {/* ── 步骤 4：确认设置 ────────────────────────────────────────── */}
+      {step() === 4 && (
         <>
           <text>确认设置</text>
           <text>{summaryText()}</text>

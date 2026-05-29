@@ -47,8 +47,14 @@ export async function startTui(projectRoot: string) {
   // ── 挂载 globalThis 钩子 ──
   (globalThis as any).__tuiInitAgent = async (root: string) => {
     try {
+      // 清理旧状态（设置变更后重新初始化）
+      if (bridge.core.isInitialized()) {
+        await bridge.dispose();
+      }
+
       const result = await bridge.init(root);
       tuiState.setCurrentAgent(result.rootAgent || 'main');
+      tuiState.setMessages([]);  // 清除旧消息，重新开始
 
       const { saveLastProjectRoot } = await import('./config.js');
       await saveLastProjectRoot(root);

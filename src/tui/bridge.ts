@@ -144,56 +144,34 @@ export class TuiBridge implements IAgentBridge {
   // -----------------------------------------------------------------------
 
   async init(projectRoot: string): Promise<InitResult> {
-    const result = await this.core.init(projectRoot);
+    const result = await this.core.initAll(projectRoot);
 
-    // 加载配置以获取 projectPath 和 roles
-    try {
-      const workspaceConfig = await ConfigLoader.load(projectRoot);
-      const config = ConfigLoader.getDefaultConfig(workspaceConfig);
-      const resolvedProjectPath = config.projectPath || projectRoot;
-      const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
+    // 初始化持久化
+    this.persistence = new TuiPersistence(projectRoot);
+    this.historyStore = new InputHistoryPersistence(projectRoot);
 
-      // 初始化角色子系统
-      const roles = workspaceConfig.roles;
-      if (roles && roles.length > 0) {
-        this.core.initRoles(resolvedProjectPath, workspaceRoot);
-        defaultLogger.info(`TuiBridge: initialised role subsystem with ${roles.length} roles`);
-      }
+    // 尝试加载输入历史
+    const inputHistory = await this.historyStore.load();
+    if (inputHistory.length > 0) {
+      tuiState.setInputHistory(inputHistory);
+      tuiState.setHistoryIndex(inputHistory.length);
+    }
 
-      // 初始化工作流子系统
-      this.core.initWorkflows(resolvedProjectPath, workspaceRoot);
-      defaultLogger.info('TuiBridge: initialised workflow subsystem');
-
-      // 初始化持久化
-      this.persistence = new TuiPersistence(projectRoot);
-      this.historyStore = new InputHistoryPersistence(projectRoot);
-
-      // 尝试加载输入历史
-      const inputHistory = await this.historyStore.load();
-      if (inputHistory.length > 0) {
-        tuiState.setInputHistory(inputHistory);
-        tuiState.setHistoryIndex(inputHistory.length);
-      }
-
-      // 尝试加载上次对话
-      const rootAgent = result.rootAgent;
-      if (rootAgent) {
-        const history = await this.persistence.load(rootAgent);
-        if (history.length > 0) {
-          tuiState.setMessages(history);
-          // 折叠所有历史推理消息
-          const collapsed = new Set<string>();
-          for (const m of history) {
-            if (m.msgType === 'agent_thought' && m.content) {
-              collapsed.add(m.id);
-            }
+    // 尝试加载上次对话
+    const rootAgent = result.rootAgent;
+    if (rootAgent) {
+      const history = await this.persistence.load(rootAgent);
+      if (history.length > 0) {
+        tuiState.setMessages(history);
+        const collapsed = new Set<string>();
+        for (const m of history) {
+          if (m.msgType === 'agent_thought' && m.content) {
+            collapsed.add(m.id);
           }
-          tuiState.setCollapsedThoughts(collapsed);
-          defaultLogger.info(`TuiBridge: restored ${history.length} messages for [${rootAgent}]`);
         }
+        tuiState.setCollapsedThoughts(collapsed);
+        defaultLogger.info(`TuiBridge: restored ${history.length} messages for [${rootAgent}]`);
       }
-    } catch (err) {
-      defaultLogger.warn(`TuiBridge: role/workflow init skipped: ${(err as Error).message}`);
     }
 
     this.setStatus('idle');
@@ -281,6 +259,19 @@ export class TuiBridge implements IAgentBridge {
   async cancel(): Promise<void> {
     await this.core.cancel();
     this.setStatus('idle');
+  }
+
+  async clearContext(moduleName?: string): Promise<void> {
+    await this.core.clearContext(moduleName);
+    const name = moduleName || this.core.getCurrentAgent();
+    if (name) {
+      tuiState.setMessages([]);
+      // 同时清除持久化的会话文件
+      if (this.persistence) {
+        await this.persistence.remove(name);
+        defaultLogger.info(`TuiBridge: cleared persisted session [${name}]`);
+      }
+    }
   }
 
   // -----------------------------------------------------------------------

@@ -26,6 +26,7 @@ export function executeCommand(input: string): void {
       const moduleHelp = [
         '/list            — 列出所有模块',
         '/tree            — 显示模块树形结构 (含状态)',
+        '/rescan          — 重新扫描模块',
         '/get <name>      — 查看模块详情',
         '/mode <id>       — 切换 agent 模式',
         '/clear           — 清空上下文',
@@ -107,6 +108,19 @@ export function executeCommand(input: string): void {
       break;
     }
 
+    case '/rescan': {
+      const service = getAgentService();
+      if (!service) { addSystemMsg('Agent 服务未就绪'); return; }
+      addSystemMsg('正在重新扫描模块...');
+      const root = tuiState.workingDir() || process.cwd();
+      (globalThis as any).__tuiInitAgent?.(root)?.then(() => {
+        addSystemMsg('模块扫描完成。');
+      }).catch((err: Error) => {
+        addSystemMsg(`扫描失败: ${err.message}`);
+      });
+      break;
+    }
+
     case '/tree': {
       // 切换模块树面板
       const currentScreen = tuiState.screen();
@@ -144,7 +158,6 @@ export function executeCommand(input: string): void {
       tuiState.setAgentStatus('loading');
       (service.setCurrentAgent(arg) as Promise<void>)
         .then(() => {
-          tuiState.setCurrentAgent(arg);
           tuiState.setAgentStatus('idle');
           addSystemMsg(`已切换到: ${arg}`);
         })
@@ -156,8 +169,17 @@ export function executeCommand(input: string): void {
     }
 
     case '/clear': {
-      tuiState.setMessages([]);
-      addSystemMsg('上下文已清空');
+      const service = getAgentService();
+      if (service?.clearContext) {
+        service.clearContext().then(() => {
+          addSystemMsg('上下文已清空（Agent 已重启）');
+        }).catch((err: Error) => {
+          addSystemMsg(`清空失败: ${err.message}`);
+        });
+      } else {
+        tuiState.setMessages([]);
+        addSystemMsg('上下文已清空（仅 UI）');
+      }
       break;
     }
 

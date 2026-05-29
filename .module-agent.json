@@ -10,11 +10,8 @@
         }
       },
       "exclude": [],
-      "projectPath": "E:\\Project\\ModuleAgent",
-      "name": "default",
-      "summarization": {
-        "enabled": true
-      }
+      "projectPath": "E:\\Project\\picode",
+      "name": "default"
     }
   ],
   "defaultConfig": "default",

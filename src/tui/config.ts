@@ -1,6 +1,5 @@
 import { ConfigLoader } from '../config/ConfigLoader.js';
-import { DEFAULT_CONFIG_ENTRY, type WorkspaceConfig, type ConfigEntry } from '../config/defaults.js';
-import { WorkspaceConfigSchema } from '../config/schema.js';
+import { DEFAULT_CONFIG_ENTRY, type ConfigEntry, type WorkspaceConfig } from '../config/defaults.js';
 import { defaultLogger } from '../core/Logger.js';
 import { existsSync } from 'fs';
 import fs from 'fs/promises';
@@ -40,33 +39,14 @@ export async function writeModuleAgentJson(
   projectRoot: string,
   entryConfig: Partial<ConfigEntry> & { name?: string },
 ): Promise<void> {
-  const existing = await ConfigLoader.load(projectRoot);
-
   const entryName = entryConfig.name || 'default';
-  const existingIdx = existing.configs.findIndex(c => c.name === entryName);
-
   const newEntry: ConfigEntry = {
     name: entryName,
     agents: entryConfig.agents ?? DEFAULT_CONFIG_ENTRY.agents,
     exclude: entryConfig.exclude ?? DEFAULT_CONFIG_ENTRY.exclude,
     projectPath: entryConfig.projectPath ?? DEFAULT_CONFIG_ENTRY.projectPath,
   };
-
-  if (existingIdx >= 0) {
-    existing.configs[existingIdx] = newEntry;
-  } else {
-    existing.configs.push(newEntry);
-  }
-
-  // 将 defaultConfig 设置为新建/更新的条目
-  existing.defaultConfig = entryName;
-
-  WorkspaceConfigSchema.parse(existing);
-
-  const configPath = path.join(projectRoot, '.module-agent.json');
-  defaultLogger.info(`[config] Writing config: ${configPath}`);
-  defaultLogger.info('[config] Config:', JSON.stringify(existing, null, 2));
-  await fs.writeFile(configPath, JSON.stringify(existing, null, 2) + '\n', 'utf-8');
+  await ConfigLoader.upsertEntry(projectRoot, newEntry, true);
 }
 
 export async function saveLastProjectRoot(projectRoot: string): Promise<void> {

@@ -55,4 +55,30 @@ export class ConfigLoader {
     const found = workspace.configs.find(c => c.name === workspace.defaultConfig);
     return found || workspace.configs[0] || DEFAULT_CONFIG_ENTRY;
   }
+
+  /** 保存配置到项目根目录的 .module-agent.json。先验证再写入。 */
+  static async save(projectRoot: string, config: WorkspaceConfig): Promise<void> {
+    const parsed = WorkspaceConfigSchema.safeParse(config);
+    if (!parsed.success) {
+      throw new Error(`Config validation failed: ${parsed.error.message}`);
+    }
+    const configPath = path.join(projectRoot, '.module-agent.json');
+    await fs.writeJson(configPath, parsed.data, { spaces: 2 });
+    defaultLogger.info(`[config] Saved config to ${configPath}`);
+  }
+
+  /** 更新配置中的单个条目，保留其他条目不变。若条目不存在则追加。 */
+  static async upsertEntry(projectRoot: string, entry: ConfigEntry, setAsDefault?: boolean): Promise<void> {
+    const existing = await ConfigLoader.load(projectRoot);
+    const idx = existing.configs.findIndex(c => c.name === entry.name);
+    if (idx >= 0) {
+      existing.configs[idx] = entry;
+    } else {
+      existing.configs.push(entry);
+    }
+    if (setAsDefault !== false) {
+      existing.defaultConfig = entry.name;
+    }
+    await ConfigLoader.save(projectRoot, existing);
+  }
 }

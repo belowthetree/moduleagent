@@ -216,6 +216,19 @@ export class ModuleAgentSubsystem {
     }
   }
 
+  /** 清空当前模块的上下文（停止 Agent 进程 + 清除会话标记） */
+  async clearContext(moduleName?: string): Promise<void> {
+    const name = moduleName || this.currentModule;
+    const entry = this.agents.get(name);
+    if (entry) {
+      try { entry.launched.process.kill(); } catch { /* 忽略 */ }
+      this.agents.delete(name);
+      this.logger.info(`clearContext: stopped agent [${name}]`);
+    }
+    this.sessionPrompted.delete(name);
+    this.lastSent.delete(name);
+  }
+
   async setCurrentAgent(name: string): Promise<void> {
     if (!this.graph) throw new Error('Not initialized');
 
