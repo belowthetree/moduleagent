@@ -360,6 +360,14 @@ export class ModuleAgentSubsystem {
         const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
         const data = notification.update as Record<string, unknown>;
 
+        // 打印收到的 ACP 事件类型
+        if (update) {
+          const preview = typeof data.content === 'object' && (data.content as any)?.text
+            ? (data.content as any).text.slice(0, 80)
+            : '';
+          self.logger.info(`[ACP] ${name} ← ${update}${preview ? ` "${preview}"` : ''}`);
+        }
+
         if (update === 'agent_message_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.callbacks.onStreamChunk(name, block.text, 'message');

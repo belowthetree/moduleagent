@@ -16,8 +16,8 @@ const TYPE_LABEL: Record<MessageType, string> = {
 
 const TYPE_FG: Record<MessageType, string | undefined> = {
   user:          undefined,
-  agent_reply:   undefined,
-  agent_thought: "#888888",
+  agent_reply:   "#5CFF5C",
+  agent_thought: "#5BADFF",
   tool_call:     "#FFD700",
   system:        "#888888",
   cross_context: "#5BADFF",
@@ -67,14 +67,22 @@ export default function ContextArea() {
               const fg = TYPE_FG[msg.msgType];
 
               return (
-                <box flexDirection="column" padding={0} backgroundColor="#1e2433">
-                  <box flexDirection="row" justifyContent="space-between">
-                    <text fg={fg} style={{ italic: true }}>
-                      {label}
-                    </text>
-                    {msg.time ? <text fg="#666666">{msg.time}</text> : null}
+                <box flexDirection="column" padding={0} marginBottom={1}>
+                  <box
+                    flexDirection="column"
+                    padding={0}
+                    backgroundColor="#1e2433"
+                    borderStyle="rounded"
+                    borderColor="#2d3548"
+                  >
+                    <box flexDirection="row" justifyContent="space-between">
+                      <text fg={fg} style={{ italic: true }}>
+                        {label}
+                      </text>
+                      {msg.time ? <text fg="#666666">{msg.time}</text> : null}
+                    </box>
+                    <text selectable={true}>{msg.content}</text>
                   </box>
-                  <text selectable={true}>{msg.content}</text>
                 </box>
               );
             }

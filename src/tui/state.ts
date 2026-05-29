@@ -46,7 +46,7 @@ export function createTuiState(): ReactiveTuiState {
   const [setupStep, setSetupStep] = createSignal(0);
   const [setupData, setSetupData] = createSignal<Record<string, string>>({});
   const [currentTarget, setCurrentTarget] = createSignal('module');
-  const [showThought, setShowThought] = createSignal(false);
+  const [showThought, setShowThought] = createSignal(true);
   const [inputHistory, setInputHistory] = createSignal<string[]>([]);
   const [historyIndex, setHistoryIndex] = createSignal(-1);
   const [activeCounts, setActiveCounts] = createSignal({ modules: 0, roles: 0, workflows: 0 });

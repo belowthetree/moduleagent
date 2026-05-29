@@ -18,10 +18,18 @@ export default function StatusBar() {
     return STATUS_COLORS[tuiState.agentStatus()] ?? "#888888";
   });
 
+  const TYPE_LABEL: Record<string, string> = {
+    module: '模块',
+    role: '角色',
+    workflow: '工作流',
+  };
+
   const statusText = createMemo(() => {
     const target = tuiState.currentTarget();
+    const agent = tuiState.currentAgent();
     const counts = tuiState.activeCounts();
-    let text = `${target}: ${tuiState.agentStatus()} |`;
+    const label = TYPE_LABEL[target] || target;
+    let text = `${label}：${agent}: ${tuiState.agentStatus()} |`;
     text += ` M:${counts.modules}`;
     if (counts.roles > 0) text += ` R:${counts.roles}`;
     if (counts.workflows > 0) text += ` W:${counts.workflows}`;

@@ -171,8 +171,8 @@ export default function InputBox(props: {
   const blueRule = () => '─'.repeat(Math.max(termWidth() - 2, 20));
 
   return (
-    <box flexDirection="column" padding={0}>
-      <text fg="#5BADFF">{blueRule()}</text>
+    <box flexDirection="column" padding={0} flexShrink={0} minHeight={5}>
+      <text fg="#5BADFF" height={1}>{blueRule()}</text>
       <box flexDirection="row" height={1} padding={0}>
         <input
           ref={(el: unknown) => { inputEl = el; }}
@@ -193,10 +193,9 @@ export default function InputBox(props: {
           }}
         />
       </box>
-      <text> </text>
-      <text> </text>
-      <text> </text>
-      <text fg="#5BADFF">{blueRule()}</text>
+      <text fg="#5BADFF" height={1}>{blueRule()}</text>
+      <text height={1}> </text>
+      <text height={1}> </text>
     </box>
   );
 }

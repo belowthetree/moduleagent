@@ -43,7 +43,7 @@ export function executeCommand(input: string): void {
         '/workflow cancel — 取消工作流',
       ].join('\n');
       const otherHelp = [
-        '/thought         — 切换思考内容可见性',
+        '/thought         — 切换推理过程可见性',
         '/status          — 显示子系统状态',
         '/save [name]     — 保存当前对话',
         '/load [name]     — 加载历史对话',
@@ -262,7 +262,7 @@ export function executeCommand(input: string): void {
     case '/thought': {
       const current = tuiState.showThought();
       tuiState.setShowThought(!current);
-      addSystemMsg(`思考内容: ${!current ? '显示' : '隐藏'}`);
+      addSystemMsg(`推理过程: ${!current ? '显示' : '隐藏'}`);
       break;
     }
 

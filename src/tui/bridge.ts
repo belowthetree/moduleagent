@@ -97,6 +97,7 @@ export class TuiBridge implements IAgentBridge {
       onRoleSessionUpdate: (roleName, sessionId, notification) => {
         const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
         const data = notification.update as Record<string, unknown>;
+        if (update) defaultLogger.info(`[ACP:role] ${roleName} ← ${update}`);
         if (update === 'agent_message_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.appendToStreamMsg(self.currentReplyMsgId, block.text, 'agent_reply');
@@ -118,6 +119,7 @@ export class TuiBridge implements IAgentBridge {
       onWorkflowSessionUpdate: (agentName, sessionId, notification) => {
         const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
         const data = notification.update as Record<string, unknown>;
+        if (update) defaultLogger.info(`[ACP:wf] ${agentName} ← ${update}`);
         if (update === 'agent_message_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.appendToStreamMsg(self.currentReplyMsgId, block.text, 'agent_reply');
@@ -207,28 +209,10 @@ export class TuiBridge implements IAgentBridge {
       };
       tuiState.setMessages([...tuiState.messages(), userMsg]);
 
-      // 预创建空的 Agent 消息用于流式追加
+      // 设置流式消息 ID（消息块在首次收到数据时按到达顺序创建）
       const now = Date.now();
-      const replyId = `reply-${now}`;
-      const thoughtId = `thought-${now}`;
-      this.currentReplyMsgId = replyId;
-      this.currentThoughtMsgId = thoughtId;
-
-      const replyMsg: ChatMessage = {
-        id: replyId,
-        role: 'agent',
-        msgType: 'agent_reply',
-        content: '',
-        time: '',
-      };
-      const thoughtMsg: ChatMessage = {
-        id: thoughtId,
-        role: 'agent',
-        msgType: 'agent_thought',
-        content: '',
-        time: '',
-      };
-      tuiState.setMessages([...tuiState.messages(), replyMsg, thoughtMsg]);
+      this.currentReplyMsgId = `reply-${now}`;
+      this.currentThoughtMsgId = `thought-${now}`;
 
       // 路由到正确的子系统
       if (targetType === 'role') {
@@ -462,11 +446,23 @@ export class TuiBridge implements IAgentBridge {
     tuiState.setAgentStatus(status);
   }
 
-  /** 追加文本到指定 ID 的流式消息 */
+  /** 追加文本到指定 ID 的流式消息，若消息不存在则按到达顺序创建 */
   private appendToStreamMsg(msgId: string | null, text: string, msgType: MessageType): void {
+    if (!msgId) return;
     const msgs = tuiState.messages();
-    const idx = msgs.findIndex(m => m.id === msgId);
-    if (idx === -1) return;
+    let idx = msgs.findIndex(m => m.id === msgId);
+    if (idx === -1) {
+      // 首次到达 — 按时间顺序插入消息列表末尾
+      const newMsg: ChatMessage = {
+        id: msgId,
+        role: 'agent',
+        msgType,
+        content: text,
+        time: '',
+      };
+      tuiState.setMessages([...msgs, newMsg]);
+      return;
+    }
     const updated = [...msgs];
     updated[idx] = {
       ...updated[idx]!,

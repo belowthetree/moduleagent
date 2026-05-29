@@ -58,9 +58,10 @@ export default function App() {
         <>
           <ContextArea />
           <CommandPalette />
-          <box flexDirection="column">
+          <box flexDirection="column" flexShrink={0}>
             <InputBox onSend={handleSend} onCommand={handleCommand} />
             <StatusBar />
+            <text height={1}> </text>
           </box>
         </>
       )}

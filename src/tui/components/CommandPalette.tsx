@@ -74,7 +74,7 @@ export default function CommandPalette() {
       <box
         flexDirection="column"
         position="absolute"
-        bottom={3}
+        bottom={7}
         width="100%"
         maxHeight={8}
         backgroundColor="#1e1e2e"
