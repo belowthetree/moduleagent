@@ -54,7 +54,7 @@ export default function ContextArea() {
             return (
               <box flexDirection="column" padding={1}>
                 <box flexDirection="row" justifyContent="space-between">
-                  <text fg={fg}>
+                  <text fg={fg} selectable={true}>
                     {icon}{label}{msg.content}
                   </text>
                   <text fg="#666666">{msg.time}</text>

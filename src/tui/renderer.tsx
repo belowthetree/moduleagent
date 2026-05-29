@@ -17,16 +17,27 @@ export async function startTui(projectRoot: string) {
     autoFocus: false,
   });
 
-  // ── Ctrl+C 处理 ──
+  // ── Ctrl+D 退出，流式中 Ctrl+C 取消 ──
   renderer.keyInput.on('keypress', (key: { name: string; ctrl: boolean }) => {
     if (key.name === 'c' && key.ctrl) {
+      // Ctrl+C: 流式输出中取消当前请求
       if (tuiState.agentStatus() === 'streaming') {
         tuiState.setAgentStatus('idle');
         (globalThis as any).__tuiCancelStream?.();
-      } else {
-        renderer.destroy();
-        process.exit(0);
       }
+      // 非流式时不做任何事（留给终端原生的复制快捷键处理）
+    }
+    if (key.name === 'd' && key.ctrl) {
+      // Ctrl+D: 退出 TUI
+      renderer.destroy();
+      process.exit(0);
+    }
+  });
+
+  // ── 文本选择 → 自动复制到剪贴板 ──
+  renderer.on('selection', (selection: { text: string }) => {
+    if (selection.text) {
+      renderer.copyToClipboardOSC52(selection.text);
     }
   });
 

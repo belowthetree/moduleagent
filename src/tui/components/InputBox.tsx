@@ -2,6 +2,7 @@ import { createEffect, onCleanup, untrack } from "solid-js";
 import { useKeyboard, useRenderer } from "@opentui/solid";
 import { defaultLogger } from "../../core/Logger.js";
 import { tuiState } from "../state.js";
+import { cjkDisplayWidth } from "../cjk.js";
 
 export default function InputBox(props: {
   onSend: (text: string) => void;
@@ -31,6 +32,36 @@ export default function InputBox(props: {
     } else {
       tuiState.setShowCommands(false);
     }
+  });
+
+  // ── CJK 光标修正 ──
+  // 每次 inputValue 变化后，将光标强制设置到文字末尾的正确视觉列位置。
+  // gotoLineEnd() 内部使用 OpenTUI 的 wcwidth（由 OPENTUI_FORCE_WCWIDTH 控制），
+  // 但为保证万无一失，我们用 cjkDisplayWidth 计算视觉列并显式设置。
+  // 上次已处理的值 — 避免重复设置光标
+  let lastCursorVal = '';
+
+  createEffect(() => {
+    const val = tuiState.inputValue();
+    const el = inputEl as { gotoLineEnd?: () => void; cursorOffset?: number } | null;
+
+    // 延迟到下一微任务，确保 OpenTUI 已完成 setText() 内部处理
+    queueMicrotask(() => {
+      if (!el?.gotoLineEnd) return;
+      // 值未变则跳过
+      if (val === lastCursorVal) return;
+      lastCursorVal = val;
+
+      try {
+        if (val.length === 0) {
+          el.cursorOffset = 0;
+        } else {
+          el.gotoLineEnd();
+        }
+      } catch {
+        // OpenTUI 内部状态不一致时忽略（如流式响应刚结束的瞬态）
+      }
+    });
   });
 
   useKeyboard((key) => {
