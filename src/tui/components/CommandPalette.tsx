@@ -27,6 +27,7 @@ const COMMANDS: CommandItem[] = [
 
 export default function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = createSignal(0);
+  let scrollEl: { scrollTo?: (y: number) => void } | null = null;
 
   const filterText = createMemo(() => {
     const value = tuiState.inputValue();
@@ -51,10 +52,18 @@ export default function CommandPalette() {
     const max = cmds.length - 1;
 
     if (key.name === "up") {
-      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : max));
+      setSelectedIndex((prev) => {
+        const next = prev > 0 ? prev - 1 : max;
+        scrollEl?.scrollTo?.(Math.max(0, next - 2));
+        return next;
+      });
       key.preventDefault();
     } else if (key.name === "down") {
-      setSelectedIndex((prev) => (prev < max ? prev + 1 : 0));
+      setSelectedIndex((prev) => {
+        const next = prev < max ? prev + 1 : 0;
+        scrollEl?.scrollTo?.(Math.max(0, next - 2));
+        return next;
+      });
       key.preventDefault();
     } else if (key.name === "enter" || key.name === "return" || key.name === "tab") {
       if (cmds.length > 0 && cmds[selectedIndex()]) {
@@ -74,35 +83,34 @@ export default function CommandPalette() {
       <box
         flexDirection="column"
         position="absolute"
-        bottom={7}
+        bottom={6}
         width="100%"
         maxHeight={8}
         backgroundColor="#1e1e2e"
         borderStyle="single"
         padding={0}
       >
-        <Show
-          when={!noMatch()}
-          fallback={
-            <box height={1} padding={0}>
-              <text fg="#888888">  无匹配命令</text>
-            </box>
-          }
-        >
-          <For each={filteredCommands()}>
-            {(cmd, index) => (
-              <box
-                flexDirection="row"
-                height={1}
-                padding={0}
-                backgroundColor={index() === selectedIndex() ? "#44475a" : "transparent"}
-              >
-                <text fg={index() === selectedIndex() ? "#ffffff" : "#f8f8f2"}>
-                  {" "}{cmd.name}{"  "}{cmd.description}
-                </text>
-              </box>
-            )}
-          </For>
+        <Show when={!noMatch()} fallback={
+          <box height={1} padding={0}>
+            <text fg="#888888">  无匹配命令</text>
+          </box>
+        }>
+          <scrollbox ref={(el: any) => { scrollEl = el; }} flexGrow={1} stickyScroll={false}>
+            <For each={filteredCommands()}>
+              {(cmd, index) => (
+                <box
+                  flexDirection="row"
+                  height={1}
+                  padding={0}
+                  backgroundColor={index() === selectedIndex() ? "#44475a" : "transparent"}
+                >
+                  <text fg={index() === selectedIndex() ? "#ffffff" : "#f8f8f2"}>
+                    {" "}{cmd.name}{"  "}{cmd.description}
+                  </text>
+                </box>
+              )}
+            </For>
+          </scrollbox>
         </Show>
       </box>
     </Show>

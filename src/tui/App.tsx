@@ -62,6 +62,7 @@ export default function App() {
             <InputBox onSend={handleSend} onCommand={handleCommand} />
             <StatusBar />
             <text height={1}> </text>
+            <text height={1}> </text>
           </box>
         </>
       )}

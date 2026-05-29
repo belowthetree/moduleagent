@@ -26,6 +26,8 @@ export interface ReactiveTuiState {
   setSetupData: (v: Record<string, string>) => void;
   showThought: () => boolean;
   setShowThought: (v: boolean) => void;
+  collapsedThoughts: () => Set<string>;
+  setCollapsedThoughts: (v: Set<string>) => void;
   inputHistory: () => string[];
   setInputHistory: (v: string[]) => void;
   historyIndex: () => number;
@@ -50,6 +52,7 @@ export function createTuiState(): ReactiveTuiState {
   const [inputHistory, setInputHistory] = createSignal<string[]>([]);
   const [historyIndex, setHistoryIndex] = createSignal(-1);
   const [activeCounts, setActiveCounts] = createSignal({ modules: 0, roles: 0, workflows: 0 });
+  const [collapsedThoughts, setCollapsedThoughts] = createSignal<Set<string>>(new Set());
 
   return {
     screen,
@@ -76,6 +79,8 @@ export function createTuiState(): ReactiveTuiState {
     setSetupData,
     showThought,
     setShowThought,
+    collapsedThoughts,
+    setCollapsedThoughts,
     inputHistory,
     setInputHistory,
     historyIndex,

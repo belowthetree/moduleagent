@@ -1,4 +1,4 @@
-import { For, createMemo } from "solid-js";
+import { createMemo } from "solid-js";
 import { useRenderer } from "@opentui/solid";
 import { tuiState } from "../state.js";
 import type { ChatMessage, MessageType } from "../types.js";
@@ -23,26 +23,26 @@ const TYPE_FG: Record<MessageType, string | undefined> = {
   cross_context: "#5BADFF",
 };
 
-// ── 过滤后的消息 ──
-
-function filterMessages(msgs: ChatMessage[]): ChatMessage[] {
-  const showThought = tuiState.showThought();
-  if (showThought) return msgs;
-  return msgs.filter(m => m.msgType !== 'agent_thought');
-}
-
 export default function ContextArea() {
   const renderer = useRenderer();
-  const visibleMessages = createMemo(() => filterMessages(tuiState.messages()));
 
   // 屏幕宽度（用于绘制分隔线）
   const termWidth = () => renderer?.width ?? 80;
 
+  // 合并 messages + collapsedThoughts → 提取 _collapsed 标记
+  const renderedMessages = createMemo(() => {
+    const msgs = tuiState.messages();
+    const collapsed = tuiState.collapsedThoughts();
+    return msgs.map(m => ({
+      ...m,
+      _collapsed: collapsed.has(m.id),
+    }));
+  });
+
   return (
     <scrollbox flexGrow={1} stickyScroll={true} stickyStart="bottom">
       <box flexDirection="column">
-        <For each={visibleMessages()}>
-          {(msg) => {
+        {renderedMessages().map((msg) => {
             // ── 用户消息：双横线夹内容 ──
             if (msg.msgType === 'user') {
               const rule = '─'.repeat(Math.max(termWidth() - 2, 20));
@@ -65,6 +65,16 @@ export default function ContextArea() {
 
               const label = TYPE_LABEL[msg.msgType];
               const fg = TYPE_FG[msg.msgType];
+              const isThought = msg.msgType === 'agent_thought';
+              const collapsed = isThought && (msg as any)._collapsed;
+              const toggle = isThought
+                ? () => {
+                    const set = new Set(tuiState.collapsedThoughts());
+                    if (collapsed) set.delete(msg.id);
+                    else set.add(msg.id);
+                    tuiState.setCollapsedThoughts(set);
+                  }
+                : undefined;
 
               return (
                 <box flexDirection="column" padding={0} marginBottom={1}>
@@ -75,13 +85,25 @@ export default function ContextArea() {
                     borderStyle="rounded"
                     borderColor="#2d3548"
                   >
-                    <box flexDirection="row" justifyContent="space-between">
+                    <box
+                      flexDirection="row"
+                      justifyContent="space-between"
+                      onMouseDown={toggle}
+                    >
                       <text fg={fg} style={{ italic: true }}>
-                        {label}
+                        {isThought ? (collapsed ? '▸ ' : '▾ ') : ''}{label}
                       </text>
                       {msg.time ? <text fg="#666666">{msg.time}</text> : null}
                     </box>
-                    <text selectable={true}>{msg.content}</text>
+                    {collapsed ? (
+                      <text fg="#555555" dim selectable={true}>
+                        {msg.content.length > 60
+                          ? msg.content.slice(0, 60).replace(/\n/g, ' ') + '…'
+                          : msg.content.replace(/\n/g, ' ')}
+                      </text>
+                    ) : (
+                      <text selectable={true}>{msg.content}</text>
+                    )}
                   </box>
                 </box>
               );
@@ -99,8 +121,7 @@ export default function ContextArea() {
                 </box>
               </box>
             );
-          }}
-        </For>
+          })}
       </box>
     </scrollbox>
   );

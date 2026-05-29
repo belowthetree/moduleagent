@@ -58,6 +58,14 @@ export class TuiBridge implements IAgentBridge {
       onStreamComplete: (moduleName) => {
         self.finalizeStreamMsg(self.currentReplyMsgId);
         self.finalizeStreamMsg(self.currentThoughtMsgId);
+
+        // 自动折叠推理消息
+        if (self.currentThoughtMsgId) {
+          const set = new Set(tuiState.collapsedThoughts());
+          set.add(self.currentThoughtMsgId);
+          tuiState.setCollapsedThoughts(set);
+        }
+
         self.currentReplyMsgId = null;
         self.currentThoughtMsgId = null;
         self.moduleStatuses.set(moduleName, 'idle');
@@ -173,6 +181,14 @@ export class TuiBridge implements IAgentBridge {
         const history = await this.persistence.load(rootAgent);
         if (history.length > 0) {
           tuiState.setMessages(history);
+          // 折叠所有历史推理消息
+          const collapsed = new Set<string>();
+          for (const m of history) {
+            if (m.msgType === 'agent_thought' && m.content) {
+              collapsed.add(m.id);
+            }
+          }
+          tuiState.setCollapsedThoughts(collapsed);
           defaultLogger.info(`TuiBridge: restored ${history.length} messages for [${rootAgent}]`);
         }
       }

@@ -32,6 +32,7 @@ export interface TuiState {
   setupStep: number;
   setupData: Record<string, string>;
   showThought: boolean;        // 思考内容可见性
+  collapsedThoughts: Set<string>; // 已折叠的推理消息 ID
   inputHistory: string[];       // 输入历史
   historyIndex: number;         // 当前历史位置
   activeCounts: { modules: number; roles: number; workflows: number };

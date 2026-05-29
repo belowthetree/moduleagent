@@ -156,6 +156,14 @@ export default function InputBox(props: {
       return;
     }
 
+    // 空格：手动追加（OpenTUI 中 key.name 为 "space"，不匹配普通字符判断）
+    if (key.name === "space") {
+      tuiState.setInputValue(tuiState.inputValue() + ' ');
+      renderer.requestRender();
+      key.preventDefault();
+      return;
+    }
+
     // 可打印字符：手动追加到 inputValue，因 OpenTUI 的 onChange 从不触发
     if (key.name.length === 1 && !key.ctrl) {
       const val = tuiState.inputValue();
@@ -171,7 +179,7 @@ export default function InputBox(props: {
   const blueRule = () => '─'.repeat(Math.max(termWidth() - 2, 20));
 
   return (
-    <box flexDirection="column" padding={0} flexShrink={0} minHeight={5}>
+    <box flexDirection="column" padding={0} flexShrink={0} minHeight={4}>
       <text fg="#5BADFF" height={1}>{blueRule()}</text>
       <box flexDirection="row" height={1} padding={0}>
         <input
@@ -194,8 +202,6 @@ export default function InputBox(props: {
         />
       </box>
       <text fg="#5BADFF" height={1}>{blueRule()}</text>
-      <text height={1}> </text>
-      <text height={1}> </text>
     </box>
   );
 }
