@@ -43,10 +43,19 @@ export async function startTui(projectRoot: string) {
 
       tuiState.setAgentStatus('idle');
       const agents = bridge.listAgents();
+      const roles = await bridge.getRoleConfigs();
+      const workflows = bridge.listWorkflows();
+
+      let initMsg = `Agent ready — modules: ${agents.join(', ') || '(none)'}`;
+      if (roles.length > 0) initMsg += ` | roles: ${roles.map(r => r.name).join(', ')}`;
+      if (workflows.length > 0) initMsg += ` | workflows: ${workflows.join(', ')}`;
+      initMsg += '\nType /help for available commands.';
+
       const msg: ChatMessage = {
         id: `init-${Date.now()}`,
         role: 'system',
-        content: `Agent ready — modules: ${agents.join(', ')}`,
+        msgType: 'system',
+        content: initMsg,
         time: new Date().toLocaleTimeString(),
       };
       tuiState.setMessages([...tuiState.messages(), msg]);
@@ -55,6 +64,7 @@ export async function startTui(projectRoot: string) {
       const msg: ChatMessage = {
         id: `err-${Date.now()}`,
         role: 'system',
+        msgType: 'system',
         content: `Init failed: ${(err as Error).message}`,
         time: new Date().toLocaleTimeString(),
       };
@@ -78,6 +88,11 @@ export async function startTui(projectRoot: string) {
   // ── 暴露桥接层供 commands.ts 使用 ──
   (globalThis as any).__tuiAgentService = bridge;
 
+  // ── 输入历史持久化钩子 ──
+  (globalThis as any).__tuiSaveHistory = (history: string[]) => {
+    bridge.saveInputHistory(history).catch(() => {});
+  };
+
   // ── 自动初始化或显示设置界面 ──
   import('./config.js').then(async ({ validateModuleAgentJson }) => {
     if (await validateModuleAgentJson(projectRoot)) {
@@ -91,6 +106,7 @@ export async function startTui(projectRoot: string) {
         const msg: ChatMessage = {
           id: `sys-${Date.now()}`,
           role: 'system',
+          msgType: 'system',
           content: 'Enter /setup to configure project path.',
           time: new Date().toLocaleTimeString(),
         };
@@ -100,6 +116,7 @@ export async function startTui(projectRoot: string) {
       const msg: ChatMessage = {
         id: `sys-${Date.now()}`,
         role: 'system',
+        msgType: 'system',
         content: 'No config found. Please complete setup.',
         time: new Date().toLocaleTimeString(),
       };

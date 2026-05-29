@@ -19,7 +19,14 @@ export default function StatusBar() {
   });
 
   const statusText = createMemo(() => {
-    return `agent: ${tuiState.agentStatus()} |`;
+    const target = tuiState.currentTarget();
+    const counts = tuiState.activeCounts();
+    let text = `${target}: ${tuiState.agentStatus()} |`;
+    text += ` M:${counts.modules}`;
+    if (counts.roles > 0) text += ` R:${counts.roles}`;
+    if (counts.workflows > 0) text += ` W:${counts.workflows}`;
+    text += ' |';
+    return text;
   });
 
   const pathText = createMemo(() => {

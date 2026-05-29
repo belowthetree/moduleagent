@@ -42,13 +42,60 @@ export default function InputBox(props: {
 
     // 回车：提交消息或命令
     if (key.name === "return" || key.name === "enter") {
-      if (val.startsWith("/")) {
-        props.onCommand(val);
-      } else if (val.trim()) {
-        props.onSend(val);
+      const text = val;
+      if (text.startsWith("/")) {
+        props.onCommand(text);
+      } else if (text.trim()) {
+        props.onSend(text);
+      }
+      // 添加到输入历史
+      if (text.trim()) {
+        const history = [...tuiState.inputHistory()];
+        // 去重: 移除旧条目再推到末尾
+        const existingIdx = history.lastIndexOf(text);
+        if (existingIdx >= 0) history.splice(existingIdx, 1);
+        history.push(text);
+        if (history.length > 200) history.shift();
+        tuiState.setInputHistory(history);
+        tuiState.setHistoryIndex(history.length);
+        // 触发后台持久化
+        (globalThis as any).__tuiSaveHistory?.(history);
       }
       tuiState.setInputValue("");
       tuiState.setShowCommands(false);
+      key.preventDefault();
+      return;
+    }
+
+    // 上箭头：输入历史回退
+    if (key.name === "up" && !tuiState.showCommands()) {
+      const history = tuiState.inputHistory();
+      if (history.length === 0) { key.preventDefault(); return; }
+      let idx = tuiState.historyIndex();
+      if (idx === -1 || idx >= history.length) idx = history.length;
+      idx = Math.max(0, idx - 1);
+      tuiState.setHistoryIndex(idx);
+      tuiState.setInputValue(history[idx] || '');
+      renderer.requestRender();
+      key.preventDefault();
+      return;
+    }
+
+    // 下箭头：输入历史前进
+    if (key.name === "down" && !tuiState.showCommands()) {
+      const history = tuiState.inputHistory();
+      if (history.length === 0) { key.preventDefault(); return; }
+      let idx = tuiState.historyIndex();
+      if (idx === -1) { key.preventDefault(); return; }
+      idx = idx + 1;
+      if (idx >= history.length) {
+        tuiState.setHistoryIndex(-1);
+        tuiState.setInputValue('');
+      } else {
+        tuiState.setHistoryIndex(idx);
+        tuiState.setInputValue(history[idx] || '');
+      }
+      renderer.requestRender();
       key.preventDefault();
       return;
     }

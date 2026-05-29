@@ -10,6 +10,7 @@ function addSystemMessage(text: string) {
   const msg: ChatMessage = {
     id: `sys-${Date.now()}`,
     role: 'system',
+    msgType: 'system',
     content: text,
     time: new Date().toLocaleTimeString(),
   };
@@ -20,6 +21,7 @@ function addUserMessage(text: string) {
   const msg: ChatMessage = {
     id: `user-${Date.now()}`,
     role: 'user',
+    msgType: 'user',
     content: text,
     time: new Date().toLocaleTimeString(),
   };

@@ -9,6 +9,8 @@ import path from 'path';
 import fs from 'fs-extra';
 import os from 'os';
 import { IpcChannel } from '../../protocol/IpcChannels.js';
+import { ConfigLoader } from '../../config/ConfigLoader.js';
+import { DEFAULT_CONFIG } from '../../config/defaults.js';
 import type { HandlerContext } from './HandlerContext.js';
 
 export function registerConfigHandlers(ctx: HandlerContext): void {
