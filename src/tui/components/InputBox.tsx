@@ -167,27 +167,36 @@ export default function InputBox(props: {
   });
 
   const isStreaming = () => tuiState.agentStatus() === "streaming";
+  const termWidth = () => renderer?.width ?? 80;
+  const blueRule = () => '─'.repeat(Math.max(termWidth() - 2, 20));
 
   return (
-    <box flexDirection="row" height={1} padding={0}>
-      <input
-        ref={(el: unknown) => { inputEl = el; }}
-        placeholder="输入消息 (输入 / 查看命令)..."
-        width="100%"
-        value={tuiState.inputValue()}
-        focused={!isStreaming()}
-        opacity={isStreaming() ? 0.5 : 1}
-        onChange={(value: string) => {
-          defaultLogger.info(`[InputBox] onChange: "${value}"`);
-          if (tuiState.agentStatus() !== "streaming") {
-            tuiState.setInputValue(value);
-            if (!value.startsWith("/")) {
-              tuiState.setShowCommands(false);
+    <box flexDirection="column" padding={0}>
+      <text fg="#5BADFF">{blueRule()}</text>
+      <box flexDirection="row" height={1} padding={0}>
+        <input
+          ref={(el: unknown) => { inputEl = el; }}
+          placeholder="输入消息 (输入 / 查看命令)..."
+          width="100%"
+          value={tuiState.inputValue()}
+          focused={!isStreaming()}
+          opacity={isStreaming() ? 0.5 : 1}
+          onChange={(value: string) => {
+            defaultLogger.info(`[InputBox] onChange: "${value}"`);
+            if (tuiState.agentStatus() !== "streaming") {
+              tuiState.setInputValue(value);
+              if (!value.startsWith("/")) {
+                tuiState.setShowCommands(false);
+              }
+              renderer.requestRender();
             }
-            renderer.requestRender();
-          }
-        }}
-      />
+          }}
+        />
+      </box>
+      <text> </text>
+      <text> </text>
+      <text> </text>
+      <text fg="#5BADFF">{blueRule()}</text>
     </box>
   );
 }
