@@ -108,69 +108,17 @@ export function executeCommand(input: string): void {
     }
 
     case '/tree': {
-      const service = getAgentService();
-      if (!service) {
-        addSystemMsg('Agent 服务未就绪');
-        return;
+      // 切换模块树面板
+      const currentScreen = tuiState.screen();
+      if (currentScreen === 'tree') {
+        tuiState.setScreen('chat');
+        tuiState.setInputValue('');
+        tuiState.setShowCommands(false);
+      } else {
+        tuiState.setScreen('tree');
+        tuiState.setInputValue('');
+        tuiState.setShowCommands(false);
       }
-      const graph = service.getGraph?.();
-      if (!graph) {
-        addSystemMsg('Agent 服务未就绪');
-        return;
-      }
-      const currentAgent = service.getCurrentAgent?.() ?? '';
-      const currentStatus = service.getAgentStatus?.() ?? 'idle';
-
-      const visited = new Set<string>();
-      const lines: string[] = [];
-
-      function buildTree(nodeName: string, prefix: string, isLast: boolean, isRoot: boolean) {
-        if (visited.has(nodeName)) return;
-        visited.add(nodeName);
-
-        const node = graph.nodes.get(nodeName);
-        if (!node) return;
-
-        // 状态标记
-        let status = '◌'; // 未启动
-        if (nodeName === currentAgent) {
-          if (currentStatus === 'streaming') status = '▶';
-          else if (currentStatus === 'error') status = '✗';
-          else status = '●';
-        } else if (service.isModuleLoaded?.(nodeName)) {
-          status = '●'; // loaded
-        }
-
-        // 描述（带截断）
-        const desc = node.definition?.frontmatter?.description || '';
-        const shortDesc = desc.length > 40 ? desc.slice(0, 40) + '…' : (desc || '(无描述)');
-
-        // 路径
-        const path = node.relativePath || '.';
-
-        // 构建行
-        const connector = isRoot ? '' : (isLast ? '└── ' : '├── ');
-        lines.push(`${prefix}${connector}${status} ${node.name} — ${shortDesc} [${path}]`);
-
-        // 子节点
-        const children = node.children || [];
-        const validChildren = children.filter((c: string) => graph.nodes.has(c) && !visited.has(c));
-        const childPrefix = isRoot ? '' : (isLast ? '    ' : '│   ');
-
-        validChildren.forEach((childName: string, i: number) => {
-          const childIsLast = i === validChildren.length - 1;
-          buildTree(childName, prefix + childPrefix, childIsLast, false);
-        });
-      }
-
-      const rootNode = graph.nodes.get(graph.root);
-      if (!rootNode) {
-        addSystemMsg('无法找到根模块');
-        return;
-      }
-      buildTree(graph.root, '', true, true);
-
-      addSystemMsg(lines.join('\n'));
       break;
     }
 

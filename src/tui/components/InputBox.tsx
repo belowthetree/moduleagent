@@ -65,6 +65,7 @@ export default function InputBox(props: {
   });
 
   useKeyboard((key) => {
+    if (tuiState.screen() !== 'chat') return;
     if (tuiState.agentStatus() === "streaming") return;
 
     defaultLogger.info(`[InputBox] key: ${key.name} seq: ${key.sequence} val: "${tuiState.inputValue()}"`);

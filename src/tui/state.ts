@@ -39,7 +39,7 @@ export interface ReactiveTuiState {
 export function createTuiState(): ReactiveTuiState {
   const [screen, setScreen] = createSignal<TuiScreen>('chat');
   const [agentStatus, setAgentStatus] = createSignal<AgentStatus>('loading');
-  const [currentAgent, setCurrentAgent] = createSignal('main');
+  const [currentAgent, setCurrentAgent] = createSignal('');
   const [workingDir, setWorkingDir] = createSignal('');
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
   const [inputValue, setInputValue] = createSignal('');

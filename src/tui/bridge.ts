@@ -443,6 +443,11 @@ export class TuiBridge implements IAgentBridge {
     return new Map(this.moduleStatuses);
   }
 
+  /** 已加载的模块集合（供 ModuleTree 查询） */
+  get loadedModulesSet(): Set<string> {
+    return this.loadedModules;
+  }
+
   /** 设置当前交互目标类型 */
   setTargetType(type: 'module' | 'role' | 'workflow'): void {
     tuiState.setCurrentTarget(type);

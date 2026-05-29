@@ -1,4 +1,4 @@
-import { createSignal, createMemo, Show, For } from "solid-js";
+import { createSignal, createMemo, Show } from "solid-js";
 import { useKeyboard } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
 import { tuiState } from "../state.js";
@@ -46,6 +46,9 @@ export default function CommandPalette() {
   const noMatch = createMemo(() => filteredCommands().length === 0);
 
   useKeyboard((key: KeyEvent) => {
+    const scr = tuiState.screen();
+    defaultLogger.info(`[CMDPAL] key: name="${key.name}" screen="${scr}" show=${tuiState.showCommands()}`);
+    if (scr !== 'chat') return;
     if (!tuiState.showCommands()) return;
 
     const cmds = filteredCommands();
@@ -96,20 +99,22 @@ export default function CommandPalette() {
           </box>
         }>
           <scrollbox ref={(el: any) => { scrollEl = el; }} flexGrow={1} stickyScroll={false}>
-            <For each={filteredCommands()}>
-              {(cmd, index) => (
+            {(() => {
+              const cmds = filteredCommands();
+              const sel = selectedIndex();
+              return cmds.map((cmd, i) => (
                 <box
                   flexDirection="row"
                   height={1}
                   padding={0}
-                  backgroundColor={index() === selectedIndex() ? "#44475a" : "transparent"}
+                  backgroundColor={i === sel ? "#44475a" : "transparent"}
                 >
-                  <text fg={index() === selectedIndex() ? "#ffffff" : "#f8f8f2"}>
+                  <text fg={i === sel ? "#ffffff" : "#f8f8f2"}>
                     {" "}{cmd.name}{"  "}{cmd.description}
                   </text>
                 </box>
-              )}
-            </For>
+              ));
+            })()}
           </scrollbox>
         </Show>
       </box>

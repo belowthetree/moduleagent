@@ -47,7 +47,8 @@ export async function startTui(projectRoot: string) {
   // ── 挂载 globalThis 钩子 ──
   (globalThis as any).__tuiInitAgent = async (root: string) => {
     try {
-      await bridge.init(root);
+      const result = await bridge.init(root);
+      tuiState.setCurrentAgent(result.rootAgent || 'main');
 
       const { saveLastProjectRoot } = await import('./config.js');
       await saveLastProjectRoot(root);

@@ -17,7 +17,7 @@ export interface CommandDef {
   requiresArg?: boolean;
 }
 
-export type TuiScreen = 'setup' | 'chat';
+export type TuiScreen = 'setup' | 'chat' | 'tree';
 
 export interface TuiState {
   screen: TuiScreen;
