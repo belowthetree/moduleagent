@@ -378,24 +378,18 @@ export function executeCommand(input: string): void {
     }
 
     case '/quit': {
-      addSystemMsg('正在退出...');
+      addSystemMsg('正在保存并退出...');
       const service = getAgentService();
       const renderer = (globalThis as any).__tuiRenderer;
 
-      // 延迟一小段时间让消息渲染
-      setTimeout(async () => {
-        try {
-          if (service?.dispose) {
-            await service.dispose();
-          }
-        } catch {
-          // 忽略退出时的 dispose 错误
-        }
-        if (renderer?.destroy) {
-          renderer.destroy();
-        }
+      // 先保存会话，再退出
+      const cleanup = async () => {
+        try { await service?.saveSession?.(); } catch { /* ignore */ }
+        try { await service?.dispose?.(); } catch { /* ignore */ }
+        renderer?.destroy?.();
         process.exit(0);
-      }, 200);
+      };
+      cleanup();
       break;
     }
 

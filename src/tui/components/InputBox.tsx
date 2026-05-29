@@ -1,5 +1,5 @@
 import { createEffect, onCleanup, untrack } from "solid-js";
-import { useKeyboard, useRenderer } from "@opentui/solid";
+import { useKeyboard, useRenderer, usePaste } from "@opentui/solid";
 import { defaultLogger } from "../../core/Logger.js";
 import { tuiState } from "../state.js";
 import { cjkDisplayWidth } from "../cjk.js";
@@ -67,8 +67,6 @@ export default function InputBox(props: {
   useKeyboard((key) => {
     if (tuiState.screen() !== 'chat') return;
     if (tuiState.agentStatus() === "streaming") return;
-
-    defaultLogger.info(`[InputBox] key: ${key.name} seq: ${key.sequence} val: "${tuiState.inputValue()}"`);
 
     const val = tuiState.inputValue();
 
@@ -173,6 +171,15 @@ export default function InputBox(props: {
       key.preventDefault();
       return;
     }
+  });
+
+  // 粘贴处理
+  usePaste((event: { bytes: Uint8Array }) => {
+    if (tuiState.screen() !== 'chat') return;
+    if (tuiState.agentStatus() === 'streaming') return;
+    const text = new TextDecoder().decode(event.bytes);
+    tuiState.setInputValue(tuiState.inputValue() + text);
+    renderer.requestRender();
   });
 
   const isStreaming = () => tuiState.agentStatus() === "streaming";

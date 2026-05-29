@@ -23,6 +23,8 @@ export interface CoreCallbacks {
   onStreamError: (moduleName: string, error: string) => void;
   onStatusChange: (status: CoreStatus) => void;
   onMessage: (message: CoreMessage) => void;
+  /** 工具调用通知。moduleName: 触发模块, toolName: 工具名, toolStatus: 状态, toolDetail: 详细信息 */
+  onToolCall?: (moduleName: string, toolName: string, toolStatus: string, toolDetail?: string) => void;
 }
 
 // ============================================================================

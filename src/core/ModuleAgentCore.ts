@@ -31,6 +31,8 @@ export interface ModuleAgentCoreOptions {
   onRoleSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
   /** Optional workflow session-update listener */
   onWorkflowSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
+  /** Optional cross-context notification callback (for UI) */
+  onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +68,7 @@ export class ModuleAgentCore {
       configDir: this.configDir,
       logger: this.logger,
       onSessionUpdate: options.onSessionUpdate,
+      onCrossContext: options.onCrossContext,
     });
 
     if (options.enableRoles) {

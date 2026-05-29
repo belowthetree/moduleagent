@@ -96,7 +96,7 @@ if not exist "%ROOT%\node_modules\!PLATFORM_PKG!\" (
 if "%PROJECT%"=="" (
     echo Starting TUI - auto-detecting project...
     echo.
-    bun run --cwd "%ROOT%\src\tui" "%ROOT%\src\cli\tui-entry.ts" --project "%ROOT%"
+    bun run --cwd "%ROOT%\src\tui" "%ROOT%\src\cli\tui-entry.ts"
 ) else (
     echo Starting TUI - project: %PROJECT%...
     echo.

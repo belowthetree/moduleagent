@@ -28,9 +28,20 @@ export async function startTui(projectRoot: string) {
       // 非流式时不做任何事（留给终端原生的复制快捷键处理）
     }
     if (key.name === 'd' && key.ctrl) {
-      // Ctrl+D: 退出 TUI
-      renderer.destroy();
-      process.exit(0);
+      // Ctrl+D: 先保存再退出
+      const bridge = (globalThis as any).__tuiAgentService;
+      if (bridge) {
+        bridge.saveSession?.().then(() => {
+          renderer.destroy();
+          process.exit(0);
+        }).catch(() => {
+          renderer.destroy();
+          process.exit(0);
+        });
+      } else {
+        renderer.destroy();
+        process.exit(0);
+      }
     }
   });
 

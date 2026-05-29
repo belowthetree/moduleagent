@@ -94,6 +94,71 @@ export class TuiBridge implements IAgentBridge {
         };
         tuiState.setMessages([...tuiState.messages(), msg]);
       },
+      onToolCall: (moduleName, toolName, toolStatus, toolDetail) => {
+        // 工具调用作为消息块边界：结束之前的消息块，新开后续消息块
+        self.finalizeStreamMsg(self.currentReplyMsgId);
+        self.finalizeStreamMsg(self.currentThoughtMsgId);
+        self.currentReplyMsgId = `reply-${Date.now()}`;
+        self.currentThoughtMsgId = `thought-${Date.now()}`;
+
+        const statusIcon = toolStatus === 'completed' ? '✓' : toolStatus === 'error' ? '✗' : '…';
+        // 清理工具名：module-agent_module_query → module_query
+        const displayName = toolName.includes('_') ? toolName.replace(/^[^_]+_/, '') : toolName;
+
+        // 解析工具参数，提取最重要的一两个字段
+        let extra = '';
+        try {
+          if (toolDetail) {
+            const detail = JSON.parse(toolDetail) as Record<string, unknown>;
+            // 跨模块通信
+            if (detail.targetModule) {
+              extra = `→ ${detail.targetModule}`;
+              const task = detail.task || detail.query;
+              if (typeof task === 'string') extra += `: ${task.slice(0, 60)}`;
+            } else if (detail.requestingModule) {
+              extra = `← ${detail.requestingModule}`;
+              const task = detail.task || detail.query;
+              if (typeof task === 'string') extra += `: ${task.slice(0, 60)}`;
+            } else {
+              // 普通工具：提取文件路径或关键参数
+              const path = detail.path || detail.filePath || detail.file || detail.directory;
+              if (typeof path === 'string') {
+                extra = path.length > 50 ? '…' + path.slice(-47) : path;
+              } else {
+                // 回退：显示第一个有意义的字符串值
+                const keys = Object.keys(detail).filter(k => k !== 'title' && k !== 'status');
+                const firstVal = keys.find(k => typeof detail[k] === 'string');
+                if (firstVal) {
+                  const val = detail[firstVal] as string;
+                  extra = val.length > 50 ? val.slice(0, 47) + '…' : val;
+                }
+              }
+            }
+          }
+        } catch { /* ignore */ }
+
+        const content = `${statusIcon} ${displayName} ${extra}`.trim();
+        // 查找或创建工具消息
+        const existingId = `tool-${moduleName}-${toolName}`;
+        const msgs = tuiState.messages();
+        const existing = msgs.find(m => m.id === existingId && m.msgType === 'tool_call');
+        if (existing) {
+          // 更新状态
+          const updated = [...msgs];
+          const idx = updated.indexOf(existing);
+          updated[idx] = { ...existing, content };
+          tuiState.setMessages(updated);
+        } else {
+          const toolMsg: ChatMessage = {
+            id: existingId,
+            role: 'system',
+            msgType: 'tool_call',
+            content,
+            time: new Date().toLocaleTimeString(),
+          };
+          tuiState.setMessages([...msgs, toolMsg]);
+        }
+      },
     };
 
     const repoRoot = findRepoRoot();
@@ -112,16 +177,6 @@ export class TuiBridge implements IAgentBridge {
         } else if (update === 'agent_thought_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.appendToStreamMsg(self.currentThoughtMsgId, block.text, 'agent_thought');
-        } else if (update === 'tool_call') {
-          const tc = data as { title?: string; status?: string };
-          const toolMsg: ChatMessage = {
-            id: `tool-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            role: 'system',
-            msgType: 'tool_call',
-            content: `🔧 ${tc.title || 'tool'} [${tc.status || 'running'}]`,
-            time: new Date().toLocaleTimeString(),
-          };
-          tuiState.setMessages([...tuiState.messages(), toolMsg]);
         }
       },
       onWorkflowSessionUpdate: (agentName, sessionId, notification) => {
@@ -135,6 +190,19 @@ export class TuiBridge implements IAgentBridge {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.appendToStreamMsg(self.currentThoughtMsgId, block.text, 'agent_thought');
         }
+      },
+      onCrossContext: (source, target, direction, phase, content) => {
+        const arrow = direction === 'sent' ? '→' : '←';
+        const label = phase === 'request' ? '请求' : '响应';
+        const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
+        const msg: ChatMessage = {
+          id: `cross-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          role: 'system',
+          msgType: 'cross_context',
+          content: `${arrow} ${source} → ${target} [${label}]: ${shortContent}`,
+          time: new Date().toLocaleTimeString(),
+        };
+        tuiState.setMessages([...tuiState.messages(), msg]);
       },
     });
   }
@@ -308,6 +376,26 @@ export class TuiBridge implements IAgentBridge {
     await this.core.setCurrentAgent(name);
     tuiState.setCurrentAgent(name);
     this.loadedModules.add(name);
+
+    // 加载该模块的历史对话
+    if (this.persistence) {
+      const history = await this.persistence.load(name);
+      if (history.length > 0) {
+        tuiState.setMessages(history);
+        const collapsed = new Set<string>();
+        for (const m of history) {
+          if (m.msgType === 'agent_thought' && m.content) {
+            collapsed.add(m.id);
+          }
+        }
+        tuiState.setCollapsedThoughts(collapsed);
+        defaultLogger.info(`TuiBridge: loaded ${history.length} msgs for [${name}]`);
+      } else {
+        // 该模块无历史，从空白开始
+        tuiState.setMessages([]);
+        tuiState.setCollapsedThoughts(new Set());
+      }
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -528,13 +616,9 @@ export class TuiBridge implements IAgentBridge {
     await this.persistence.remove(moduleName);
   }
 
-  /** 在每次对话完成后自动保存（debounced） */
-  private _autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-  autoSave(): void {
-    if (this._autoSaveTimer) clearTimeout(this._autoSaveTimer);
-    this._autoSaveTimer = setTimeout(() => {
-      this.saveSession().catch(() => {});
-    }, 2000);
+  /** 在每次对话完成后自动保存 */
+  public autoSave(): void {
+    this.saveSession().catch(() => {});
   }
 
   /** 保存输入历史 */

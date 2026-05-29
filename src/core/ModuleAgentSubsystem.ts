@@ -378,7 +378,6 @@ export class ModuleAgentSubsystem {
           const preview = typeof data.content === 'object' && (data.content as any)?.text
             ? (data.content as any).text.slice(0, 80)
             : '';
-          self.logger.info(`[ACP] ${name} ← ${update}${preview ? ` "${preview}"` : ''}`);
         }
 
         if (update === 'agent_message_chunk') {
@@ -388,9 +387,19 @@ export class ModuleAgentSubsystem {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.callbacks.onStreamChunk(name, block.text, 'thought');
         } else if (update === 'tool_call') {
-          const tc = data as { title?: string; status?: string };
+          const tc = data as { title?: string; status?: string; input?: Record<string, unknown> };
+          const toolName = tc.title || 'unknown';
+          const toolStatus = tc.status || 'running';
+          const detail = tc.input ? JSON.stringify(tc.input).slice(0, 200) : undefined;
+          self.logger.info(`[${name}] tool_call: ${toolName}`);
+          self.callbacks.onToolCall?.(name, toolName, toolStatus, detail);
           if (tc.status === 'error') {
-            self.callbacks.onStreamError(name, `Tool call failed: ${tc.title || 'unknown'}`);
+            self.callbacks.onStreamError(name, `Tool call failed: ${toolName}`);
+          }
+        } else if (update === 'tool_call_update') {
+          const tc = data as { title?: string; status?: string };
+          if (tc.title && tc.status) {
+            self.callbacks.onToolCall?.(name, tc.title, tc.status);
           }
         }
 

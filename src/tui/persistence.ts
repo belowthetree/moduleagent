@@ -44,17 +44,20 @@ export class TuiPersistence {
     };
     const fp = this._filePath(moduleName);
     await fs.writeFile(fp, JSON.stringify(file, null, 2), 'utf-8');
-    defaultLogger.info(`TuiPersistence: saved ${messages.length} msgs for [${moduleName}]`);
+    defaultLogger.info(`TuiPersistence: saved ${messages.length} msgs for [${moduleName}] to ${fp}`);
   }
 
   /** 加载历史对话 */
   async load(moduleName: string): Promise<ChatMessage[]> {
     const fp = this._filePath(moduleName);
-    if (!(await fs.pathExists(fp))) return [];
+    if (!(await fs.pathExists(fp))) {
+      defaultLogger.info(`TuiPersistence: no saved session at ${fp}`);
+      return [];
+    }
     try {
       const raw = await fs.readFile(fp, 'utf-8');
       const file: SessionFile = JSON.parse(raw);
-      defaultLogger.info(`TuiPersistence: loaded ${file.messages.length} msgs for [${moduleName}]`);
+      defaultLogger.info(`TuiPersistence: loaded ${file.messages.length} msgs for [${moduleName}] from ${fp}`);
       return file.messages.map(m => ({
         id: m.id,
         role: m.role as ChatMessage['role'],
