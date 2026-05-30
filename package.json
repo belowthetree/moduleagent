@@ -1,6 +1,6 @@
 {
   "name": "@belowthetree/module-agent",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "模块化 Agent 编排框架",
   "author": "belowthetree <37807774+belowthetree@users.noreply.github.com>",
   "type": "module",
@@ -54,11 +54,8 @@
       "target": [
         "AppImage",
         "deb"
-      ]
-    },
-    "publish": {
-      "provider": "github",
-      "releaseType": "release"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     }
   },
   "dependencies": {
