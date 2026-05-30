@@ -20,3 +20,4 @@ example/
 release/
 .module-agent.json
 out/
+*.zip
