@@ -14,6 +14,9 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
 
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,7 +54,7 @@ jobs:
 
       - name: Package Electron app
         if: steps.check.outputs.skip == 'false'
-        run: pnpm run dist
+        run: pnpm run dist -- --publish never
 
       - name: Create GitHub Release
         if: steps.check.outputs.skip == 'false'
