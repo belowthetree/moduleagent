@@ -134,7 +134,8 @@ export class ModuleAgentCore {
       getAgentEntry: (moduleName) => {
         const entry = this.modules.getAgent(moduleName);
         if (!entry) return undefined;
-        return { launched: { connection: entry.launched.connection, onSessionUpdate: entry.launched.onSessionUpdate }, sessionId: entry.sessionId };
+        // 返回原始 launched 对象引用，使 McpBackend 可以替换 onSessionUpdate 拦截流
+        return { launched: entry.launched, sessionId: entry.sessionId };
       },
       startAgent: async (moduleName) => {
         await this.modules.startAgent(moduleName);

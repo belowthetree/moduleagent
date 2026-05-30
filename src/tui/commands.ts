@@ -48,6 +48,7 @@ export function executeCommand(input: string): void {
         '/status          — 显示子系统状态',
         '/save [name]     — 保存当前对话',
         '/load [name]     — 加载历史对话',
+        '/clearAll        — 清理所有 agent 上下文及历史记录',
         '/setup           — 重新配置项目',
         '/help            — 显示此帮助',
         '/quit            — 退出 TUI',
@@ -179,6 +180,22 @@ export function executeCommand(input: string): void {
       } else {
         addSystemMsg('Agent 服务未就绪');
       }
+      break;
+    }
+
+    case '/clearall': {
+      const service = getAgentService();
+      if (!service) { addSystemMsg('Agent 服务未就绪'); return; }
+      if (!service.clearAllContexts) {
+        addSystemMsg('clearAll 功能暂不可用');
+        return;
+      }
+      addSystemMsg('正在清理所有 agent 上下文及历史记录...');
+      service.clearAllContexts().then(() => {
+        addSystemMsg('所有 agent 上下文及历史记录已清空。');
+      }).catch((err: Error) => {
+        addSystemMsg(`清理失败: ${err.message}`);
+      });
       break;
     }
 

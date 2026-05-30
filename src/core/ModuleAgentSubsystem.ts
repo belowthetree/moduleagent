@@ -221,9 +221,28 @@ export class ModuleAgentSubsystem {
     const name = moduleName || this.currentModule;
     const entry = this.agents.get(name);
     if (entry) {
-      try { entry.launched.process.kill(); } catch { /* 忽略 */ }
-      this.agents.delete(name);
-      this.logger.info(`clearContext: stopped agent [${name}]`);
+      // 优先调用 newSession 创建新会话（不杀进程，agent 保持运行）
+      try {
+        const mcpServers = buildMcpServers({
+          moduleName: name,
+          basePath: this.basePath,
+          backendPort: this.mcpBackendPort,
+          graphFile: this.mcpGraphFile,
+        });
+        const result = await entry.launched.connection.newSession({ cwd: entry.launched.cwd, mcpServers });
+        entry.sessionId = result.sessionId;
+        this._saveSessionId(name, result.sessionId);
+        this.logger.info(`clearContext: new session for [${name}], sessionId=${result.sessionId}`);
+      } catch (err) {
+        // newSession 失败回退：杀进程，下次使用时自动重启
+        this.logger.warn(`clearContext: newSession failed for [${name}], killing process: ${(err as Error).message}`);
+        try { entry.launched.process.kill(); } catch { /* ignore */ }
+        this.agents.delete(name);
+        this._deleteSessionId(name);
+      }
+    } else {
+      // agent 未运行：只清理 sessionId 文件，防止下次启动时 resume
+      this._deleteSessionId(name);
     }
     this.sessionPrompted.delete(name);
     this.lastSent.delete(name);
@@ -501,6 +520,18 @@ export class ModuleAgentSubsystem {
       this.logger.info(`[session] saved ${moduleName} → ${sessionId}`);
     } catch (err) {
       this.logger.warn(`[session] failed to save sessionId: ${(err as Error).message}`);
+    }
+  }
+
+  private _deleteSessionId(moduleName: string): void {
+    try {
+      const file = path.join(this._sessionStoreDir(), `${this._sanitizeFileName(moduleName)}.json`);
+      if (fs.existsSync(file)) {
+        fs.unlinkSync(file);
+        this.logger.info(`[session] deleted sessionId for [${moduleName}]`);
+      }
+    } catch (err) {
+      this.logger.warn(`[session] failed to delete sessionId: ${(err as Error).message}`);
     }
   }
 

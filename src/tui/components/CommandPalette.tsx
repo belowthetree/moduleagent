@@ -21,7 +21,8 @@ const COMMANDS: CommandItem[] = [
   { name: "/save", description: "保存当前对话" },
   { name: "/load", description: "加载历史对话" },
   { name: "/setup", description: "重新配置项目" },
-  { name: "/clear", description: "清空上下文" },
+  { name: "/clear", description: "清空当前 agent 上下文" },
+  { name: "/clearAll", description: "清理所有 agent 上下文及历史记录" },
   { name: "/help", description: "显示帮助" },
   { name: "/quit", description: "退出 TUI" },
 ];

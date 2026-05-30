@@ -198,7 +198,8 @@ export class TuiBridge implements IAgentBridge {
       onCrossModuleMessage: (source, target, direction, phase, content) => {
         const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
         const statusIcon = phase === 'request' ? '…' : '✓';
-        const toolName = direction === 'sent' ? `→ ${target}` : `← ${source}`;
+        // sent → 目标; received ← 来源（target 始终是通信对方）
+        const toolName = direction === 'sent' ? `→ ${target}` : `← ${target}`;
         const toolMsg: ChatMessage = {
           id: `cross-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           role: 'system', msgType: 'tool_call',
@@ -409,10 +410,11 @@ export class TuiBridge implements IAgentBridge {
         await this.persistence.remove(name);
         defaultLogger.info(`TuiBridge: cleared persisted session [${name}]`);
       }
-      // 删除 sessionId 记录，下次启动将创建新会话
+      // 删除 sessionId 记录（与 ModuleAgentSubsystem._sanitizeFileName 对齐）
       try {
+        const safeName = name.replace(/[<>:"/\\|?*]/g, '_');
         const sessionsDir = path.join(this.core.getProjectRoot(), '.module-agent', 'sessions');
-        const sessionFile = path.join(sessionsDir, `${name}.json`);
+        const sessionFile = path.join(sessionsDir, `${safeName}.json`);
         if (fs.existsSync(sessionFile)) {
           fs.unlinkSync(sessionFile);
           defaultLogger.info(`TuiBridge: removed sessionId file [${name}]`);
@@ -421,6 +423,46 @@ export class TuiBridge implements IAgentBridge {
         defaultLogger.warn(`TuiBridge: failed to remove sessionId: ${(err as Error).message}`);
       }
     }
+  }
+
+  /** 清理所有 agent 的上下文 + 持久化文件 + session 记录 */
+  async clearAllContexts(): Promise<void> {
+    const agents = this.core.getModuleNames();
+    defaultLogger.info(`TuiBridge: clearing all contexts for ${agents.length} agents`);
+    for (const name of agents) {
+      await this.core.clearContext(name); // 内部已处理 newSession + sessionId 文件
+      this.moduleMessages.set(name, []);
+      if (this.persistence) {
+        await this.persistence.remove(name);
+      }
+    }
+    // 清理不在 agent 列表中的残留持久化会话（含 sessionId 文件）
+    if (this.persistence) {
+      const allSessions = await this.persistence.list();
+      for (const sess of allSessions) {
+        if (!agents.includes(sess)) {
+          await this.persistence.remove(sess);
+        }
+      }
+    }
+    // 清理 sessions 目录中不在 agent 列表里的残留 sessionId 文件
+    try {
+      const sessionsDir = path.join(this.core.getProjectRoot(), '.module-agent', 'sessions');
+      if (fs.existsSync(sessionsDir)) {
+        const files = fs.readdirSync(sessionsDir);
+        const agentSessions = new Set(agents.map(n => n.replace(/[<>:"/\\|?*]/g, '_') + '.json'));
+        for (const file of files) {
+          if (file.endsWith('.json') && !agentSessions.has(file)) {
+            fs.unlinkSync(path.join(sessionsDir, file));
+          }
+        }
+      }
+    } catch (err) {
+      defaultLogger.warn(`TuiBridge: failed to clean sessions dir: ${(err as Error).message}`);
+    }
+    this.moduleMessages.clear();
+    this.syncMessages();
+    defaultLogger.info('TuiBridge: all contexts cleared');
   }
 
   // -----------------------------------------------------------------------

@@ -163,8 +163,10 @@ export class McpBackendServer {
           if (sid === entry.sessionId) {
             const u = notification.update;
             if (u.sessionUpdate === 'agent_message_chunk') {
-              const block = (u as { content?: { type?: string; text?: string; thinking?: string } }).content;
-              const text = block?.type === 'text' ? block.text : block?.type === 'thinking' ? block.thinking : undefined;
+              const text = (u as { content?: { text?: string } }).content?.text;
+              if (text) chunks.push(text);
+            } else if (u.sessionUpdate === 'agent_thought_chunk') {
+              const text = (u as { content?: { thinking?: string } }).content?.thinking;
               if (text) chunks.push(text);
             }
           }
