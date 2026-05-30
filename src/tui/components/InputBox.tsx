@@ -26,7 +26,6 @@ export default function InputBox(props: {
   // 仅在输入以 "/" 开头时自动显示/隐藏命令面板
   createEffect(() => {
     const val = tuiState.inputValue();
-    defaultLogger.info(`[InputBox] createEffect value: ${val}`);
     if (val.startsWith("/")) {
       tuiState.setShowCommands(true);
     } else {
