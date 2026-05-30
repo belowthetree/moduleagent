@@ -205,11 +205,13 @@ export class TuiBridge implements IAgentBridge {
           content: `${statusIcon} module_call ${toolName}: ${shortContent}`,
           time: new Date().toLocaleTimeString(),
         };
-        for (const mod of [source, target]) {
-          if (!self.moduleMessages.has(mod)) self.moduleMessages.set(mod, []);
-          self.moduleMessages.get(mod)!.push({ ...toolMsg });
-        }
-        if (self.core.getCurrentAgent() === source || self.core.getCurrentAgent() === target) self.syncMessages();
+        // 按方向分配：McpBackend 约定 source 永远是消息归属模块
+        //   sent:    source 发给 target → 归 source
+        //   received: source 收到来自 target → 归 source
+        const ownerModule = source;
+        if (!self.moduleMessages.has(ownerModule)) self.moduleMessages.set(ownerModule, []);
+        self.moduleMessages.get(ownerModule)!.push({ ...toolMsg });
+        if (self.core.getCurrentAgent() === ownerModule) self.syncMessages();
       },
       onModuleStatusChange: (moduleName, status) => {
         self.moduleStatuses.set(moduleName, status);

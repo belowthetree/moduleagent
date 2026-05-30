@@ -173,9 +173,10 @@ export default function InputBox(props: {
   });
 
   // 粘贴处理
-  usePaste((event: { bytes: Uint8Array }) => {
+  usePaste((event: { bytes: Uint8Array; preventDefault?: () => void }) => {
     if (tuiState.screen() !== 'chat') return;
     if (tuiState.agentStatus() === 'streaming') return;
+    event.preventDefault?.(); // 阻止 <input> 内置粘贴，避免双重写入
     const text = new TextDecoder().decode(event.bytes);
     tuiState.setInputValue(tuiState.inputValue() + text);
     renderer.requestRender();

@@ -191,20 +191,22 @@ export class McpBackendServer {
             }),
           );
 
-          if (requestingModule && targetModule && responseText) {
+          // 始终通知双方通信结果（即使 agent 未产生文本回复）
+          const crossResponseText = responseText || `(无文本, stopReason: ${result.stopReason})`;
+          if (requestingModule && targetModule) {
             this.callbacks.sendCrossContext?.(
               targetModule,
               requestingModule,
               'sent',
               'response',
-              responseText.slice(0, 200),
+              crossResponseText.slice(0, 200),
             );
             this.callbacks.sendCrossContext?.(
               requestingModule,
               targetModule,
               'received',
               'response',
-              responseText.slice(0, 200),
+              crossResponseText.slice(0, 200),
             );
           }
         } catch (err) {
