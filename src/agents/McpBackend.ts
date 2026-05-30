@@ -134,7 +134,12 @@ export class McpBackendServer {
         const requestingModule = msg.requestingModule || '';
         const taskContent = msg.task || msg.query || '';
 
+        if (!this.callbacks.sendCrossContext) {
+          this.log('warn', 'cross-context: sendCrossContext callback not registered');
+        }
+
         if (requestingModule && targetModule) {
+          this.log('info', `cross-context: ${requestingModule} → ${targetModule} [request]: ${taskContent.slice(0, 80)}`);
           this.callbacks.sendCrossContext?.(
             requestingModule,
             targetModule,

@@ -34,6 +34,8 @@ export interface ReactiveTuiState {
   setHistoryIndex: (v: number) => void;
   activeCounts: () => { modules: number; roles: number; workflows: number };
   setActiveCounts: (v: { modules: number; roles: number; workflows: number }) => void;
+  agentCwd: () => string;
+  setAgentCwd: (v: string) => void;
 }
 
 export function createTuiState(): ReactiveTuiState {
@@ -53,6 +55,7 @@ export function createTuiState(): ReactiveTuiState {
   const [historyIndex, setHistoryIndex] = createSignal(-1);
   const [activeCounts, setActiveCounts] = createSignal({ modules: 0, roles: 0, workflows: 0 });
   const [collapsedThoughts, setCollapsedThoughts] = createSignal<Set<string>>(new Set());
+  const [agentCwd, setAgentCwd] = createSignal('');
 
   return {
     screen,
@@ -87,6 +90,8 @@ export function createTuiState(): ReactiveTuiState {
     setHistoryIndex,
     activeCounts,
     setActiveCounts,
+    agentCwd,
+    setAgentCwd,
   };
 }
 

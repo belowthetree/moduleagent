@@ -394,11 +394,13 @@ export class ModuleAgentSubsystem {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.callbacks.onStreamChunk(name, block.text, 'thought');
         } else if (update === 'tool_call') {
-          const tc = data as { title?: string; status?: string; input?: Record<string, unknown> };
+          const tc = data as { title?: string; status?: string; input?: Record<string, unknown>; arguments?: Record<string, unknown>; params?: Record<string, unknown>; toolCall?: Record<string, unknown> };
           const toolName = tc.title || 'unknown';
           const toolStatus = tc.status || 'running';
-          const detail = tc.input ? JSON.stringify(tc.input).slice(0, 200) : undefined;
-          self.logger.info(`[${name}] tool_call: ${toolName} input=${detail || '(none)'}`);
+          // 尝试多个可能的参数字段
+          const toolInput = tc.input || tc.arguments || tc.params || tc.toolCall;
+          const detail = toolInput ? JSON.stringify(toolInput).slice(0, 200) : undefined;
+          self.logger.info(`[${name}] tool_call: ${toolName} input=${detail || '(none)'} raw=${JSON.stringify(data).slice(0, 200)}`);
           self.callbacks.onToolCall?.(name, toolName, toolStatus, detail);
           if (tc.status === 'error') {
             self.callbacks.onStreamError(name, `Tool call failed: ${toolName}`);
@@ -486,11 +488,15 @@ export class ModuleAgentSubsystem {
     return path.join(this.projectRoot, '.module-agent', 'sessions');
   }
 
+  private _sanitizeFileName(name: string): string {
+    return name.replace(/[<>:"/\\|?*]/g, '_');
+  }
+
   private _saveSessionId(moduleName: string, sessionId: string): void {
     try {
       const dir = this._sessionStoreDir();
       fs.ensureDirSync(dir);
-      const file = path.join(dir, `${moduleName}.json`);
+      const file = path.join(dir, `${this._sanitizeFileName(moduleName)}.json`);
       fs.writeJsonSync(file, { sessionId, savedAt: new Date().toISOString() });
       this.logger.info(`[session] saved ${moduleName} → ${sessionId}`);
     } catch (err) {
@@ -500,7 +506,7 @@ export class ModuleAgentSubsystem {
 
   private _loadSessionId(moduleName: string): string | null {
     try {
-      const file = path.join(this._sessionStoreDir(), `${moduleName}.json`);
+      const file = path.join(this._sessionStoreDir(), `${this._sanitizeFileName(moduleName)}.json`);
       if (fs.existsSync(file)) {
         const data = fs.readJsonSync(file) as { sessionId: string };
         return data.sessionId || null;

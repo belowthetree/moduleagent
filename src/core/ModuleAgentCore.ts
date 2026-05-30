@@ -121,14 +121,14 @@ export class ModuleAgentCore {
       // 启动 MCP 后端（跨模块通信）
       await this.startMcpBackend();
     } catch (err) {
-      this.logger.warn(`ModuleAgentCore: role/workflow/mcp init skipped: ${(err as Error).message}`);
+      this.logger.warn(`ModuleAgentCore: role/workflow init skipped: ${(err as Error).message}`);
     }
 
     return result;
   }
 
   /** 启动 MCP HTTP 后端，使模块间可以通过 module_call/module_query 通信 */
-  async startMcpBackend(extraCallbacks?: Partial<McpBackendCallbacks>): Promise<void> {
+  async startMcpBackend(): Promise<void> {
     if (this.mcpBackend) return;
     const callbacks: McpBackendCallbacks = {
       getAgentEntry: (moduleName) => {
@@ -141,7 +141,12 @@ export class ModuleAgentCore {
         return true;
       },
       buildPromptBlocks: (moduleName, userText) => this.modules.buildPromptBlocksForModule(moduleName, userText),
-      ...extraCallbacks,
+      sendCrossContext: (source, target, direction, phase, content) => {
+        this.callbacks.onCrossModuleMessage?.(source, target, direction, phase, content);
+      },
+      setAgentStatus: (moduleName, status) => {
+        this.callbacks.onModuleStatusChange?.(moduleName, status);
+      },
     };
     this.mcpBackend = new McpBackendServer(callbacks);
     const port = await this.mcpBackend.start();

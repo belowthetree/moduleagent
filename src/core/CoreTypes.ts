@@ -25,6 +25,10 @@ export interface CoreCallbacks {
   onMessage: (message: CoreMessage) => void;
   /** 工具调用通知。moduleName: 触发模块, toolName: 工具名, toolStatus: 状态, toolDetail: 详细信息 */
   onToolCall?: (moduleName: string, toolName: string, toolStatus: string, toolDetail?: string) => void;
+  /** 跨模块通信消息。source: 发起模块, target: 目标模块, direction: sent/received, phase: request/response, content: 消息内容 */
+  onCrossModuleMessage?: (source: string, target: string, direction: 'sent' | 'received', phase: 'request' | 'response', content: string) => void;
+  /** 模块状态变更通知（由跨模块通信触发） */
+  onModuleStatusChange?: (moduleName: string, status: 'idle' | 'streaming' | 'error') => void;
 }
 
 // ============================================================================

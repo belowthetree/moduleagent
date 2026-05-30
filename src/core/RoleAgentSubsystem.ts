@@ -76,8 +76,9 @@ export class RoleAgentSubsystem {
             const block = data.content as { type?: string; text?: string } | undefined;
             if (block?.text) self.callbacks.onStreamChunk(roleName, block.text, 'thought');
           } else if (update === 'tool_call') {
-            const tc = data as { title?: string; status?: string; input?: Record<string, unknown> };
-            const detail = tc.input ? JSON.stringify(tc.input).slice(0, 200) : undefined;
+            const tc = data as { title?: string; status?: string; input?: Record<string, unknown>; arguments?: Record<string, unknown> };
+            const toolInput = tc.input || tc.arguments;
+            const detail = toolInput ? JSON.stringify(toolInput).slice(0, 200) : undefined;
             self.logger.info(`[${roleName}] tool_call: ${tc.title} input=${detail || '(none)'}`);
             self.callbacks.onToolCall?.(roleName, tc.title || 'unknown', tc.status || 'running', detail);
             if (tc.status === 'error') {

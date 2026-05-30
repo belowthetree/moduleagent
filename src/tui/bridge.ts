@@ -34,13 +34,47 @@ export class TuiBridge implements IAgentBridge {
   private moduleStatuses = new Map<string, AgentStatus>();
   private roleStatuses = new Map<string, AgentStatus>();
 
-  // 流式消息 ID 跟踪 — 用于区分 reply 和 thought 追加
-  private currentReplyMsgId: string | null = null;
-  private currentThoughtMsgId: string | null = null;
+  // 每个模块独立的消息存储
+  private moduleMessages = new Map<string, ChatMessage[]>();
+
+  // 每个模块的流式消息 ID 跟踪
+  private moduleStreamState = new Map<string, { replyId: string | null; thoughtId: string | null }>();
 
   // 持久化
   private persistence: TuiPersistence | null = null;
   private historyStore: InputHistoryPersistence | null = null;
+
+  // 便捷：当前模块的消息列表
+  private get currentMsgs(): ChatMessage[] {
+    const name = this.core.getCurrentAgent() || 'main';
+    if (!this.moduleMessages.has(name)) this.moduleMessages.set(name, []);
+    return this.moduleMessages.get(name)!;
+  }
+
+  // 便捷：当前模块的流式 ID
+  private get currentReplyMsgId(): string | null {
+    return this.moduleStreamState.get(this.core.getCurrentAgent())?.replyId ?? null;
+  }
+  private set currentReplyMsgId(id: string | null) {
+    const name = this.core.getCurrentAgent();
+    const s = this.moduleStreamState.get(name) || { replyId: null, thoughtId: null };
+    s.replyId = id;
+    this.moduleStreamState.set(name, s);
+  }
+  private get currentThoughtMsgId(): string | null {
+    return this.moduleStreamState.get(this.core.getCurrentAgent())?.thoughtId ?? null;
+  }
+  private set currentThoughtMsgId(id: string | null) {
+    const name = this.core.getCurrentAgent();
+    const s = this.moduleStreamState.get(name) || { replyId: null, thoughtId: null };
+    s.thoughtId = id;
+    this.moduleStreamState.set(name, s);
+  }
+
+  /** 将当前模块的消息同步到 tuiState（触发 UI 更新） */
+  private syncMessages(): void {
+    tuiState.setMessages([...this.currentMsgs]);
+  }
 
   constructor() {
     this.summarizer = new ExperienceSummarizer(defaultLogger);
@@ -50,16 +84,15 @@ export class TuiBridge implements IAgentBridge {
     const callbacks: CoreCallbacks = {
       onStreamChunk: (moduleName, text, type) => {
         if (type === 'message') {
-          self.appendToStreamMsg(self.currentReplyMsgId, text, 'agent_reply');
+          self.appendToStreamMsg(self.currentReplyMsgId, text, 'agent_reply', moduleName);
         } else if (type === 'thought') {
-          self.appendToStreamMsg(self.currentThoughtMsgId, text, 'agent_thought');
+          self.appendToStreamMsg(self.currentThoughtMsgId, text, 'agent_thought', moduleName);
         }
       },
       onStreamComplete: (moduleName) => {
         self.finalizeStreamMsg(self.currentReplyMsgId);
         self.finalizeStreamMsg(self.currentThoughtMsgId);
 
-        // 自动折叠推理消息
         if (self.currentThoughtMsgId) {
           const set = new Set(tuiState.collapsedThoughts());
           set.add(self.currentThoughtMsgId);
@@ -75,24 +108,21 @@ export class TuiBridge implements IAgentBridge {
       onStreamError: (moduleName, error) => {
         self.setStatus('error');
         self.moduleStatuses.set(moduleName, 'error');
-        const msg: ChatMessage = {
-          id: `err-${Date.now()}`,
-          role: 'system',
-          msgType: 'system',
-          content: `Error: ${error}`,
-          time: new Date().toLocaleTimeString(),
-        };
-        tuiState.setMessages([...tuiState.messages(), msg]);
+        self.currentMsgs.push({
+          id: `err-${Date.now()}`, role: 'system', msgType: 'system',
+          content: `Error: ${error}`, time: new Date().toLocaleTimeString(),
+        });
+        self.syncMessages();
       },
       onStatusChange: (status: CoreStatus) => {
         self.setStatus(status);
       },
       onMessage: (message: CoreMessage) => {
-        const msg: ChatMessage = {
+        self.currentMsgs.push({
           ...message,
           msgType: message.role === 'system' ? 'system' : 'agent_reply',
-        };
-        tuiState.setMessages([...tuiState.messages(), msg]);
+        });
+        self.syncMessages();
       },
       onToolCall: (moduleName, toolName, toolStatus, toolDetail) => {
         // 工具调用作为消息块边界：结束之前的消息块，新开后续消息块
@@ -102,6 +132,9 @@ export class TuiBridge implements IAgentBridge {
         self.currentThoughtMsgId = `thought-${Date.now()}`;
 
         defaultLogger.info(`[TUI] onToolCall: module=${moduleName} tool=${toolName} status=${toolStatus} detail=${toolDetail || '(none)'}`);
+
+        // 确保目标模块有消息列表
+        if (!self.moduleMessages.has(moduleName)) self.moduleMessages.set(moduleName, []);
 
         const statusIcon = toolStatus === 'completed' ? '✓' : toolStatus === 'error' ? '✗' : '…';
         // 清理工具名：module-agent_module_query → module_query
@@ -140,26 +173,46 @@ export class TuiBridge implements IAgentBridge {
         } catch { /* ignore */ }
 
         const content = `${statusIcon} ${displayName} ${extra}`.trim();
+
+        // 跨模块工具（module_call / module_query）无详情时跳过，由 sendCrossContext 提供完整信息
+        const isCrossModule = displayName === 'module_call' || displayName === 'module_query';
+        if (isCrossModule && !extra) {
+          return;
+        }
+
         // 查找或创建工具消息
         const existingId = `tool-${moduleName}-${toolName}`;
-        const msgs = tuiState.messages();
+        const msgs = self.moduleMessages.get(moduleName) || [];
         const existing = msgs.find(m => m.id === existingId && m.msgType === 'tool_call');
         if (existing) {
-          // 更新状态
-          const updated = [...msgs];
-          const idx = updated.indexOf(existing);
-          updated[idx] = { ...existing, content };
-          tuiState.setMessages(updated);
+          const mergedContent = content.length > existing.content.length ? content : existing.content;
+          existing.content = mergedContent;
         } else {
-          const toolMsg: ChatMessage = {
-            id: existingId,
-            role: 'system',
-            msgType: 'tool_call',
-            content,
-            time: new Date().toLocaleTimeString(),
-          };
-          tuiState.setMessages([...msgs, toolMsg]);
+          msgs.push({
+            id: existingId, role: 'system', msgType: 'tool_call',
+            content, time: new Date().toLocaleTimeString(),
+          });
         }
+        if (moduleName === self.core.getCurrentAgent()) self.syncMessages();
+      },
+      onCrossModuleMessage: (source, target, direction, phase, content) => {
+        const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
+        const statusIcon = phase === 'request' ? '…' : '✓';
+        const toolName = direction === 'sent' ? `→ ${target}` : `← ${source}`;
+        const toolMsg: ChatMessage = {
+          id: `cross-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          role: 'system', msgType: 'tool_call',
+          content: `${statusIcon} module_call ${toolName}: ${shortContent}`,
+          time: new Date().toLocaleTimeString(),
+        };
+        for (const mod of [source, target]) {
+          if (!self.moduleMessages.has(mod)) self.moduleMessages.set(mod, []);
+          self.moduleMessages.get(mod)!.push({ ...toolMsg });
+        }
+        if (self.core.getCurrentAgent() === source || self.core.getCurrentAgent() === target) self.syncMessages();
+      },
+      onModuleStatusChange: (moduleName, status) => {
+        self.moduleStatuses.set(moduleName, status);
       },
     };
 
@@ -175,10 +228,10 @@ export class TuiBridge implements IAgentBridge {
         if (update) defaultLogger.info(`[ACP:role] ${roleName} ← ${update}`);
         if (update === 'agent_message_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.appendToStreamMsg(self.currentReplyMsgId, block.text, 'agent_reply');
+          if (block?.text) self.appendToStreamMsg(self.currentReplyMsgId, block.text, 'agent_reply', roleName);
         } else if (update === 'agent_thought_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.appendToStreamMsg(self.currentThoughtMsgId, block.text, 'agent_thought');
+          if (block?.text) self.appendToStreamMsg(self.currentThoughtMsgId, block.text, 'agent_thought', roleName);
         }
       },
       onWorkflowSessionUpdate: (agentName, sessionId, notification) => {
@@ -187,10 +240,10 @@ export class TuiBridge implements IAgentBridge {
         if (update) defaultLogger.info(`[ACP:wf] ${agentName} ← ${update}`);
         if (update === 'agent_message_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.appendToStreamMsg(self.currentReplyMsgId, block.text, 'agent_reply');
+          if (block?.text) self.appendToStreamMsg(self.currentReplyMsgId, block.text, 'agent_reply', agentName);
         } else if (update === 'agent_thought_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.appendToStreamMsg(self.currentThoughtMsgId, block.text, 'agent_thought');
+          if (block?.text) self.appendToStreamMsg(self.currentThoughtMsgId, block.text, 'agent_thought', agentName);
         }
       },
       onCrossContext: (source, target, direction, phase, content) => {
@@ -215,28 +268,7 @@ export class TuiBridge implements IAgentBridge {
 
   async init(projectRoot: string): Promise<InitResult> {
     const result = await this.core.initAll(projectRoot);
-
-    // 注入 TUI 特有的 MCP 回调（跨模块通知）
-    try {
-      const self = this;
-      await this.core.startMcpBackend({
-        sendCrossContext(source, target, direction, phase, content) {
-          const arrow = direction === 'sent' ? '→' : '←';
-          const label = phase === 'request' ? '请求' : '响应';
-          const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
-          tuiState.setMessages([...tuiState.messages(), {
-            id: `cross-${Date.now()}`, role: 'system', msgType: 'cross_context',
-            content: `${arrow} ${source} → ${target} [${label}]: ${shortContent}`,
-            time: new Date().toLocaleTimeString(),
-          }]);
-        },
-        setAgentStatus(moduleName, status) {
-          self.moduleStatuses.set(moduleName, status);
-        },
-      });
-    } catch (err) {
-      defaultLogger.warn(`TuiBridge: MCP backend failed to start: ${(err as Error).message}`);
-    }
+    tuiState.setAgentCwd(projectRoot);
 
     // 初始化持久化
     this.persistence = new TuiPersistence(projectRoot);
@@ -261,6 +293,7 @@ export class TuiBridge implements IAgentBridge {
         defaultLogger.info(`TuiBridge: available sessions: [${sessions.join(', ')}]`);
         if (sessions.length > 0) {
           history = await this.persistence.load(sessions[0]!);
+          this.moduleMessages.set(sessions[0]!, history);
           defaultLogger.info(`TuiBridge: first session [${sessions[0]}] has ${history.length} msgs`);
           if (history.length > 0) {
             defaultLogger.info(`TuiBridge: no history for [${rootAgent}], loaded [${sessions[0]}]`);
@@ -268,7 +301,8 @@ export class TuiBridge implements IAgentBridge {
         }
       }
       if (history.length > 0) {
-        tuiState.setMessages(history);
+        this.moduleMessages.set(rootAgent, history);
+        this.syncMessages();
         const collapsed = new Set<string>();
         for (const m of history) {
           if (m.msgType === 'agent_thought' && m.content) {
@@ -300,14 +334,12 @@ export class TuiBridge implements IAgentBridge {
       const targetType = tuiState.currentTarget();
 
       // 用户消息
-      const userMsg: ChatMessage = {
+      this.currentMsgs.push({
         id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        role: 'user',
-        msgType: 'user',
-        content: text,
+        role: 'user', msgType: 'user', content: text,
         time: new Date().toLocaleTimeString(),
-      };
-      tuiState.setMessages([...tuiState.messages(), userMsg]);
+      });
+      this.syncMessages();
 
       // 设置流式消息 ID（消息块在首次收到数据时按到达顺序创建）
       const now = Date.now();
@@ -344,14 +376,11 @@ export class TuiBridge implements IAgentBridge {
       // 自动保存对话（debounced）
       this.autoSave();
     } catch (err) {
-      const msg: ChatMessage = {
-        id: `err-${Date.now()}`,
-        role: 'system',
-        msgType: 'system',
-        content: `Send failed: ${(err as Error).message}`,
-        time: new Date().toLocaleTimeString(),
-      };
-      tuiState.setMessages([...tuiState.messages(), msg]);
+      this.currentMsgs.push({
+        id: `err-${Date.now()}`, role: 'system', msgType: 'system',
+        content: `Send failed: ${(err as Error).message}`, time: new Date().toLocaleTimeString(),
+      });
+      this.syncMessages();
       this.setStatus('error');
       return { error: (err as Error).message };
     }
@@ -371,7 +400,8 @@ export class TuiBridge implements IAgentBridge {
     await this.core.clearContext(moduleName);
     const name = moduleName || this.core.getCurrentAgent();
     if (name) {
-      tuiState.setMessages([]);
+      this.moduleMessages.set(name, []);
+      this.syncMessages();
       // 同时清除持久化的对话文件和 session 文件
       if (this.persistence) {
         await this.persistence.remove(name);
@@ -425,26 +455,23 @@ export class TuiBridge implements IAgentBridge {
     await this.core.setCurrentAgent(name);
     tuiState.setCurrentAgent(name);
     this.loadedModules.add(name);
+    tuiState.setAgentCwd(this.getAgentCwd());
 
     // 加载该模块的历史对话
     if (this.persistence) {
       defaultLogger.info(`TuiBridge: loading history for switched module [${name}]`);
-      const history = await this.persistence.load(name);
-      defaultLogger.info(`TuiBridge: [${name}] history: ${history.length} msgs`);
-      if (history.length > 0) {
-        tuiState.setMessages(history);
-        const collapsed = new Set<string>();
-        for (const m of history) {
-          if (m.msgType === 'agent_thought' && m.content) {
-            collapsed.add(m.id);
-          }
-        }
-        tuiState.setCollapsedThoughts(collapsed);
-        defaultLogger.info(`TuiBridge: loaded ${history.length} msgs for [${name}]`);
-      } else {
-        tuiState.setMessages([]);
-        tuiState.setCollapsedThoughts(new Set());
+      // 合并持久化历史和内存中的消息（跨模块通信可能已写入）
+      const persisted = await this.persistence.load(name);
+      const inMemory = this.moduleMessages.get(name) || [];
+      const merged = persisted.length >= inMemory.length ? persisted : inMemory;
+      this.moduleMessages.set(name, merged);
+      this.syncMessages();
+      const collapsed = new Set<string>();
+      for (const m of merged) {
+        if (m.msgType === 'agent_thought' && m.content) collapsed.add(m.id);
       }
+      tuiState.setCollapsedThoughts(collapsed);
+      defaultLogger.info(`TuiBridge: [${name}] active msgs: ${merged.length}`);
     }
 
     // 立即初始化 Agent（触发 session resume）
@@ -585,6 +612,12 @@ export class TuiBridge implements IAgentBridge {
     return this.loadedModules;
   }
 
+  /** 获取当前 Agent 的工作目录 */
+  getAgentCwd(): string {
+    const entry = this.core.modules.getAgent(this.core.getCurrentAgent());
+    return entry?.modulePath || this.core.getProjectRoot();
+  }
+
   /** 设置当前交互目标类型 */
   setTargetType(type: 'module' | 'role' | 'workflow'): void {
     tuiState.setCurrentTarget(type);
@@ -605,42 +638,31 @@ export class TuiBridge implements IAgentBridge {
   }
 
   /** 追加文本到指定 ID 的流式消息，若消息不存在则按到达顺序创建 */
-  private appendToStreamMsg(msgId: string | null, text: string, msgType: MessageType): void {
-    if (!msgId) return;
-    const msgs = tuiState.messages();
-    let idx = msgs.findIndex(m => m.id === msgId);
+  private appendToStreamMsg(msgId: string | null, text: string, msgType: MessageType, moduleName?: string): void {
+    const targetModule = moduleName || this.core.getCurrentAgent();
+    if (!this.moduleMessages.has(targetModule)) this.moduleMessages.set(targetModule, []);
+    const msgs = this.moduleMessages.get(targetModule)!;
+
+    // 如果没有 msgId，为该模块创建新的流式上下文
+    const id = msgId || `${msgType}-${Date.now()}`;
+
+    let idx = msgs.findIndex(m => m.id === id);
     if (idx === -1) {
-      // 首次到达 — 按时间顺序插入消息列表末尾
-      const newMsg: ChatMessage = {
-        id: msgId,
-        role: 'agent',
-        msgType,
-        content: text,
-        time: '',
-      };
-      tuiState.setMessages([...msgs, newMsg]);
-      return;
+      msgs.push({ id, role: 'agent', msgType, content: text, time: '' });
+    } else {
+      msgs[idx] = { ...msgs[idx]!, content: msgs[idx]!.content + text };
     }
-    const updated = [...msgs];
-    updated[idx] = {
-      ...updated[idx]!,
-      content: updated[idx]!.content + text,
-    };
-    tuiState.setMessages(updated);
+    if (targetModule === this.core.getCurrentAgent()) this.syncMessages();
   }
 
   /** 标记流式消息完成（设置时间戳） */
   private finalizeStreamMsg(msgId: string | null): void {
     if (!msgId) return;
-    const msgs = tuiState.messages();
+    const msgs = this.currentMsgs;
     const idx = msgs.findIndex(m => m.id === msgId);
     if (idx === -1) return;
-    const updated = [...msgs];
-    updated[idx] = {
-      ...updated[idx]!,
-      time: new Date().toLocaleTimeString(),
-    };
-    tuiState.setMessages(updated);
+    msgs[idx] = { ...msgs[idx]!, time: new Date().toLocaleTimeString() };
+    this.syncMessages();
   }
 
   // -----------------------------------------------------------------------
@@ -652,7 +674,8 @@ export class TuiBridge implements IAgentBridge {
     if (!this.persistence) return;
     const name = moduleName || this.core.getCurrentAgent();
     if (!name) return;
-    await this.persistence.save(name, tuiState.messages());
+    const msgs = moduleName ? (this.moduleMessages.get(moduleName) || this.currentMsgs) : this.currentMsgs;
+    await this.persistence.save(name, msgs);
     defaultLogger.info(`TuiBridge: session saved for [${name}]`);
   }
 
@@ -676,8 +699,9 @@ export class TuiBridge implements IAgentBridge {
 
   /** 在每次对话完成后自动保存 */
   public autoSave(): void {
-    defaultLogger.info(`TuiBridge: autoSave — [${this.core.getCurrentAgent()}] ${tuiState.messages().length} msgs`);
-    this.saveSession().catch((err) => defaultLogger.warn(`TuiBridge: autoSave error: ${(err as Error).message}`));
+    const name = this.core.getCurrentAgent();
+    defaultLogger.info(`TuiBridge: autoSave — [${name}] ${this.currentMsgs.length} msgs`);
+    this.saveSession(name).catch((err) => defaultLogger.warn(`TuiBridge: autoSave error: ${(err as Error).message}`));
   }
 
   /** 保存输入历史 */

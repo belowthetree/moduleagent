@@ -177,8 +177,7 @@ export function executeCommand(input: string): void {
           addSystemMsg(`清空失败: ${err.message}`);
         });
       } else {
-        tuiState.setMessages([]);
-        addSystemMsg('上下文已清空（仅 UI）');
+        addSystemMsg('Agent 服务未就绪');
       }
       break;
     }
