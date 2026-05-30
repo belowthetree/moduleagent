@@ -14,3 +14,8 @@ files:
 win:
   target: portable
   icon: null
+linux:
+  target:
+    - AppImage
+    - deb
+  artifactName: ${productName}-${version}-${arch}.${ext}

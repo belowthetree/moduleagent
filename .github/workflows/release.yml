@@ -54,7 +54,7 @@ jobs:
 
       - name: Package Electron app
         if: steps.check.outputs.skip == 'false'
-        run: pnpm run dist -- --publish never
+        run: npx electron-builder build --publish never
 
       - name: Create GitHub Release
         if: steps.check.outputs.skip == 'false'
