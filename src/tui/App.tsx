@@ -1,4 +1,5 @@
-import { useKeyboard } from '@opentui/solid';
+import { useKeyboard, useRenderer, useSelectionHandler } from '@opentui/solid';
+import type { Selection } from '@opentui/core';
 import { tuiState } from './state.js';
 import type { ChatMessage } from './types.js';
 import StatusBar from './components/StatusBar.js';
@@ -32,6 +33,15 @@ function addUserMessage(text: string) {
 
 export default function App() {
   const screen = () => tuiState.screen();
+  const renderer = useRenderer();
+
+  // 文本选择 → 自动拷入系统剪贴板 (OSC 52)
+  useSelectionHandler((selection: Selection) => {
+    const text = selection.getSelectedText();
+    if (text) {
+      renderer.copyToClipboardOSC52(text);
+    }
+  });
 
   // Esc 关闭模块树
   useKeyboard((key) => {

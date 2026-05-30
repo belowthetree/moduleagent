@@ -17,15 +17,14 @@ export async function startTui(projectRoot: string) {
     autoFocus: false,
   });
 
-  // ── Ctrl+D 退出，流式中 Ctrl+C 取消 ──
-  renderer.keyInput.on('keypress', (key: { name: string; ctrl: boolean }) => {
+  // ── 键盘快捷键 ──
+  renderer.keyInput.on('keypress', (key: { name: string; ctrl: boolean; shift: boolean }) => {
     if (key.name === 'c' && key.ctrl) {
       // Ctrl+C: 流式输出中取消当前请求
       if (tuiState.agentStatus() === 'streaming') {
         tuiState.setAgentStatus('idle');
         (globalThis as any).__tuiCancelStream?.();
       }
-      // 非流式时不做任何事（留给终端原生的复制快捷键处理）
     }
     if (key.name === 'd' && key.ctrl) {
       // Ctrl+D: 先保存再退出
@@ -45,12 +44,7 @@ export async function startTui(projectRoot: string) {
     }
   });
 
-  // ── 文本选择 → 自动复制到剪贴板 ──
-  renderer.on('selection', (selection: { text: string }) => {
-    if (selection.text) {
-      renderer.copyToClipboardOSC52(selection.text);
-    }
-  });
+
 
   // ── 桥接层 ──
   const bridge = new TuiBridge();

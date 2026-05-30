@@ -50,7 +50,7 @@ export default function ContextArea() {
                 <box flexDirection="column">
                   <text fg="#555555">{rule}</text>
                   <box flexDirection="row" justifyContent="space-between" padding={0}>
-                    <text selectable={true}>{msg.content}</text>
+                    <text selectable>{msg.content}</text>
                     <text fg="#666666">{msg.time}</text>
                   </box>
                   <text fg="#555555">{rule}</text>
@@ -88,7 +88,7 @@ export default function ContextArea() {
                     <box
                       flexDirection="row"
                       justifyContent="space-between"
-                      onMouseDown={toggle}
+                      onMouseDown={isThought ? (e: any) => { toggle?.(); e?.preventDefault?.(); } : undefined}
                     >
                       <text fg={fg} style={{ italic: true }}>
                         {isThought ? (collapsed ? '▸ ' : '▾ ') : ''}{label}
@@ -96,13 +96,13 @@ export default function ContextArea() {
                       {msg.time ? <text fg="#666666">{msg.time}</text> : null}
                     </box>
                     {collapsed ? (
-                      <text fg="#555555" dim selectable={true}>
+                      <text fg="#555555" dim selectable>
                         {msg.content.length > 60
                           ? msg.content.slice(0, 60).replace(/\n/g, ' ') + '…'
                           : msg.content.replace(/\n/g, ' ')}
                       </text>
                     ) : (
-                      <text selectable={true}>{msg.content}</text>
+                      <text selectable>{msg.content}</text>
                     )}
                   </box>
                 </box>
