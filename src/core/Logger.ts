@@ -59,9 +59,31 @@ export class Logger {
     this.currentDate = file;
   }
 
+  /** 从调用栈中提取调用者的文件位置 */
+  private getCaller(): string {
+    const stack = new Error().stack?.split('\n') || [];
+    // 跳过: Error, getCaller, write/writeSync, log method, 最终的 caller
+    // format: "    at Class.method (file:line:col)" or "    at file:line:col"
+    for (let i = 3; i < stack.length; i++) {
+      const line = stack[i];
+      if (!line) continue;
+      // 跳过 Logger 自身的帧
+      if (line.includes('Logger.') || line.includes('Logger.ts')) continue;
+      const match = line.match(/\((.+?):(\d+):(\d+)\)/) || line.match(/at\s+(.+?):(\d+):(\d+)/);
+      if (match) {
+        const file = match[1]!.replace(/\\/g, '/');
+        // 只取项目内文件的短路径
+        const short = file.includes('/src/') ? 'src/' + file.split('/src/').pop()! : file.split('/').slice(-2).join('/');
+        return `${short}:${match[2]}`;
+      }
+    }
+    return '';
+  }
+
   private format(level: string, message: string): string {
     const ts = new Date().toISOString().replace('T', ' ').slice(0, 23);
-    return `[${ts}] [${level}] ${message}\n`;
+    const loc = this.getCaller();
+    return `[${ts}] [${level}]${loc ? ` [${loc}]` : ''} ${message}\n`;
   }
 
   private async write(level: string, message: string): Promise<void> {
