@@ -28,7 +28,7 @@ export function executeCommand(input: string): void {
         '/tree            — 显示模块树形结构 (含状态)',
         '/rescan          — 重新扫描模块',
         '/get <name>      — 查看模块详情',
-        '/mode <id>       — 切换 agent 模式',
+        '/module <name>   — 切换模块',
         '/clear           — 清空上下文',
       ].join('\n');
       const roleHelp = [
@@ -49,6 +49,7 @@ export function executeCommand(input: string): void {
         '/save [name]     — 保存当前对话',
         '/load [name]     — 加载历史对话',
         '/clearAll        — 清理所有 agent 上下文及历史记录',
+        '/mode [value]    — 查看/切换 agent 模式',
         '/diff            — 工作区变更: /diff, /diff <file>, /diff apply|discard',
         '/setup           — 重新配置项目',
         '/help            — 显示此帮助',
@@ -138,9 +139,9 @@ export function executeCommand(input: string): void {
       break;
     }
 
-    case '/mode': {
+    case '/module': {
       if (!arg) {
-        addSystemMsg('用法: /mode <mode-id>\n示例: /mode main');
+        addSystemMsg('用法: /module <module-name>\n示例: /module main');
         return;
       }
       const service = getAgentService();
@@ -167,6 +168,48 @@ export function executeCommand(input: string): void {
           tuiState.setAgentStatus('error');
           addSystemMsg(`切换失败: ${err.message}`);
         });
+      break;
+    }
+
+    case '/mode': {
+      const service = getAgentService();
+      if (!service) { addSystemMsg('Agent 服务未就绪'); return; }
+
+      const modes: { value: string; name: string; current: boolean }[] = service.getAgentModes?.() ?? [];
+      if (modes.length === 0) {
+        addSystemMsg('当前 agent 无可用模式。');
+        return;
+      }
+
+      if (!arg) {
+        // 列出所有模式
+        const items = modes.map(m => `  ${m.current ? '* ' : '  '}${m.value} — ${m.name}`).join('\n');
+        addSystemMsg(`可用模式:\n${items}\n\n使用 /mode <value> 切换。`);
+        tuiState.setCommands(modes.map(m => ({
+          name: `/mode ${m.value}`,
+          description: m.name,
+          handler: () => executeCommand(`/mode ${m.value}`),
+        })));
+        tuiState.setShowCommands(true);
+        return;
+      }
+
+      // 切换模式
+      const mode = modes.find(m => m.value === arg);
+      if (!mode) {
+        addSystemMsg(`未知模式: ${arg}\n可用模式: ${modes.map(m => m.value).join(', ')}`);
+        return;
+      }
+      if (mode.current) {
+        addSystemMsg(`已在模式 "${mode.name}" 中。`);
+        return;
+      }
+      addSystemMsg(`正在切换模式到 ${mode.name}...`);
+      service.setAgentMode?.(arg).then(() => {
+        addSystemMsg(`已切换到模式: ${mode.name}`);
+      }).catch((err: Error) => {
+        addSystemMsg(`切换失败: ${err.message}`);
+      });
       break;
     }
 

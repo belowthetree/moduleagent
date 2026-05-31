@@ -13,7 +13,8 @@ const COMMANDS: CommandItem[] = [
   { name: "/tree", description: "显示模块树形结构及状态" },
   { name: "/rescan", description: "重新扫描项目模块" },
   { name: "/get", description: "查看模块详情" },
-  { name: "/mode", description: "切换 agent 模式" },
+  { name: "/module", description: "切换模块" },
+  { name: "/mode", description: "查看/切换 agent 模式" },
   { name: "/role", description: "角色 Agent 管理 (list/start/stop/cancel)" },
   { name: "/workflow", description: "工作流管理 (list/run/status/cancel)" },
   { name: "/status", description: "显示子系统运行状态" },
@@ -28,17 +29,65 @@ const COMMANDS: CommandItem[] = [
   { name: "/quit", description: "退出 TUI" },
 ];
 
+// 子命令定义：当用户输入 "/cmd " 时显示的选项
+const SUB_COMMANDS: Record<string, CommandItem[]> = {
+  "/mode": [], // 动态填充
+  "/role": [
+    { name: "/role list", description: "列出所有角色" },
+    { name: "/role start", description: "启动角色" },
+    { name: "/role stop", description: "停止角色" },
+    { name: "/role cancel", description: "取消当前操作" },
+  ],
+  "/workflow": [
+    { name: "/workflow list", description: "列出工作流" },
+    { name: "/workflow run", description: "执行工作流" },
+    { name: "/workflow status", description: "工作流状态" },
+    { name: "/workflow cancel", description: "取消工作流" },
+  ],
+  "/diff": [
+    { name: "/diff apply", description: "写回所有变更" },
+    { name: "/diff discard", description: "丢弃所有变更" },
+  ],
+};
+
 export default function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = createSignal(0);
   let scrollEl: { scrollTo?: (y: number) => void } | null = null;
 
   const filterText = createMemo(() => {
     const value = tuiState.inputValue();
-    // 去掉前导 "/"，否则使用原始值
     return value.startsWith("/") ? value.slice(1) : value;
   });
 
+  // 检测是否已选择命令 + 空格，需要展示子命令
+  const subCommandParent = createMemo((): string | null => {
+    const value = tuiState.inputValue();
+    if (!value.startsWith("/")) return null;
+    const spaceIdx = value.indexOf(' ');
+    if (spaceIdx < 2) return null; // 没有空格或只有 "/ "
+    const cmdName = value.slice(0, spaceIdx);
+    return cmdName in SUB_COMMANDS ? cmdName : null;
+  });
+
   const filteredCommands = createMemo(() => {
+    const value = tuiState.inputValue();
+    const parent = subCommandParent();
+    if (parent) {
+      // 子命令模式：动态获取 /mode 的子命令
+      if (parent === '/mode') {
+        const service = (globalThis as any).__tuiAgentService;
+        const modes = service?.getAgentModes?.() ?? [];
+        return modes.map((m: any) => ({
+          name: `/mode ${m.value}`,
+          description: m.name + (m.current ? ' (current)' : ''),
+        }));
+      }
+      const subs = SUB_COMMANDS[parent] || [];
+      const afterSpace = value.slice(value.indexOf(' ') + 1).toLowerCase();
+      if (!afterSpace) return subs;
+      return subs.filter(s => s.name.toLowerCase().includes(afterSpace));
+    }
+
     const filter = filterText();
     if (!filter) return COMMANDS;
     return COMMANDS.filter((cmd) =>
@@ -71,7 +120,17 @@ export default function CommandPalette() {
       key.preventDefault();
     } else if (key.name === "enter" || key.name === "return" || key.name === "tab") {
       if (cmds.length > 0 && cmds[selectedIndex()]) {
-        tuiState.setInputValue(cmds[selectedIndex()].name);
+        const selName = cmds[selectedIndex()].name;
+        const parent = subCommandParent();
+        if (parent) {
+          // 子命令模式：保留已输入的 "/mode " 前缀
+          const value = tuiState.inputValue();
+          const spaceIdx = value.indexOf(' ');
+          const prefix = value.slice(0, spaceIdx + 1);
+          tuiState.setInputValue(prefix + selName.slice(parent.length + 1));
+        } else {
+          tuiState.setInputValue(selName);
+        }
         tuiState.setShowCommands(false);
       }
       key.preventDefault();

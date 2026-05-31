@@ -144,6 +144,12 @@ export class TuiBridge implements IAgentBridge {
 
         defaultLogger.info(`[TUI] onToolCall: module=${moduleName} tool=${toolName} status=${toolStatus} detail=${toolDetail || '(none)'}`);
 
+        // 过滤明显异常的工具名（来自 tool_call_update 的脏数据）
+        if (toolName.startsWith('private ') || toolName.includes('(') || toolName.length > 60) {
+          defaultLogger.warn(`[TUI] onToolCall: skipping malformed tool name: ${toolName}`);
+          return;
+        }
+
         // 确保目标模块有消息列表
         if (!self.moduleMessages.has(moduleName)) self.moduleMessages.set(moduleName, []);
 
@@ -191,26 +197,39 @@ export class TuiBridge implements IAgentBridge {
           return;
         }
 
-        // 工具消息：running → 新建，completed → 更新最近一条同名 running 消息
+        // 工具消息：进行中（`…`）→ 新建，已完成/错误（✓✗）→ 更新最近一条进行中消息
+        const inFlight = statusIcon === '…';
         const msgs = self.moduleMessages.get(moduleName) || [];
-        if (toolStatus === 'running') {
-          msgs.push({
-            id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            role: 'system', msgType: 'tool_call',
-            content, time: new Date().toLocaleTimeString(),
-          });
-        } else {
-          // completed/error：倒找最近一条同名工具的 running（`…`）消息并原地替换
-          let updated = false;
+        if (inFlight) {
+          // 新建或替换同一工具的上一条进行中消息
+          let replaced = false;
           for (let i = msgs.length - 1; i >= 0; i--) {
             const m = msgs[i];
             if (m && m.msgType === 'tool_call' && m.content.startsWith('…') && m.content.includes(displayName)) {
               m.content = content;
+              replaced = true;
+              break;
+            }
+          }
+          if (!replaced) {
+            msgs.push({
+              id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              role: 'system', msgType: 'tool_call',
+              content, time: new Date().toLocaleTimeString(),
+            });
+          }
+        } else {
+          // completed/error：更新最近一条进行中消息，保留旧消息的 extra（tool_call_update 可能无 detail）
+          let updated = false;
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            const m = msgs[i];
+            if (m && m.msgType === 'tool_call' && m.content.startsWith('…') && m.content.includes(displayName)) {
+              // 如果新内容比旧内容更短（例如 tool_call_update 无 detail），保留旧 extra
+              m.content = content.length >= m.content.length ? content : m.content.replace(/^…/, statusIcon);
               updated = true;
               break;
             }
           }
-          // 没找到 running 消息（例如直接 completed）则新建
           if (!updated) {
             msgs.push({
               id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -297,7 +316,6 @@ export class TuiBridge implements IAgentBridge {
 
   async init(projectRoot: string): Promise<InitResult> {
     const result = await this.core.initAll(projectRoot);
-    tuiState.setAgentCwd(this.core.getAgentCwd(this.core.getCurrentAgent()) || projectRoot);
 
     // 初始化持久化
     this.persistence = new TuiPersistence(projectRoot);
@@ -344,6 +362,19 @@ export class TuiBridge implements IAgentBridge {
     }
 
     this.setStatus('idle');
+
+    // 自动启动根模块 agent
+    const currentAgent = this.core.getCurrentAgent();
+    if (currentAgent) {
+      try {
+        await this.core.startAgent(currentAgent);
+        tuiState.setAgentCwd(this.getAgentCwd());
+        defaultLogger.info(`TuiBridge: auto-started agent [${currentAgent}]`);
+      } catch (err) {
+        defaultLogger.warn(`TuiBridge: auto-start agent [${currentAgent}] failed: ${(err as Error).message}`);
+      }
+    }
+
     return result;
   }
 
@@ -685,6 +716,14 @@ export class TuiBridge implements IAgentBridge {
   /** 获取当前 Agent 的工作目录 */
   getAgentCwd(): string {
     return this.core.getAgentCwd(this.core.getCurrentAgent()) || this.core.getProjectRoot();
+  }
+
+  getAgentModes(): { value: string; name: string; current: boolean }[] {
+    return this.core.getAgentModes(this.core.getCurrentAgent());
+  }
+
+  async setAgentMode(modeValue: string): Promise<void> {
+    await this.core.setAgentMode(this.core.getCurrentAgent(), modeValue);
   }
 
   /** 设置当前交互目标类型 */

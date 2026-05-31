@@ -23,7 +23,7 @@ export default function InputBox(props: {
     onCleanup(() => renderer.off("focused_renderable", handler));
   });
 
-  // 仅在输入以 "/" 开头时自动显示/隐藏命令面板
+  // 输入以 "/" 开头时显示命令面板，命令后加空格显示子命令
   createEffect(() => {
     const val = tuiState.inputValue();
     if (val.startsWith("/")) {

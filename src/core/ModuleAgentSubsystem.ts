@@ -36,6 +36,8 @@ export interface AgentEntry {
   sessionId: string;
   modulePath: string;
   capabilities?: AgentCapabilities;
+  modeOptions?: { value: string; name: string }[];
+  currentMode?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +80,7 @@ export class ModuleAgentSubsystem {
   private sessionPrompted = new Set<string>();
   private lastSent = new Map<string, { text: string; time: number }>();
   private sendLock = new Map<string, Promise<void>>();
+  private toolNameById = new Map<string, string>(); // toolCallId → 真实工具名
 
   // MCP 状态
   mcpBackendPort = 0;
@@ -246,6 +249,7 @@ export class ModuleAgentSubsystem {
     }
     this.sessionPrompted.delete(name);
     this.lastSent.delete(name);
+    this.toolNameById.clear();
   }
 
   async setCurrentAgent(name: string): Promise<void> {
@@ -311,6 +315,20 @@ export class ModuleAgentSubsystem {
 
   getAgentCwd(moduleName: string): string | null {
     return this.agents.get(moduleName)?.launched.cwd ?? null;
+  }
+
+  getAgentModes(moduleName: string): { value: string; name: string; current: boolean }[] {
+    const entry = this.agents.get(moduleName);
+    if (!entry?.modeOptions?.length) return [];
+    return entry.modeOptions.map(m => ({ ...m, current: m.value === entry.currentMode }));
+  }
+
+  async setAgentMode(moduleName: string, modeValue: string): Promise<void> {
+    const entry = this.agents.get(moduleName);
+    if (!entry) throw new Error(`Agent ${moduleName} not running`);
+    await entry.launched.connection.setSessionConfigOption({ sessionId: entry.sessionId, configId: 'mode', value: modeValue });
+    entry.currentMode = modeValue;
+    this.logger.info(`[${moduleName}] mode switched to ${modeValue}`);
   }
 
   // -----------------------------------------------------------------------
@@ -406,13 +424,6 @@ export class ModuleAgentSubsystem {
         const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
         const data = notification.update as Record<string, unknown>;
 
-        // 打印收到的 ACP 事件类型
-        if (update) {
-          const preview = typeof data.content === 'object' && (data.content as any)?.text
-            ? (data.content as any).text.slice(0, 80)
-            : '';
-        }
-
         if (update === 'agent_message_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.callbacks.onStreamChunk(name, block.text, 'message');
@@ -420,21 +431,24 @@ export class ModuleAgentSubsystem {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.callbacks.onStreamChunk(name, block.text, 'thought');
         } else if (update === 'tool_call') {
-          const tc = data as { title?: string; status?: string; input?: Record<string, unknown>; arguments?: Record<string, unknown>; params?: Record<string, unknown>; toolCall?: Record<string, unknown> };
-          const toolName = tc.title || 'unknown';
+          const tc = data as { title?: string; status?: string; name?: string; toolName?: string; toolCallId?: string; input?: Record<string, unknown>; arguments?: Record<string, unknown>; params?: Record<string, unknown>; toolCall?: Record<string, unknown> };
+          const toolName = tc.title || tc.toolName || tc.name || 'unknown';
           const toolStatus = tc.status || 'running';
+          // 记录 toolCallId → 真实工具名（tool_call_update 的 title 会被 agent 覆写）
+          if (tc.toolCallId && tc.title) this.toolNameById.set(tc.toolCallId, tc.title);
           // 尝试多个可能的参数字段
           const toolInput = tc.input || tc.arguments || tc.params || tc.toolCall;
           const detail = toolInput ? JSON.stringify(toolInput).slice(0, 200) : undefined;
-          self.logger.info(`[${name}] tool_call: ${toolName} input=${detail || '(none)'} raw=${JSON.stringify(data).slice(0, 200)}`);
           self.callbacks.onToolCall?.(name, toolName, toolStatus, detail);
           if (tc.status === 'error') {
             self.callbacks.onStreamError(name, `Tool call failed: ${toolName}`);
           }
         } else if (update === 'tool_call_update') {
-          const tc = data as { title?: string; status?: string };
-          if (tc.title && tc.status) {
-            self.callbacks.onToolCall?.(name, tc.title, tc.status);
+          const tc = data as { title?: string; status?: string; toolCallId?: string; toolName?: string; name?: string; rawInput?: Record<string, unknown> };
+          // tool_call_update 的 title 可能是脏数据（搜索结果等），优先用 toolCallId 查真实工具名
+          const realName = (tc.toolCallId && this.toolNameById.get(tc.toolCallId)) || tc.toolName || tc.title || tc.name || 'unknown';
+          if (tc.status) {
+            self.callbacks.onToolCall?.(name, realName, tc.status);
           }
         }
 
@@ -456,11 +470,12 @@ export class ModuleAgentSubsystem {
       // 尝试恢复上次会话
       const savedSessionId = this._loadSessionId(moduleName);
       this.logger.info(`[${moduleName}] savedSessionId=${savedSessionId || '(none)'} hasResume=${hasResume}`);
+      let sessionResult: any = null; // newSession 或 resumeSession 的响应
 
       if (hasResume && savedSessionId) {
         try {
           this.logger.info(`[${moduleName}] attempting session/resume id=${savedSessionId}`);
-          await launched.connection.resumeSession!({
+          sessionResult = await launched.connection.resumeSession!({
             sessionId: savedSessionId,
             cwd: launched.cwd,
             mcpServers,
@@ -469,19 +484,58 @@ export class ModuleAgentSubsystem {
           this.logger.info(`[${moduleName}] resumed session ${sessionId}`);
         } catch (err) {
           this.logger.warn(`[${moduleName}] resume failed, creating new session: ${(err as Error).message}`);
-          const result = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
-          sessionId = result.sessionId;
+          sessionResult = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
+          sessionId = sessionResult.sessionId;
         }
       } else {
         if (savedSessionId && !hasResume) {
           this.logger.info(`[${moduleName}] agent doesn't support resume, creating new session`);
         }
-        const result = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
-        sessionId = result.sessionId;
+        sessionResult = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
+        sessionId = sessionResult.sessionId;
       }
 
       // 持久化 sessionId
       this._saveSessionId(moduleName, sessionId);
+
+      // 打印 configOptions 并尝试切换到限制性模式
+      try {
+        const configOptions = sessionResult?.configOptions as any[];
+        this.logger.info(`[${moduleName}] session configOptions: ${JSON.stringify(configOptions)}`);
+        if (configOptions) {
+          const modeOpt = configOptions.find((o: any) => o.id === 'mode' || o.category === 'mode');
+          if (modeOpt) {
+            const ids = modeOpt.options?.map((o: any) => `${o.value}(${o.name})`).join(', ') || '(none)';
+            this.logger.info(`[${moduleName}] configOptions mode: current=${modeOpt.currentValue}, available=[${ids}]`);
+            const preferred = modeOpt.options?.find((o: any) =>
+              o.value.includes('ask') || o.value.includes('permission') || o.name.toLowerCase().includes('ask')
+            );
+            const target = preferred || modeOpt.options?.find((o: any) => o.value !== modeOpt.currentValue) || modeOpt.options?.[0];
+            if (target && target.value !== modeOpt.currentValue) {
+              await launched.connection.setSessionConfigOption({ sessionId, configId: 'mode', value: target.value });
+              this.logger.info(`[${moduleName}] setSessionConfigOption mode=${target.value}`);
+            } else {
+              this.logger.info(`[${moduleName}] mode already=${modeOpt.currentValue}, keeping`);
+            }
+          }
+        } else {
+          // 没有 configOptions 时逐试常见 mode 名
+          for (const tryMode of ['ask', 'ask-mode', 'permission', 'safe']) {
+            try {
+              await launched.connection.setSessionConfigOption({ sessionId, configId: 'mode', value: tryMode });
+              this.logger.info(`[${moduleName}] setSessionConfigOption mode=${tryMode}`);
+              break;
+            } catch { /* try next */ }
+          }
+        }
+      } catch (err) {
+        this.logger.info(`[${moduleName}] setSessionConfigOption: ${(err as Error).message}`);
+      }
+
+      // 保存 mode 配置到 entry 供查询
+      const modeConfig = (sessionResult?.configOptions as any[])?.find((o: any) => o.id === 'mode' || o.category === 'mode');
+      const savedModes = modeConfig?.options?.map((o: any) => ({ value: o.value, name: o.name })) || [];
+      const savedCurrentMode = modeConfig?.currentValue;
 
       this.sessionPrompted.delete(moduleName);
 
@@ -492,6 +546,8 @@ export class ModuleAgentSubsystem {
         sessionId,
         modulePath: cwd,
         capabilities: launched.agentCapabilities,
+        modeOptions: savedModes,
+        currentMode: savedCurrentMode,
       };
       this.agents.set(moduleName, entry);
 

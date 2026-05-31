@@ -238,6 +238,11 @@ export class ModuleAgentCore {
     await this.modules.clearContext(moduleName);
   }
 
+  async startAgent(moduleName: string): Promise<void> {
+    this._ensureInit();
+    await this.modules.startAgent(moduleName);
+  }
+
   async setCurrentAgent(name: string): Promise<void> {
     this._ensureInit();
     await this.modules.setCurrentAgent(name);
@@ -268,6 +273,14 @@ export class ModuleAgentCore {
 
   getAgentCwd(moduleName: string): string | null {
     return this.modules.getAgentCwd(moduleName);
+  }
+
+  getAgentModes(moduleName: string): { value: string; name: string; current: boolean }[] {
+    return this.modules.getAgentModes(moduleName);
+  }
+
+  async setAgentMode(moduleName: string, modeValue: string): Promise<void> {
+    await this.modules.setAgentMode(moduleName, modeValue);
   }
 
   getProjectRoot(): string {
