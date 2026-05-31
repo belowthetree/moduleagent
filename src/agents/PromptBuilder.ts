@@ -64,6 +64,29 @@ export function buildPromptBlocks(options: {
 
     // 模块上下文（module.md 正文）
     const node = graph?.nodes.get(moduleName);
+
+    // 工作区边界指令（防止 agent 越界访问项目源码）
+    if (node) {
+      // 根模块 workspace = projectRoot/.module-agent/module/；子模块 = absolutePath
+      const wsRoot = node.workspacePath
+        || (node.relativePath === '.' ? path.join(node.absolutePath, '.module-agent', 'module') : node.absolutePath);
+      if (wsRoot) {
+        blocks.push({ type: 'text', text: [
+          '## Workspace Boundary',
+          '',
+          `Your working directory is \`${wsRoot}\`. All file operations (read, write, edit, search, grep, glob) ` +
+          'MUST stay within this directory or its subdirectories. Do not access or modify files outside it, ' +
+          'even if they are in a parent Git repository. The project root is not your workspace.',
+          '',
+          'If you need to read files outside this directory, use the provided MCP tools ' +
+          'or ask the user for guidance.',
+          '',
+          '---',
+          '',
+        ].join('\n') });
+      }
+    }
+
     if (node?.definition?.body) {
       blocks.push({ type: 'text', text: `# Module: ${moduleName}\n\n${node.definition.body}\n\n---\n\n` });
       defaultLogger.info(`[${moduleName}] module context: ${node.definition.body.slice(0, 120)}... (${node.definition.body.length} chars)`);

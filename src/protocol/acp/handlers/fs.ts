@@ -40,12 +40,13 @@ export class FsHandler {
   }
 
   private resolvePath(filePath: string): string {
-    const p = path.resolve(filePath);
-    const allowed = p.startsWith(this.workspaceRoot + path.sep) || p === this.workspaceRoot;
-    if (!allowed) {
-      log.warn(`FsHandler access denied: ${filePath}`);
+    const resolved = path.resolve(filePath);
+    const normalized = resolved.replace(/\\/g, '/');
+    const root = this.workspaceRoot.replace(/\\/g, '/');
+    if (!normalized.startsWith(root + '/') && normalized !== root) {
+      log.warn(`FsHandler access denied: ${filePath} (root=${root})`);
       throw new Error(`Access denied: ${filePath} is outside module workspace`);
     }
-    return p;
+    return resolved;
   }
 }

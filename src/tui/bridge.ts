@@ -136,11 +136,14 @@ export class TuiBridge implements IAgentBridge {
         self.syncMessages();
       },
       onToolCall: (moduleName, toolName, toolStatus, toolDetail) => {
-        // 工具调用作为消息块边界：结束之前的消息块，新开后续消息块
-        self.finalizeStreamMsg(self.currentReplyMsgId);
-        self.finalizeStreamMsg(self.currentThoughtMsgId);
-        self.currentReplyMsgId = `reply-${Date.now()}`;
-        self.currentThoughtMsgId = `thought-${Date.now()}`;
+        // 仅在新工具启动时切分回复块；状态更新不切分
+        const isNewTool = toolStatus === 'running' || toolStatus === 'pending';
+        if (isNewTool) {
+          self.finalizeStreamMsg(self.currentReplyMsgId);
+          self.finalizeStreamMsg(self.currentThoughtMsgId);
+          self.currentReplyMsgId = `reply-${Date.now()}`;
+          self.currentThoughtMsgId = `thought-${Date.now()}`;
+        }
 
         defaultLogger.info(`[TUI] onToolCall: module=${moduleName} tool=${toolName} status=${toolStatus} detail=${toolDetail || '(none)'}`);
 

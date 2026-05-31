@@ -236,6 +236,9 @@ export class ModuleAgentSubsystem {
         entry.sessionId = result.sessionId;
         this._saveSessionId(name, result.sessionId);
         this.logger.info(`clearContext: new session for [${name}], sessionId=${result.sessionId}`);
+
+        // 恢复 mode/model 配置
+        await this._applySessionConfig(name, entry.config, entry.launched.connection, result.sessionId, result);
       } catch (err) {
         // newSession 失败回退：杀进程，下次使用时自动重启
         this.logger.warn(`clearContext: newSession failed for [${name}], killing process: ${(err as Error).message}`);
@@ -498,55 +501,13 @@ export class ModuleAgentSubsystem {
       // 持久化 sessionId
       this._saveSessionId(moduleName, sessionId);
 
-      // 打印 configOptions 并尝试切换到限制性模式
-      try {
-        const configOptions = sessionResult?.configOptions as any[];
-        this.logger.info(`[${moduleName}] session configOptions: ${JSON.stringify(sessionResult)}`);
-        if (configOptions) {
-          const modeOpt = configOptions.find((o: any) => o.id === 'mode' || o.category === 'mode');
-          if (modeOpt) {
-            const ids = modeOpt.options?.map((o: any) => `${o.value}(${o.name})`).join(', ') || '(none)';
-            this.logger.info(`[${moduleName}] configOptions mode: current=${modeOpt.currentValue}, available=[${ids}]`);
-            const preferred = modeOpt.options?.find((o: any) =>
-              o.value.includes('ask') || o.value.includes('permission') || o.name.toLowerCase().includes('ask')
-            );
-            const target = preferred || modeOpt.options?.find((o: any) => o.value !== modeOpt.currentValue) || modeOpt.options?.[0];
-            if (target && target.value !== modeOpt.currentValue) {
-              await launched.connection.setSessionConfigOption({ sessionId, configId: 'mode', value: target.value });
-              this.logger.info(`[${moduleName}] setSessionConfigOption mode=${target.value}`);
-            } else {
-              this.logger.info(`[${moduleName}] mode already=${modeOpt.currentValue}, keeping`);
-            }
-          }
-        } else {
-          // 没有 configOptions 时逐试常见 mode 名
-          for (const tryMode of ['ask', 'ask-mode', 'permission', 'safe']) {
-            try {
-              await launched.connection.setSessionConfigOption({ sessionId, configId: 'mode', value: tryMode });
-              this.logger.info(`[${moduleName}] setSessionConfigOption mode=${tryMode}`);
-              break;
-            } catch { /* try next */ }
-          }
-        }
-      } catch (err) {
-        this.logger.info(`[${moduleName}] setSessionConfigOption: ${(err as Error).message}`);
-      }
-
-      // 通过协议设置模型（独立于 CLI 参数）
-      const model = agentConfig.model;
-      if (model) {
-        try {
-          await launched.connection.setSessionConfigOption({ sessionId, configId: 'model', value: model });
-          this.logger.info(`[${moduleName}] setSessionConfigOption model=${model}`);
-        } catch (err) {
-          this.logger.info(`[${moduleName}] setSessionConfigOption model: ${(err as Error).message}`);
-        }
-      }
+      // 设置 mode / model（提取为独立方法供 clearContext 复用）
+      const savedModes = await this._applySessionConfig(moduleName, agentConfig, launched.connection, sessionId, sessionResult);
 
       // 保存 mode 配置到 entry 供查询
-      const modeConfig = (sessionResult?.configOptions as any[])?.find((o: any) => o.id === 'mode' || o.category === 'mode');
-      const savedModes = modeConfig?.options?.map((o: any) => ({ value: o.value, name: o.name })) || [];
-      const savedCurrentMode = modeConfig?.currentValue;
+      const savedCurrentMode = (sessionResult?.configOptions as any[])
+        ?.find((o: any) => o.id === 'mode' || o.category === 'mode')
+        ?.currentValue;
 
       this.sessionPrompted.delete(moduleName);
 
@@ -595,6 +556,18 @@ export class ModuleAgentSubsystem {
     } catch (err) {
       this.logger.warn(`[session] failed to save sessionId: ${(err as Error).message}`);
     }
+  }
+
+  /** 从工具参数中提取路径字段 */
+  private _extractPaths(rawInput: Record<string, unknown>): string[] {
+    const keys = ['filePath', 'filepath', 'path', 'directory', 'parentDir',
+      'sourcePath', 'targetPath', 'file', 'dir', 'folder'];
+    const paths: string[] = [];
+    for (const key of keys) {
+      const v = rawInput[key];
+      if (typeof v === 'string' && v.length > 0) paths.push(v);
+    }
+    return paths;
   }
 
   private _deleteSessionId(moduleName: string): void {
@@ -660,6 +633,60 @@ export class ModuleAgentSubsystem {
   private _extractFilePath(message: string): string | null {
     const match = message.match(/(?:^|\s)([a-zA-Z0-9_/.-]+\.[a-zA-Z]+)(?:\s|$)/);
     return match ? match[1]! : null;
+  }
+
+  /** 应用 session 配置：mode + model，返回 modeOptions */
+  private async _applySessionConfig(
+    moduleName: string,
+    agentConfig: AgentConfig,
+    connection: { setSessionConfigOption(params: { sessionId: string; configId: string; value: string }): Promise<any> },
+    sessionId: string,
+    sessionResult: any,
+  ): Promise<{ value: string; name: string }[]> {
+    // mode
+    try {
+      const configOptions = sessionResult?.configOptions as any[];
+      if (configOptions) {
+        const modeOpt = configOptions.find((o: any) => o.id === 'mode' || o.category === 'mode');
+        if (modeOpt) {
+          const ids = modeOpt.options?.map((o: any) => `${o.value}(${o.name})`).join(', ') || '(none)';
+          this.logger.info(`[${moduleName}] configOptions mode: current=${modeOpt.currentValue}, available=[${ids}]`);
+          const preferred = modeOpt.options?.find((o: any) =>
+            o.value.includes('ask') || o.value.includes('permission') || o.name.toLowerCase().includes('ask')
+          );
+          const target = preferred || modeOpt.options?.find((o: any) => o.value !== modeOpt.currentValue) || modeOpt.options?.[0];
+          if (target && target.value !== modeOpt.currentValue) {
+            await connection.setSessionConfigOption({ sessionId, configId: 'mode', value: target.value });
+            this.logger.info(`[${moduleName}] setSessionConfigOption mode=${target.value}`);
+          } else {
+            this.logger.info(`[${moduleName}] mode already=${modeOpt.currentValue}, keeping`);
+          }
+          return modeOpt.options?.map((o: any) => ({ value: o.value, name: o.name })) || [];
+        }
+      } else {
+        for (const tryMode of ['ask', 'ask-mode', 'permission', 'safe']) {
+          try {
+            await connection.setSessionConfigOption({ sessionId, configId: 'mode', value: tryMode });
+            this.logger.info(`[${moduleName}] setSessionConfigOption mode=${tryMode}`);
+            break;
+          } catch { /* try next */ }
+        }
+      }
+    } catch (err) {
+      this.logger.info(`[${moduleName}] setSessionConfigOption(mode): ${(err as Error).message}`);
+    }
+
+    // model
+    if (agentConfig.model) {
+      try {
+        await connection.setSessionConfigOption({ sessionId, configId: 'model', value: agentConfig.model });
+        this.logger.info(`[${moduleName}] setSessionConfigOption model=${agentConfig.model}`);
+      } catch (err) {
+        this.logger.info(`[${moduleName}] setSessionConfigOption(model): ${(err as Error).message}`);
+      }
+    }
+
+    return [];
   }
 
   private _findModule(keyword: string): string | undefined {

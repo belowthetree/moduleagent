@@ -11,6 +11,7 @@ export interface AgentConfig {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  model?: string;
 }
 
 /** 连接工厂函数签名 — 允许测试注入 FauxAcpAgent。
@@ -68,9 +69,10 @@ export class AgentLauncher {
           if (typeof v === 'string' && v.length > 0) pathsToCheck.push(v);
         }
         for (const p of pathsToCheck) {
-          const resolved = path.resolve(p);
-          if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
-            log.warn(`[${name}] Permission REJECTED: ${p} is outside workspace ${cwd}`);
+          const resolved = path.resolve(p).replace(/\\/g, '/');
+          const normalizedCwd = cwd.replace(/\\/g, '/');
+          if (!resolved.startsWith(normalizedCwd + '/') && resolved !== normalizedCwd) {
+            log.warn(`[${name}] Permission REJECTED: ${p} is outside workspace ${normalizedCwd}`);
             // 用 reject_once 让 agent 知道工具被拒（而非 cancel 会话）
             return {
               outcome: {
@@ -97,7 +99,7 @@ export class AgentLauncher {
           const block = (u as { content: { type?: string; text?: string } }).content;
           log.debug(`[${name}] ${u.sessionUpdate} type=${block?.type} len=${block?.text?.length || 0}`);
         } else if (u.sessionUpdate === 'tool_call') {
-          log.info(`[${name}] tool_call: ${(u as { title?: string }).title || 'unknown'}`);
+          log.info(`[${name}] tool_call: ${(u as { title?: string }).title || 'unknown'} ${JSON.stringify(params)}`);
         }
         if (launched.onSessionUpdate) {
           launched.onSessionUpdate(name, params.sessionId, params);
