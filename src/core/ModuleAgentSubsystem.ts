@@ -651,9 +651,13 @@ export class ModuleAgentSubsystem {
         if (modeOpt) {
           const ids = modeOpt.options?.map((o: any) => `${o.value}(${o.name})`).join(', ') || '(none)';
           this.logger.info(`[${moduleName}] configOptions mode: current=${modeOpt.currentValue}, available=[${ids}]`);
-          const preferred = modeOpt.options?.find((o: any) =>
-            o.value.includes('ask') || o.value.includes('permission') || o.name.toLowerCase().includes('ask')
-          );
+          // 优先用配置的 defaultMode，其次找含 ask/permission 的，再回退到第一个非 current
+          const configured = agentConfig.defaultMode
+            ? modeOpt.options?.find((o: any) => o.value === agentConfig.defaultMode || o.name === agentConfig.defaultMode)
+            : null;
+          const preferred = configured
+            || modeOpt.options?.find((o: any) =>
+                o.value.includes('ask') || o.value.includes('permission') || o.name.toLowerCase().includes('ask'));
           const target = preferred || modeOpt.options?.find((o: any) => o.value !== modeOpt.currentValue) || modeOpt.options?.[0];
           if (target && target.value !== modeOpt.currentValue) {
             await connection.setSessionConfigOption({ sessionId, configId: 'mode', value: target.value });
@@ -664,7 +668,8 @@ export class ModuleAgentSubsystem {
           return modeOpt.options?.map((o: any) => ({ value: o.value, name: o.name })) || [];
         }
       } else {
-        for (const tryMode of ['ask', 'ask-mode', 'permission', 'safe']) {
+        const blindModes = [agentConfig.defaultMode, 'ask', 'ask-mode', 'permission', 'safe'].filter(Boolean) as string[];
+        for (const tryMode of blindModes) {
           try {
             await connection.setSessionConfigOption({ sessionId, configId: 'mode', value: tryMode });
             this.logger.info(`[${moduleName}] setSessionConfigOption mode=${tryMode}`);

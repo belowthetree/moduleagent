@@ -12,6 +12,7 @@ export interface AgentConfig {
   args?: string[];
   env?: Record<string, string>;
   model?: string;
+  defaultMode?: string;
 }
 
 /** 连接工厂函数签名 — 允许测试注入 FauxAcpAgent。

@@ -4,11 +4,13 @@ export interface ProjectConfig {
       command: string;
       args?: string[];
       model?: string;
+      defaultMode?: string;
     };
     modules?: Record<string, {
       command: string;
       args?: string[];
       model?: string;
+      defaultMode?: string;
     }>;
   };
   exclude: string[];
