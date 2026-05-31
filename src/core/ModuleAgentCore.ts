@@ -266,6 +266,10 @@ export class ModuleAgentCore {
     return this.modules.listAgents();
   }
 
+  getAgentCwd(moduleName: string): string | null {
+    return this.modules.getAgentCwd(moduleName);
+  }
+
   getProjectRoot(): string {
     return this.projectRoot;
   }

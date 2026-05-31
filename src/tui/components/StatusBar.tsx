@@ -11,34 +11,40 @@ const TYPE_LABEL: Record<string, string> = {
 export default function StatusBar() {
   const renderer = useRenderer();
 
-  const statusText = createMemo(() => {
+  const barText = createMemo(() => {
     const target = tuiState.currentTarget();
     const agent = tuiState.currentAgent();
     const counts = tuiState.activeCounts();
     const label = TYPE_LABEL[target] || target;
-    let text = `${label}：${agent} | ${tuiState.agentStatus()}`;
-    text += ` | M:${counts.modules}`;
-    if (counts.roles > 0) text += ` R:${counts.roles}`;
-    if (counts.workflows > 0) text += ` W:${counts.workflows}`;
-    return text;
-  });
+    const cwd = tuiState.agentCwd() || tuiState.workingDir() || '';
 
-  const pathText = createMemo(() => {
-    const cwd = tuiState.agentCwd() || tuiState.workingDir();
-    if (!cwd) return '';
+    // 左侧：agent 状态
+    let left = `${label}：${agent} | ${tuiState.agentStatus()}`;
+    left += ` | M:${counts.modules}`;
+    if (counts.roles > 0) left += ` R:${counts.roles}`;
+    if (counts.workflows > 0) left += ` W:${counts.workflows}`;
 
+    if (!cwd) return left;
+
+    // 右侧：cwd 路径，截断以适应宽度
     const width = renderer?.width ?? 80;
-    const statusLen = statusText().length;
-    const maxPathLen = Math.max(10, width - statusLen - 2);
+    const pad = 3; // 左右间最小间距
+    const cjkWidth = (s: string) => { let w = 0; for (const c of s) w += /[\u4e00-\u9fff\uff00-\uffef]/.test(c) ? 2 : 1; return w; };
+    const leftW = cjkWidth(left);
+    const maxPathLen = Math.max(10, width - leftW - pad);
 
-    if (cwd.length <= maxPathLen) return cwd;
-    return '…' + cwd.slice(cwd.length - maxPathLen + 1);
+    let path = cwd;
+    if (path.length > maxPathLen) {
+      path = '…' + path.slice(path.length - maxPathLen + 1);
+    }
+
+    const spaces = ' '.repeat(Math.max(1, width - leftW - cjkWidth(path)));
+    return left + spaces + path;
   });
 
   return (
-    <box flexDirection="row" justifyContent="space-between" height={1} padding={0}>
-      <text fg="#777777" dim>{statusText()}</text>
-      <text fg="#777777" dim>{pathText()}</text>
+    <box flexDirection="row" height={1} padding={0}>
+      <text fg="#777777" dim>{barText()}</text>
     </box>
   );
 }

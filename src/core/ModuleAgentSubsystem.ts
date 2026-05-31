@@ -309,6 +309,10 @@ export class ModuleAgentSubsystem {
     return [...this.agents.keys()];
   }
 
+  getAgentCwd(moduleName: string): string | null {
+    return this.agents.get(moduleName)?.launched.cwd ?? null;
+  }
+
   // -----------------------------------------------------------------------
   // 公共辅助方法（供 McpBackend 集成）
   // -----------------------------------------------------------------------
@@ -371,7 +375,10 @@ export class ModuleAgentSubsystem {
           cwd = workspacePathForModule(node, workspaceRoot, this.projectRoot);
         }
       } else {
-        cwd = node?.absolutePath || this.projectRoot;
+        // 无 projectPath 时：根模块也用 .module-agent/module/，非根模块用 node 绝对路径
+        cwd = node?.relativePath === '.'
+          ? path.join(this.projectRoot, '.module-agent', 'module')
+          : node?.absolutePath || this.projectRoot;
       }
 
       const subModuleDirs = node

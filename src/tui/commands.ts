@@ -49,6 +49,7 @@ export function executeCommand(input: string): void {
         '/save [name]     — 保存当前对话',
         '/load [name]     — 加载历史对话',
         '/clearAll        — 清理所有 agent 上下文及历史记录',
+        '/diff            — 工作区变更: /diff, /diff <file>, /diff apply|discard',
         '/setup           — 重新配置项目',
         '/help            — 显示此帮助',
         '/quit            — 退出 TUI',
@@ -196,6 +197,58 @@ export function executeCommand(input: string): void {
       }).catch((err: Error) => {
         addSystemMsg(`清理失败: ${err.message}`);
       });
+      break;
+    }
+
+    case '/diff': {
+      const service = getAgentService();
+      if (!service) { addSystemMsg('Agent 服务未就绪'); return; }
+
+      const subCmd = parts[1]?.toLowerCase();
+      const subArg = parts.slice(2).join(' ');
+      const diff = service.getWorkspaceDiff?.();
+
+      if (!diff) {
+        addSystemMsg('无工作区变更。');
+        return;
+      }
+
+      if (!subCmd) {
+        // 列出所有变更文件
+        const items = diff.files.map(f => {
+          const icon = f.status === 'added' ? '+' : f.status === 'modified' ? '~' : '-';
+          return `  ${icon} ${f.relativePath}`;
+        }).join('\n');
+        addSystemMsg(`工作区变更 (${diff.moduleName}):\n${items}\n\n总计: ${diff.addedCount}+ ${diff.modifiedCount}~ ${diff.deletedCount}-\n\n使用 /diff <file> 查看详情, /diff apply 写回, /diff discard 丢弃`);
+        tuiState.setShowDiffPanel(true);
+        return;
+      }
+
+      switch (subCmd) {
+        case 'apply':
+          addSystemMsg('正在写回变更...');
+          service.applyWorkspaceDiff?.(diff.moduleName, subArg ? [subArg] : undefined).then((r: { applied: number; errors: string[] }) => {
+            addSystemMsg(`已写回 ${r.applied} 个文件${r.errors.length ? ', 错误: ' + r.errors.join('; ') : ''}`);
+            if (!service.getWorkspaceDiff?.()) tuiState.setDiffPrompt(null);
+          }).catch((err: Error) => addSystemMsg(`写回失败: ${err.message}`));
+          break;
+        case 'discard':
+          addSystemMsg('正在丢弃工作区变更...');
+          service.discardWorkspaceDiff?.(diff.moduleName).then(() => {
+            addSystemMsg('工作区变更已丢弃。');
+          }).catch((err: Error) => addSystemMsg(`丢弃失败: ${err.message}`));
+          break;
+        default: {
+          // 查看特定文件 diff
+          const hunks = service.getWorkspaceDiffFile?.(diff.moduleName, subCmd);
+          if (hunks) {
+            addSystemMsg(`--- ${subCmd} ---\n${hunks}`);
+          } else {
+            addSystemMsg(`未找到文件: ${subCmd}`);
+          }
+          break;
+        }
+      }
       break;
     }
 

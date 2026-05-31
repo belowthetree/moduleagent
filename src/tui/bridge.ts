@@ -11,6 +11,8 @@ import type { ChatMsg, RoleConfigData } from '../types/shared.js';
 import type { RoleConfig } from '../config/defaults.js';
 import { tuiState } from './state.js';
 import { TuiPersistence, InputHistoryPersistence } from './persistence.js';
+import * as WorkspaceDiff from '../core/WorkspaceDiff.js';
+import type { DiffSummary } from '../types/shared.js';
 
 function findRepoRoot(): string {
   let dir = __dirname || path.resolve(process.argv[1] || process.cwd(), '..');
@@ -43,6 +45,9 @@ export class TuiBridge implements IAgentBridge {
   // 持久化
   private persistence: TuiPersistence | null = null;
   private historyStore: InputHistoryPersistence | null = null;
+
+  // 工作区 Diff
+  private diffCache = new Map<string, DiffSummary>();
 
   // 便捷：当前模块的消息列表
   private get currentMsgs(): ChatMessage[] {
@@ -104,6 +109,12 @@ export class TuiBridge implements IAgentBridge {
         self.moduleStatuses.set(moduleName, 'idle');
         self.roleStatuses.set(moduleName, 'idle');
         self.setStatus('idle');
+
+        // 更新 cwd（agent 启动后 workspace 路径才确定）
+        tuiState.setAgentCwd(self.getAgentCwd());
+
+        // 触发工作区变更检测（后台异步）
+        setImmediate(() => self._triggerWorkspaceDiff(moduleName));
       },
       onStreamError: (moduleName, error) => {
         self.setStatus('error');
@@ -180,18 +191,33 @@ export class TuiBridge implements IAgentBridge {
           return;
         }
 
-        // 查找或创建工具消息
-        const existingId = `tool-${moduleName}-${toolName}`;
+        // 工具消息：running → 新建，completed → 更新最近一条同名 running 消息
         const msgs = self.moduleMessages.get(moduleName) || [];
-        const existing = msgs.find(m => m.id === existingId && m.msgType === 'tool_call');
-        if (existing) {
-          const mergedContent = content.length > existing.content.length ? content : existing.content;
-          existing.content = mergedContent;
-        } else {
+        if (toolStatus === 'running') {
           msgs.push({
-            id: existingId, role: 'system', msgType: 'tool_call',
+            id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            role: 'system', msgType: 'tool_call',
             content, time: new Date().toLocaleTimeString(),
           });
+        } else {
+          // completed/error：倒找最近一条同名工具的 running（`…`）消息并原地替换
+          let updated = false;
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            const m = msgs[i];
+            if (m && m.msgType === 'tool_call' && m.content.startsWith('…') && m.content.includes(displayName)) {
+              m.content = content;
+              updated = true;
+              break;
+            }
+          }
+          // 没找到 running 消息（例如直接 completed）则新建
+          if (!updated) {
+            msgs.push({
+              id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              role: 'system', msgType: 'tool_call',
+              content, time: new Date().toLocaleTimeString(),
+            });
+          }
         }
         if (moduleName === self.core.getCurrentAgent()) self.syncMessages();
       },
@@ -271,7 +297,7 @@ export class TuiBridge implements IAgentBridge {
 
   async init(projectRoot: string): Promise<InitResult> {
     const result = await this.core.initAll(projectRoot);
-    tuiState.setAgentCwd(projectRoot);
+    tuiState.setAgentCwd(this.core.getAgentCwd(this.core.getCurrentAgent()) || projectRoot);
 
     // 初始化持久化
     this.persistence = new TuiPersistence(projectRoot);
@@ -658,8 +684,7 @@ export class TuiBridge implements IAgentBridge {
 
   /** 获取当前 Agent 的工作目录 */
   getAgentCwd(): string {
-    const entry = this.core.modules.getAgent(this.core.getCurrentAgent());
-    return entry?.modulePath || this.core.getProjectRoot();
+    return this.core.getAgentCwd(this.core.getCurrentAgent()) || this.core.getProjectRoot();
   }
 
   /** 设置当前交互目标类型 */
@@ -791,5 +816,73 @@ export class TuiBridge implements IAgentBridge {
     }).catch(err => {
       defaultLogger.warn(`Summarizer error [${targetName}]: ${(err as Error).message}`);
     });
+  }
+
+  // -----------------------------------------------------------------------
+  // 工作区 Diff
+  // -----------------------------------------------------------------------
+
+  _triggerWorkspaceDiff(moduleName: string): void {
+    const projectRoot = this.core.getProjectRoot();
+    const workspaceCwd = this.core.getAgentCwd(moduleName);
+    if (!workspaceCwd || !projectRoot) return;
+
+    const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
+    if (!workspaceCwd.startsWith(workspaceBase)) return;
+
+    const relPath = path.relative(workspaceBase, workspaceCwd);
+    const sourceDir = relPath ? path.join(projectRoot, relPath) : projectRoot;
+
+    try {
+      defaultLogger.info(`TuiBridge: diff ${workspaceCwd} vs ${sourceDir}`);
+      const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir);
+      summary.moduleName = moduleName;
+      this.diffCache.set(moduleName, summary);
+
+      if (summary.files.length > 0) {
+        defaultLogger.info(`TuiBridge: diff [${moduleName}] ${summary.addedCount}+ ${summary.modifiedCount}~ ${summary.deletedCount}-`);
+        tuiState.setDiffPrompt(summary);
+      }
+    } catch (err) {
+      defaultLogger.error(`TuiBridge: diff error [${moduleName}]: ${(err as Error).message}`);
+    }
+  }
+
+  getWorkspaceDiff(moduleName?: string): DiffSummary | null {
+    const name = moduleName || this.core.getCurrentAgent();
+    return this.diffCache.get(name) ?? null;
+  }
+
+  getWorkspaceDiffFile(moduleName: string, filePath: string): string | null {
+    const cached = this.diffCache.get(moduleName);
+    if (!cached) return null;
+    const file = cached.files.find(f => f.relativePath === filePath);
+    if (!file) return null;
+    return WorkspaceDiff.unifiedDiff(file.workspacePath, file.sourcePath);
+  }
+
+  async applyWorkspaceDiff(moduleName: string, files?: string[]): Promise<{ applied: number; errors: string[] }> {
+    const cached = this.diffCache.get(moduleName);
+    if (!cached) return { applied: 0, errors: ['no diff cache'] };
+    const result = await WorkspaceDiff.apply(cached.workspaceDir, cached.sourceDir, files, cached.files);
+    // 刷新缓存
+    const newSummary = WorkspaceDiff.analyze(cached.workspaceDir, cached.sourceDir);
+    newSummary.moduleName = moduleName;
+    if (newSummary.files.length > 0) {
+      this.diffCache.set(moduleName, newSummary);
+      tuiState.setDiffPrompt(newSummary);
+    } else {
+      this.diffCache.delete(moduleName);
+      tuiState.setDiffPrompt(null);
+    }
+    return result;
+  }
+
+  async discardWorkspaceDiff(moduleName: string): Promise<void> {
+    const cached = this.diffCache.get(moduleName);
+    if (!cached) return;
+    await WorkspaceDiff.discardWorkspace(cached.workspaceDir);
+    this.diffCache.delete(moduleName);
+    tuiState.setDiffPrompt(null);
   }
 }

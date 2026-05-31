@@ -1,5 +1,5 @@
 import { useKeyboard, useRenderer, useSelectionHandler } from '@opentui/solid';
-import type { Selection } from '@opentui/core';
+import type { Selection, KeyEvent } from '@opentui/core';
 import { tuiState } from './state.js';
 import type { ChatMessage } from './types.js';
 import StatusBar from './components/StatusBar.js';
@@ -8,6 +8,8 @@ import ContextArea from './components/ContextArea.js';
 import CommandPalette from './components/CommandPalette.js';
 import SetupWizard from './components/SetupWizard.js';
 import ModuleTree from './components/ModuleTree.js';
+import DiffBar from './components/DiffBar.js';
+import DiffPanel from './components/DiffPanel.js';
 
 function addSystemMessage(text: string) {
   const msg: ChatMessage = {
@@ -54,6 +56,41 @@ export default function App() {
     }
   });
 
+  // Diff 快捷键（全局）
+  useKeyboard((key: KeyEvent) => {
+    // Ctrl+P → 打开/关闭 diff 面板
+    if (key.ctrl && key.name === 'p') {
+      const diff = tuiState.diffPrompt();
+      if (diff) {
+        tuiState.setShowDiffPanel(!tuiState.showDiffPanel());
+        key.preventDefault();
+      }
+      return;
+    }
+
+    // diffPrompt 激活时的 Y/R/N 操作
+    const diff = tuiState.diffPrompt();
+    if (!diff || tuiState.showDiffPanel() || screen() !== 'chat') return;
+
+    const service = (globalThis as any).__tuiAgentService;
+    const moduleName = diff.moduleName;
+
+    if (key.name === 'y') {
+      service?.applyWorkspaceDiff?.(moduleName).then(() => {
+        tuiState.setDiffPrompt(null);
+      }).catch(() => {});
+      key.preventDefault();
+    } else if (key.name === 'r') {
+      tuiState.setShowDiffPanel(true);
+      key.preventDefault();
+    } else if (key.name === 'n') {
+      service?.discardWorkspaceDiff?.(moduleName).then(() => {
+        tuiState.setDiffPrompt(null);
+      }).catch(() => {});
+      key.preventDefault();
+    }
+  });
+
   const handleSend = (text: string) => {
     // 用户消息现在由 __tuiSendMessage 在 Agent 占位消息之前推送，
     // 这样流数据块会追加到 Agent 消息而非用户消息。
@@ -91,9 +128,12 @@ export default function App() {
           }}
           onClose={() => tuiState.setScreen('chat')}
         />
+      ) : tuiState.showDiffPanel() && tuiState.diffPrompt() ? (
+        <DiffPanel />
       ) : (
         <>
           <ContextArea />
+          {tuiState.diffPrompt() ? <DiffBar /> : null}
           <CommandPalette />
           <box flexDirection="column" flexShrink={0}>
             <InputBox onSend={handleSend} onCommand={handleCommand} />

@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js';
 import type { AgentStatus, ChatMessage, CommandDef, TuiScreen } from './types.js';
+import type { DiffSummary } from '../types/shared.js';
 
 export interface ReactiveTuiState {
   screen: () => TuiScreen;
@@ -36,6 +37,10 @@ export interface ReactiveTuiState {
   setActiveCounts: (v: { modules: number; roles: number; workflows: number }) => void;
   agentCwd: () => string;
   setAgentCwd: (v: string) => void;
+  diffPrompt: () => DiffSummary | null;
+  setDiffPrompt: (v: DiffSummary | null) => void;
+  showDiffPanel: () => boolean;
+  setShowDiffPanel: (v: boolean) => void;
 }
 
 export function createTuiState(): ReactiveTuiState {
@@ -56,6 +61,8 @@ export function createTuiState(): ReactiveTuiState {
   const [activeCounts, setActiveCounts] = createSignal({ modules: 0, roles: 0, workflows: 0 });
   const [collapsedThoughts, setCollapsedThoughts] = createSignal<Set<string>>(new Set());
   const [agentCwd, setAgentCwd] = createSignal('');
+  const [diffPrompt, setDiffPrompt] = createSignal<DiffSummary | null>(null);
+  const [showDiffPanel, setShowDiffPanel] = createSignal(false);
 
   return {
     screen,
@@ -92,6 +99,10 @@ export function createTuiState(): ReactiveTuiState {
     setActiveCounts,
     agentCwd,
     setAgentCwd,
+    diffPrompt,
+    setDiffPrompt,
+    showDiffPanel,
+    setShowDiffPanel,
   };
 }
 
