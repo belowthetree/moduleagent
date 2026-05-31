@@ -194,7 +194,7 @@ export function executeCommand(input: string): void {
         return;
       }
 
-      // 切换模式
+      // 切换模式（全局：写配置 + 应用到所有运行中的 agent）
       const mode = modes.find(m => m.value === arg);
       if (!mode) {
         addSystemMsg(`未知模式: ${arg}\n可用模式: ${modes.map(m => m.value).join(', ')}`);
@@ -204,9 +204,9 @@ export function executeCommand(input: string): void {
         addSystemMsg(`已在模式 "${mode.name}" 中。`);
         return;
       }
-      addSystemMsg(`正在切换模式到 ${mode.name}...`);
-      service.setAgentMode?.(arg).then(() => {
-        addSystemMsg(`已切换到模式: ${mode.name}`);
+      addSystemMsg(`正在全局切换模式到 ${mode.name}...`);
+      service.setGlobalDefaultMode?.(arg).then(() => {
+        addSystemMsg(`默认模式已设为 "${mode.name}"，已应用到所有运行中的 agent。`);
       }).catch((err: Error) => {
         addSystemMsg(`切换失败: ${err.message}`);
       });

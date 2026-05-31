@@ -82,8 +82,12 @@ export class ModuleAgentCore {
   // 生命周期
   // -----------------------------------------------------------------------
 
-  async init(projectRoot: string): Promise<InitResult> {
+  async init(projectRoot: string, configDir?: string): Promise<InitResult> {
     this.projectRoot = projectRoot;
+    if (configDir) {
+      this.configDir = configDir;
+      this.modules.updateConfigDir(configDir);
+    }
     try {
       const result = await this.modules.init(projectRoot);
       this.initialized = true;
@@ -99,8 +103,8 @@ export class ModuleAgentCore {
    * 完整初始化：扫描模块 + 加载角色 + 初始化工作流。
    * 替代手动调用 init() → initRoles() → initWorkflows() 的编排模式。
    */
-  async initAll(projectRoot: string): Promise<InitResult> {
-    const result = await this.init(projectRoot);
+  async initAll(projectRoot: string, configDir?: string): Promise<InitResult> {
+    const result = await this.init(projectRoot, configDir);
 
     try {
       const { ConfigLoader } = await import('../config/ConfigLoader.js');
@@ -281,6 +285,10 @@ export class ModuleAgentCore {
 
   async setAgentMode(moduleName: string, modeValue: string): Promise<void> {
     await this.modules.setAgentMode(moduleName, modeValue);
+  }
+
+  setDefaultMode(modeValue: string): void {
+    this.modules.setDefaultMode(modeValue);
   }
 
   getProjectRoot(): string {

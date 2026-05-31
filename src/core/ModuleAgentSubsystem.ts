@@ -103,6 +103,10 @@ export class ModuleAgentSubsystem {
   // 生命周期
   // -----------------------------------------------------------------------
 
+  updateConfigDir(configDir: string): void {
+    this.configDir = configDir;
+  }
+
   async init(projectRoot: string): Promise<InitResult> {
     this.projectRoot = projectRoot;
     this.setStatus('loading');
@@ -224,6 +228,15 @@ export class ModuleAgentSubsystem {
     const name = moduleName || this.currentModule;
     const entry = this.agents.get(name);
     if (entry) {
+      // git init 防止 opencode 向上追溯
+      try {
+        const { execSync } = await import('child_process');
+        execSync('git init', { cwd: entry.launched.cwd, stdio: 'pipe', timeout: 5000 });
+        this.logger.info(`clearContext: git init done in ${entry.launched.cwd}`);
+      } catch (err) {
+        this.logger.warn(`clearContext: git init failed: ${(err as Error).message}`);
+      }
+
       // 优先调用 newSession 创建新会话（不杀进程，agent 保持运行）
       try {
         const mcpServers = buildMcpServers({
@@ -326,6 +339,13 @@ export class ModuleAgentSubsystem {
     return entry.modeOptions.map(m => ({ ...m, current: m.value === entry.currentMode }));
   }
 
+  /** 更新内存中的 defaultMode（新启动的 agent 会用到） */
+  setDefaultMode(modeValue: string): void {
+    if (this.config) {
+      this.config.agents.default.defaultMode = modeValue;
+    }
+  }
+
   async setAgentMode(moduleName: string, modeValue: string): Promise<void> {
     const entry = this.agents.get(moduleName);
     if (!entry) throw new Error(`Agent ${moduleName} not running`);
@@ -342,15 +362,21 @@ export class ModuleAgentSubsystem {
     if (!this.config) return { command: 'opencode', args: ['acp'] };
 
     const modules = this.config.agents.modules;
+    const def = this.config.agents.default;
     if (modules && modules[moduleName]) {
+      const mod = modules[moduleName]!;
       return {
-        command: modules[moduleName]!.command,
-        args: modules[moduleName]!.args,
+        command: mod.command,
+        args: mod.args,
+        model: mod.model || def.model,
+        defaultMode: mod.defaultMode || def.defaultMode,
       };
     }
     return {
-      command: this.config.agents.default.command,
-      args: this.config.agents.default.args || [],
+      command: def.command,
+      args: def.args || [],
+      model: def.model,
+      defaultMode: def.defaultMode,
     };
   }
 
@@ -407,6 +433,15 @@ export class ModuleAgentSubsystem {
             workspacePathForModule(n, workspaceRoot, this.projectRoot),
           )
         : [];
+
+      // 在 agent cwd 执行 git init，防止 opencode 向上追溯
+      try {
+        const { execSync } = await import('child_process');
+        execSync('git init', { cwd, stdio: 'pipe', timeout: 5000 });
+        this.logger.info(`[${moduleName}] git init done in ${cwd}`);
+      } catch (err) {
+        this.logger.warn(`[${moduleName}] git init failed: ${(err as Error).message}`);
+      }
 
       this.logger.info(
         `startAgent [${moduleName}] cmd=${agentConfig.command} args=[${(agentConfig.args || []).join(',')}] cwd=${cwd}`,

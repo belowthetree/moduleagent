@@ -22,30 +22,37 @@ export function isDev(): boolean {
 // 平台配置目录
 // ---------------------------------------------------------------------------
 
+/** @deprecated 使用 getProjectConfigDir(projectRoot) 代替 */
 export function getUserConfigRoot(): string {
   return path.join(os.homedir(), '.module-agent');
 }
 
-export function getPromptConfigDir(basePath: string): string {
+export function getProjectConfigDir(projectRoot: string): string {
+  return path.join(projectRoot, '.module-agent', 'config');
+}
+
+/**
+ * dev 模式：从仓库的 config/ 读取
+ * 生产模式：从项目的 .module-agent/config/ 读取
+ */
+export function getPromptConfigDir(basePath: string, projectRoot?: string): string {
   if (isDev()) {
     return path.join(basePath, 'config');
   }
-  return path.join(getUserConfigRoot(), 'config');
+  return getProjectConfigDir(projectRoot || basePath);
 }
 
 // ---------------------------------------------------------------------------
-// 运行时配置文件初始化
+// 运行时配置文件初始化（复制到项目 .module-agent/config/）
 // ---------------------------------------------------------------------------
 
-export function ensureConfigFiles(bundledConfigDir: string): void {
+export function ensureConfigFiles(bundledConfigDir: string, projectRoot: string): void {
   if (isDev()) return;
 
-  const promptTargetDir = path.join(getUserConfigRoot(), 'config');
-  const configRoot = getUserConfigRoot();
+  const promptTargetDir = getProjectConfigDir(projectRoot);
 
   // 确保目标目录存在
   fs.mkdirSync(promptTargetDir, { recursive: true });
-  fs.mkdirSync(configRoot, { recursive: true });
 
   // 从捆绑配置目录复制 .md 提示文件（包括 knowledge/ 子目录）
   try {
@@ -82,7 +89,7 @@ export function ensureConfigFiles(bundledConfigDir: string): void {
 
   // 从捆绑的应用根目录复制 .module-agent.json 模板
   const bundledJsonPath = path.join(path.dirname(bundledConfigDir), '.module-agent.json');
-  const userJsonPath = path.join(configRoot, '.module-agent.json');
+  const userJsonPath = path.join(projectRoot, '.module-agent.json');
   if (fs.existsSync(bundledJsonPath) && !fs.existsSync(userJsonPath)) {
     try {
       fs.copyFileSync(bundledJsonPath, userJsonPath);

@@ -11,6 +11,7 @@ import type { ChatMsg, RoleConfigData } from '../types/shared.js';
 import type { RoleConfig } from '../config/defaults.js';
 import { tuiState } from './state.js';
 import { TuiPersistence, InputHistoryPersistence } from './persistence.js';
+import { getProjectConfigDir, ensureConfigFiles } from '../core/ConfigPaths.js';
 import * as WorkspaceDiff from '../core/WorkspaceDiff.js';
 import type { DiffSummary } from '../types/shared.js';
 
@@ -83,7 +84,8 @@ export class TuiBridge implements IAgentBridge {
 
   constructor() {
     this.summarizer = new ExperienceSummarizer(defaultLogger);
-    this.configDir = path.join(findRepoRoot(), 'config');
+    // configDir 在 init() 中按 projectRoot 重新设置
+    this.configDir = '';
 
     const self = this;
     const callbacks: CoreCallbacks = {
@@ -318,7 +320,13 @@ export class TuiBridge implements IAgentBridge {
   // -----------------------------------------------------------------------
 
   async init(projectRoot: string): Promise<InitResult> {
-    const result = await this.core.initAll(projectRoot);
+    // 设置 configDir 指向项目的 .module-agent/config/
+    const basePath = findRepoRoot();
+    this.configDir = getProjectConfigDir(projectRoot);
+    // 从仓库 config/ 复制到项目（如不存在）
+    ensureConfigFiles(path.join(basePath, 'config'), projectRoot);
+
+    const result = await this.core.initAll(projectRoot, this.configDir);
 
     // 初始化持久化
     this.persistence = new TuiPersistence(projectRoot);
@@ -727,6 +735,35 @@ export class TuiBridge implements IAgentBridge {
 
   async setAgentMode(modeValue: string): Promise<void> {
     await this.core.setAgentMode(this.core.getCurrentAgent(), modeValue);
+  }
+
+  /** 全局设置默认 mode：写配置 + 应用到所有运行中的 agent */
+  async setGlobalDefaultMode(modeValue: string): Promise<void> {
+    const projectRoot = this.core.getProjectRoot();
+
+    // 1. 写入 .module-agent.json
+    const { ConfigLoader } = await import('../config/ConfigLoader.js');
+    const workspace = await ConfigLoader.load(projectRoot);
+    const defaultEntry = ConfigLoader.getDefaultConfig(workspace);
+    defaultEntry.agents.default = {
+      ...defaultEntry.agents.default,
+      defaultMode: modeValue,
+    };
+    await ConfigLoader.upsertEntry(projectRoot, defaultEntry);
+    defaultLogger.info(`TuiBridge: set defaultMode=${modeValue} in config`);
+
+    // 2. 更新内存中的 config（新启动的 agent 会用到）
+    this.core.setDefaultMode(modeValue);
+
+    // 3. 应用到所有运行中的 agent
+    const agents = this.core.getModuleNames();
+    for (const name of agents) {
+      try {
+        await this.core.setAgentMode(name, modeValue);
+      } catch (err) {
+        defaultLogger.warn(`TuiBridge: setAgentMode [${name}]: ${(err as Error).message}`);
+      }
+    }
   }
 
   /** 设置当前交互目标类型 */

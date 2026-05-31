@@ -80,7 +80,6 @@ export class ElectronBridge implements IAgentBridge {
 
     const basePath = this._getBasePath();
     this.configDir = getPromptConfigDir(basePath);
-    ensureConfigFiles(path.join(basePath, 'config'));
 
     const callbacks: CoreCallbacks = this._buildCallbacks();
 
@@ -203,7 +202,10 @@ export class ElectronBridge implements IAgentBridge {
   // ── IAgentBridge 实现 ──
 
   async init(projectRoot: string): Promise<{ moduleNames: string[]; rootAgent: string }> {
-    return this.core.init(projectRoot);
+    // 更新 configDir 指向项目的 .module-agent/config/
+    this.configDir = getPromptConfigDir(this._getBasePath(), projectRoot);
+    ensureConfigFiles(path.join(this._getBasePath(), 'config'), projectRoot);
+    return this.core.init(projectRoot, this.configDir);
   }
 
   async dispose(): Promise<void> {
