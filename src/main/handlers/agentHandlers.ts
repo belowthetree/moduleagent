@@ -106,6 +106,7 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
           projectRoot,
           configDir: ctx.configDir,
           agentConfig: { command: entry.config.command, args: entry.config.args },
+          agentCwd: entry.launched.cwd,
         }).catch(err => {
           ctx.logger.warn(`Summarizer error [${moduleName}]: ${(err as Error).message}`);
         });

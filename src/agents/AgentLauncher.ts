@@ -70,8 +70,16 @@ export class AgentLauncher {
         for (const p of pathsToCheck) {
           const resolved = path.resolve(p);
           if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
-            log.warn(`[${name}] Permission DENIED: ${p} is outside workspace ${cwd}`);
-            return { outcome: { outcome: 'cancelled' as const } };
+            log.warn(`[${name}] Permission REJECTED: ${p} is outside workspace ${cwd}`);
+            // 用 reject_once 让 agent 知道工具被拒（而非 cancel 会话）
+            return {
+              outcome: {
+                outcome: 'selected' as const,
+                optionId: (params.options.find(o => o.kind === 'reject_once')?.optionId
+                  || params.options[0]?.optionId
+                  || 'reject_once'),
+              } as any,
+            };
           }
         }
 

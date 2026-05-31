@@ -852,6 +852,7 @@ export class TuiBridge implements IAgentBridge {
       projectRoot,
       configDir: this.configDir,
       agentConfig: { command: 'opencode', args: ['acp'] },
+      agentCwd: this.core.getAgentCwd(targetName) || undefined,
     }).catch(err => {
       defaultLogger.warn(`Summarizer error [${targetName}]: ${(err as Error).message}`);
     });

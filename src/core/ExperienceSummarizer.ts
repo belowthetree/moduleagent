@@ -11,6 +11,7 @@ export interface SummarizeParams {
   projectRoot: string;
   configDir: string;
   agentConfig: AgentConfig;
+  agentCwd?: string;
   logger?: Logger;
 }
 
@@ -39,15 +40,16 @@ export class ExperienceSummarizer {
     let launched: Awaited<ReturnType<typeof launcher.launch>> | null = null;
 
     try {
+      const cwd = params.agentCwd || path.join(projectRoot, '.module-agent', 'module');
       launched = await launcher.launch(
         agentConfig,
         `summarizer-${moduleName}`,
-        projectRoot,
+        cwd,
         this.logger,
       );
 
       const { sessionId } = await launched.connection.newSession({
-        cwd: projectRoot,
+        cwd,
         mcpServers: [],
       });
 
