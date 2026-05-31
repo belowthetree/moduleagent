@@ -19,7 +19,7 @@ export interface AgentConfig {
  * 与 createAgentConnection 签名一致，但 faux 实现忽略 processOptions 中的 command/args，
  * 仅使用 clientFactory 构建内存连接。 */
 export type ConnectionFactory = (
-  processOptions: { command: string; args?: string[]; env?: Record<string, string>; cwd?: string; logger?: Logger },
+  processOptions: { command: string; args?: string[]; env?: Record<string, string>; cwd?: string; name?: string; logger?: Logger },
   clientFactory: (agent: unknown) => Client,
 ) => AgentConnection;
 
@@ -118,7 +118,7 @@ export class AgentLauncher {
 
     const connectionFactory = options?.createConnection ?? createAgentConnection;
     const { connection, process } = connectionFactory(
-      { command: config.command, args: config.args, env: config.env, cwd, logger: log },
+      { command: config.command, args: config.args, env: config.env, cwd, name, logger: log },
       clientFactory,
     ) as AgentConnection & { connection: ClientSideConnection; process: ChildProcess };
 

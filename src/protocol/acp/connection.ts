@@ -11,6 +11,7 @@ export interface AgentProcessOptions {
   args?: string[];
   env?: Record<string, string>;
   cwd?: string;
+  name?: string;
   logger?: Logger;
 }
 
@@ -23,11 +24,11 @@ export function createAgentConnection(
   options: AgentProcessOptions,
   clientFactory: (agent: Agent) => Client,
 ): AgentConnection {
-  const { command, args = [], env, logger } = options;
+  const { command, args = [], env, name, logger } = options;
   const cwd = options.cwd?.replace(/\\/g, '/');
   const { cmd, resolvedArgs, shell } = resolveCommand(command, args);
 
-  logger?.info(`CONNECTION spawning: ${cmd} ${resolvedArgs.join(' ')} (cwd: ${cwd || process.cwd()})`);
+  logger?.info(`CONNECTION [${name || 'unknown'}] spawning: ${cmd} ${resolvedArgs.join(' ')} (cwd: ${cwd || process.cwd()})`);
 
   const childProcess = spawn(cmd, resolvedArgs, {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -38,11 +39,11 @@ export function createAgentConnection(
   });
 
   childProcess.on('error', (err) => {
-    logger?.error(`CONNECTION process error: ${err.message}`);
+    logger?.error(`CONNECTION [${name || 'unknown'}] process error: ${err.message}`);
   });
 
   childProcess.on('exit', (code) => {
-    logger?.info(`CONNECTION agent process exited (code: ${code})`);
+    logger?.info(`CONNECTION [${name || 'unknown'}] process exited (code: ${code})`);
   });
 
   if (childProcess.stderr) {
