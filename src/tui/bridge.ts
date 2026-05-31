@@ -386,6 +386,12 @@ export class TuiBridge implements IAgentBridge {
       }
     }
 
+    // 初始检查所有模块的工作区变更（用 graph 而非 getModuleNames——后者只含已启动的 agent）
+    const allNames = this.listAgents();
+    for (const name of allNames) {
+      this._triggerWorkspaceDiff(name);
+    }
+
     return result;
   }
 
@@ -904,24 +910,66 @@ export class TuiBridge implements IAgentBridge {
 
   _triggerWorkspaceDiff(moduleName: string): void {
     const projectRoot = this.core.getProjectRoot();
-    const workspaceCwd = this.core.getAgentCwd(moduleName);
-    if (!workspaceCwd || !projectRoot) return;
+    const workspaceCwd = this.core.getAgentCwd(moduleName) || this.core.getWorkspaceCwd(moduleName);
+    defaultLogger.info(`TuiBridge: _triggerWorkspaceDiff [${moduleName}] root=${projectRoot} cwd=${workspaceCwd}`);
+    if (!workspaceCwd) { defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — no cwd`); return; }
+    if (!projectRoot) { defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — no projectRoot`); return; }
 
+    // 只处理 .module-agent/workspace/ 下的子模块（根模块 module/ 是源码本身，无需 diff）
     const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
-    if (!workspaceCwd.startsWith(workspaceBase)) return;
+    if (!workspaceCwd.startsWith(workspaceBase + path.sep)) {
+      defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — cwd not in workspace: ${workspaceCwd}`);
+      return;
+    }
 
     const relPath = path.relative(workspaceBase, workspaceCwd);
     const sourceDir = relPath ? path.join(projectRoot, relPath) : projectRoot;
 
+    // 跳过未初始化/空工作区
+    if (!fs.existsSync(workspaceCwd)) {
+      defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — workspace dir missing`);
+      return;
+    }
+    const gitAnchor = path.join(workspaceCwd, '.git');
+    if (!fs.existsSync(gitAnchor)) {
+      defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — workspace not initialized (no .git)`);
+      return;
+    }
+
+    // 收集子模块的排除路径（子模块目录在 workspace 拷贝时被排除，diff 时应跳过）
+    const excludePaths: string[] = [];
+    const graph = this.core.getGraph();
+    if (graph) {
+      const node = graph.nodes.get(moduleName);
+      if (node) {
+        // relPath 是当前模块相对 workspaceBase 的路径（如 "packages/agent"）
+        // child.relativePath 是相对项目根的路径（如 "packages/agent/src"）
+        // 需减去 relPath 前缀，得到相对 sourceDir 的路径（如 "src"）
+        const prefix = relPath ? relPath.replace(/\\/g, '/') + '/' : '';
+        for (const childName of node.children) {
+          const child = graph.nodes.get(childName);
+          if (child && child.relativePath !== '.') {
+            const childRel = child.relativePath.replace(/\\/g, '/');
+            if (prefix && childRel.startsWith(prefix)) {
+              excludePaths.push(childRel.slice(prefix.length));
+            } else {
+              excludePaths.push(childRel);
+            }
+          }
+        }
+      }
+    }
+
     try {
       defaultLogger.info(`TuiBridge: diff ${workspaceCwd} vs ${sourceDir}`);
-      const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir);
+      const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir, excludePaths);
       summary.moduleName = moduleName;
       this.diffCache.set(moduleName, summary);
+      defaultLogger.info(`TuiBridge: diff [${moduleName}] files=${summary.files.length} +${summary.addedCount} ~${summary.modifiedCount} -${summary.deletedCount}`);
 
       if (summary.files.length > 0) {
-        defaultLogger.info(`TuiBridge: diff [${moduleName}] ${summary.addedCount}+ ${summary.modifiedCount}~ ${summary.deletedCount}-`);
         tuiState.setDiffPrompt(summary);
+        defaultLogger.info(`TuiBridge: diff prompt set for [${moduleName}]`);
       }
     } catch (err) {
       defaultLogger.error(`TuiBridge: diff error [${moduleName}]: ${(err as Error).message}`);
@@ -945,8 +993,8 @@ export class TuiBridge implements IAgentBridge {
     const cached = this.diffCache.get(moduleName);
     if (!cached) return { applied: 0, errors: ['no diff cache'] };
     const result = await WorkspaceDiff.apply(cached.workspaceDir, cached.sourceDir, files, cached.files);
-    // 刷新缓存
-    const newSummary = WorkspaceDiff.analyze(cached.workspaceDir, cached.sourceDir);
+    // 刷新缓存（传空 excludePaths——原分析已过滤）
+    const newSummary = WorkspaceDiff.analyze(cached.workspaceDir, cached.sourceDir, []);
     newSummary.moduleName = moduleName;
     if (newSummary.files.length > 0) {
       this.diffCache.set(moduleName, newSummary);

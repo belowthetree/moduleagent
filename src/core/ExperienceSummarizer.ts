@@ -41,14 +41,7 @@ export class ExperienceSummarizer {
 
     try {
       const cwd = params.agentCwd || path.join(projectRoot, '.module-agent', 'module');
-      // git init 防止 opencode 向上追溯
-      try {
-        const { execSync } = await import('child_process');
-        execSync('git init', { cwd, stdio: 'pipe', timeout: 5000 });
-        this.logger.info(`Summarizer: git init done in ${cwd}`);
-      } catch (err) {
-        this.logger.warn(`Summarizer: git init failed: ${(err as Error).message}`);
-      }
+      this._ensureGitAnchor(cwd);
 
       launched = await launcher.launch(
         agentConfig,
@@ -74,6 +67,17 @@ export class ExperienceSummarizer {
         try { launched.process.kill(); } catch { /* 忽略 */ }
       }
     }
+  }
+
+  private _ensureGitAnchor(cwd: string): void {
+    try {
+      const gitDir = path.join(cwd, '.git');
+      if (!fs.existsSync(gitDir)) {
+        fs.mkdirSync(path.join(gitDir, 'refs', 'heads'), { recursive: true });
+        fs.mkdirSync(path.join(gitDir, 'objects'), { recursive: true });
+        fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
+      }
+    } catch { /* ignore */ }
   }
 
   private loadPrompt(configDir: string): void {

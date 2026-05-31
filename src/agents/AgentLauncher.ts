@@ -73,8 +73,20 @@ export class AgentLauncher {
           const resolved = path.resolve(p).replace(/\\/g, '/');
           const normalizedCwd = cwd.replace(/\\/g, '/');
           if (!resolved.startsWith(normalizedCwd + '/') && resolved !== normalizedCwd) {
-            log.warn(`[${name}] Permission REJECTED: ${p} is outside workspace ${normalizedCwd}`);
-            // 用 reject_once 让 agent 知道工具被拒（而非 cancel 会话）
+            const reason = `Path "${p}" is outside workspace (${normalizedCwd}). Use files within the workspace.`;
+            log.warn(`[${name}] Permission REJECTED: ${reason}`);
+            // 通过 sessionUpdate 注入 tool_call error，让模型看到被拒原因
+            if (launched.onSessionUpdate) {
+              launched.onSessionUpdate(name, params.sessionId, {
+                update: {
+                  sessionUpdate: 'tool_call',
+                  title: toolCall.title || 'unknown',
+                  status: 'error',
+                  toolCallId: toolCall.toolCallId,
+                  rawInput: { error: reason },
+                },
+              } as any);
+            }
             return {
               outcome: {
                 outcome: 'selected' as const,

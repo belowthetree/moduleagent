@@ -217,11 +217,47 @@ App.tsx
 | `src/tui/commands.ts` | 命令系统（17 条命令，含角色/工作流） |
 | `src/tui/persistence.ts` | 对话 + 输入历史持久化 |
 | `src/tui/config.ts` | 配置读写 helper |
-| `src/tui/App.tsx` | 主布局组件 |
-| `src/tui/components/ContextArea.tsx` | 消息列表（按 msgType 渲染） |
-| `src/tui/components/InputBox.tsx` | 输入框 + 历史导航 |
-| `src/tui/components/StatusBar.tsx` | 状态栏 |
-| `src/tui/components/CommandPalette.tsx` | / 命令候选面板 |
-| `src/tui/components/SetupWizard.tsx` | 设置向导（5 步：命令→模型→参数→项目目录→确认） |
+| `src/tui/App.tsx` | 主布局组件 + Ctrl+P diff 快捷键 + Y/R/N 全局键 |
+| `src/tui/components/ContextArea.tsx` | 消息列表（按 msgType 渲染，支持文本选择） |
+| `src/tui/components/InputBox.tsx` | 输入框 + 历史导航 + 粘贴处理 |
+| `src/tui/components/StatusBar.tsx` | 状态栏（agent 状态 + cwd 路径） |
+| `src/tui/components/CommandPalette.tsx` | / 命令候选面板 + 子命令推荐 |
+| `src/tui/components/SetupWizard.tsx` | 设置向导（命令→模型→参数→项目目录→确认） |
 | `src/tui/components/ModuleTree.tsx` | 交互式模块树面板 |
+| `src/tui/components/DiffBar.tsx` | 工作区变更底部固定条（Y/R/N） |
+| `src/tui/components/DiffPanel.tsx` | Diff 面板（文件列表 + unified diff 详情） |
 | `src/tui/cjk.ts` | CJK 字符宽度计算工具 |
+
+## 新增功能
+
+### 工作区 Diff
+
+Agent 响应完成后自动对比工作区（`.module-agent/workspace/` 或 `.module-agent/module/`）与源目录。有变更时在消息区底部显示 DiffBar，支持：
+- `Y` 接受全部变更并写回源目录
+- `R` 打开 DiffPanel 逐文件审查
+- `N` 丢弃全部变更
+- `Ctrl+P` 全局快捷键打开 DiffPanel
+- `/diff` 命令管理系统
+
+### Agent Mode / Model 管理
+
+- `/mode` 查看/切换 agent 会话模式（通过 `setSessionConfigOption`）
+- `/mode <value>` 全局设置默认 mode：写入 `.module-agent.json` + 应用到所有运行中的 agent
+- `model` 配置项在 session 创建时通过 ACP 协议设置（非 CLI 参数）
+- `defaultMode` 配置项控制 agent 启动时的默认模式
+
+### 文本选择与复制
+
+- 所有消息文本支持鼠标选择（`selectable` 属性）
+- `useSelectionHandler` 自动将选中文本通过 OSC 52 推入系统剪贴板
+
+### 命令子命令推荐
+
+输入 `/role ` 或 `/diff ` 等命令+空格后，CommandPalette 自动切换为子命令列表（如 `/role list`, `/role start`）。`/mode ` 动态获取当前 agent 支持的模式列表。
+
+### 工作区边界保护
+
+- Agent 启动前在 cwd 执行 `git init` 锚定 workspace 边界
+- Prompt 中注入 `Workspace Boundary` 指令
+- `sessionUpdate` 层拦截越界工具调用（注入错误消息，不 kill 进程）
+- `requestPermission` 层检查路径并返回拒绝原因

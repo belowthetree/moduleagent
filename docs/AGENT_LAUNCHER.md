@@ -23,10 +23,10 @@ AgentLauncher.launch()
   ├─ new TerminalHandler(cwd)                 // 终端处理器
   │
   ├─ clientFactory = (): Client => ({         // ACP Client 接口
-  │     requestPermission: 自动允许所有权限请求
+  │     requestPermission: 检查路径是否在 cwd 内，越界返回 reject_once
   │     sessionUpdate:      转发流式更新到 onSessionUpdate
-  │     readTextFile:       FsHandler.readFile
-  │     writeTextFile:      FsHandler.writeFile
+  │     readTextFile:       FsHandler.readFile（含路径校验）
+  │     writeTextFile:      FsHandler.writeFile（含路径校验）
   │     createTerminal:     TerminalHandler.create
   │     terminalOutput/kill/release: TerminalHandler.*
   │   })
@@ -127,6 +127,24 @@ interface TimelineEvent {
 ```
 
 时间线的关键行为是**合并**：连续的 `thinking` 事件合并为一个条目，相同 `toolCallId` 的工具调用更新现有条目而非追加。
+
+---
+
+## 工作区隔离
+
+### git init 锚点
+
+启动 Agent 前在 cwd 执行 `git init`，创建完整 Git 仓库。防止 `opencode` 通过 `.git` 目录向上追溯到项目根目录，将 workspace 锚定在正确的隔离目录。
+
+### 路径检查（三层防御）
+
+| 层 | 位置 | 拦截方式 |
+|---|---|---|
+| `FsHandler.resolvePath` | `src/protocol/acp/handlers/fs.ts` | `readTextFile`/`writeTextFile` 调用时校验 |
+| `requestPermission` | `AgentLauncher.ts` | Agent 主动请求权限时校验，拒绝后注入 `tool_call` error 通知模型原因 |
+| `sessionUpdate` | `ModuleAgentSubsystem.ts` | 所有 `tool_call`/`tool_call_update` 事件中的路径参数校验，越界注入 `onStreamError` |
+
+路径比对前统一 `replace(/\\/g, '/')` 归一化，解决 Windows 反斜杠与 cwd 正斜杠不匹配的问题。
 
 ---
 

@@ -279,6 +279,10 @@ export class ModuleAgentCore {
     return this.modules.getAgentCwd(moduleName);
   }
 
+  getWorkspaceCwd(moduleName: string): string | null {
+    return this.modules.getWorkspaceCwd(moduleName);
+  }
+
   getAgentModes(moduleName: string): { value: string; name: string; current: boolean }[] {
     return this.modules.getAgentModes(moduleName);
   }

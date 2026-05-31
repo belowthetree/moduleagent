@@ -228,14 +228,7 @@ export class ModuleAgentSubsystem {
     const name = moduleName || this.currentModule;
     const entry = this.agents.get(name);
     if (entry) {
-      // git init 防止 opencode 向上追溯
-      try {
-        const { execSync } = await import('child_process');
-        execSync('git init', { cwd: entry.launched.cwd, stdio: 'pipe', timeout: 5000 });
-        this.logger.info(`clearContext: git init done in ${entry.launched.cwd}`);
-      } catch (err) {
-        this.logger.warn(`clearContext: git init failed: ${(err as Error).message}`);
-      }
+      this._ensureGitAnchor(entry.launched.cwd);
 
       // 优先调用 newSession 创建新会话（不杀进程，agent 保持运行）
       try {
@@ -331,6 +324,19 @@ export class ModuleAgentSubsystem {
 
   getAgentCwd(moduleName: string): string | null {
     return this.agents.get(moduleName)?.launched.cwd ?? null;
+  }
+
+  /** 计算模块的 workspace cwd（无需 agent 运行） */
+  getWorkspaceCwd(moduleName: string): string | null {
+    const node = this.graph?.nodes.get(moduleName);
+    if (!node) return null;
+    // 根模块
+    if (node.relativePath === '.') {
+      return path.join(this.projectRoot, '.module-agent', 'module');
+    }
+    // 子模块：优先用 workspacePath，fallback 到 absolutePath
+    const workspaceRoot = path.join(this.projectRoot, '.module-agent', 'workspace');
+    return node.workspacePath || workspacePathForModule(node, workspaceRoot, this.projectRoot);
   }
 
   getAgentModes(moduleName: string): { value: string; name: string; current: boolean }[] {
@@ -434,14 +440,7 @@ export class ModuleAgentSubsystem {
           )
         : [];
 
-      // 在 agent cwd 执行 git init，防止 opencode 向上追溯
-      try {
-        const { execSync } = await import('child_process');
-        execSync('git init', { cwd, stdio: 'pipe', timeout: 5000 });
-        this.logger.info(`[${moduleName}] git init done in ${cwd}`);
-      } catch (err) {
-        this.logger.warn(`[${moduleName}] git init failed: ${(err as Error).message}`);
-      }
+      this._ensureGitAnchor(cwd);
 
       this.logger.info(
         `startAgent [${moduleName}] cmd=${agentConfig.command} args=[${(agentConfig.args || []).join(',')}] cwd=${cwd}`,
@@ -469,6 +468,7 @@ export class ModuleAgentSubsystem {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.callbacks.onStreamChunk(name, block.text, 'thought');
         } else if (update === 'tool_call') {
+          this.logger.info(`[${name}] tool_call: ${(data as { title?: string }).title || 'unknown'} ${JSON.stringify(notification)}`);
           const tc = data as { title?: string; status?: string; name?: string; toolName?: string; toolCallId?: string; input?: Record<string, unknown>; arguments?: Record<string, unknown>; params?: Record<string, unknown>; toolCall?: Record<string, unknown> };
           const toolName = tc.title || tc.toolName || tc.name || 'unknown';
           const toolStatus = tc.status || 'running';
@@ -591,6 +591,18 @@ export class ModuleAgentSubsystem {
     } catch (err) {
       this.logger.warn(`[session] failed to save sessionId: ${(err as Error).message}`);
     }
+  }
+
+  /** 在 cwd 创建 .git 目录结构，防止 opencode 向上追溯 */
+  private _ensureGitAnchor(cwd: string): void {
+    try {
+      const gitDir = path.join(cwd, '.git');
+      if (!fs.existsSync(gitDir)) {
+        fs.mkdirSync(path.join(gitDir, 'refs', 'heads'), { recursive: true });
+        fs.mkdirSync(path.join(gitDir, 'objects'), { recursive: true });
+        fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
+      }
+    } catch { /* ignore */ }
   }
 
   /** 从工具参数中提取路径字段 */

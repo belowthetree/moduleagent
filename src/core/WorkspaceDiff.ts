@@ -201,9 +201,35 @@ function isTextFile(filePath: string): boolean {
  * @param sourceDir - 项目源目录
  * @returns DiffSummary 包含所有变更文件的分类列表
  */
-export function analyze(workspaceDir: string, sourceDir: string): DiffSummary {
+export function analyze(workspaceDir: string, sourceDir: string, excludeRelPaths?: string[]): DiffSummary {
+  defaultLogger.info(`WorkspaceDiff.analyze: ws=${workspaceDir} src=${sourceDir} exclude=${excludeRelPaths?.length || 0} paths`);
+  if (!fs.existsSync(workspaceDir)) { defaultLogger.info(`WorkspaceDiff.analyze: ws dir missing`); return emptySummary(); }
+  if (!fs.existsSync(sourceDir)) { defaultLogger.info(`WorkspaceDiff.analyze: src dir missing`); return emptySummary(); }
+
+  const excludeSet = new Set(excludeRelPaths?.map(p => p.replace(/\\/g, '/')) || []);
+  function isExcluded(relPath: string): boolean {
+    const normalized = relPath.replace(/\\/g, '/');
+    if (excludeSet.has(normalized)) return true;
+    for (const ex of excludeSet) {
+      if (normalized.startsWith(ex + '/')) return true;
+    }
+    return false;
+  }
+
   const wsFiles = listFilesRecursive(workspaceDir, workspaceDir);
   const srcFiles = listFilesRecursive(sourceDir, sourceDir);
+  // 从源文件列表中移除被排除的子模块目录
+  for (const key of srcFiles.keys()) {
+    if (isExcluded(key)) srcFiles.delete(key);
+  }
+  defaultLogger.info(`WorkspaceDiff.analyze: wsFiles=${wsFiles.size} srcFiles=${srcFiles.size} (after exclude)`);
+
+  // 工作区为空（只有 .git 等元数据）→ 不是真实变更，跳过
+  const wsNonMeta = [...wsFiles.keys()].filter(k => !k.startsWith('.git'));
+  if (wsNonMeta.length === 0) {
+    defaultLogger.info(`WorkspaceDiff.analyze: workspace empty (no non-meta files)`);
+    return emptySummary();
+  }
 
   const allRelPaths = new Set([...wsFiles.keys(), ...srcFiles.keys()]);
 
@@ -260,7 +286,7 @@ export function analyze(workspaceDir: string, sourceDir: string): DiffSummary {
     return order[a.status] - order[b.status] || a.relativePath.localeCompare(b.relativePath);
   });
 
-  return {
+  const result = {
     moduleName: '',
     workspaceDir,
     sourceDir,
@@ -269,6 +295,12 @@ export function analyze(workspaceDir: string, sourceDir: string): DiffSummary {
     modifiedCount: files.filter(f => f.status === 'modified').length,
     deletedCount: files.filter(f => f.status === 'deleted').length,
   };
+  defaultLogger.info(`WorkspaceDiff.analyze: result +${result.addedCount} ~${result.modifiedCount} -${result.deletedCount} (${result.files.length} files)`);
+  return result;
+}
+
+function emptySummary(): DiffSummary {
+  return { moduleName: '', workspaceDir: '', sourceDir: '', files: [], addedCount: 0, modifiedCount: 0, deletedCount: 0 };
 }
 
 /**

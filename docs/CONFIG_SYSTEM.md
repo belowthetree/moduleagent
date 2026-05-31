@@ -24,31 +24,31 @@ isDev(): boolean
 1. 环境变量 `MODULE_AGENT_DEV=1`
 2. 命令行参数 `--dev`
 
-### 平台配置目录
+### 项目配置目录（推荐）
 
 ```typescript
-getUserConfigRoot(): string
-// → ~/.module-agent/  (Linux)
-// → ~/Library/Application Support/module-agent/  (macOS)
-// → %APPDATA%/module-agent/Config/  (Windows)
+getProjectConfigDir(projectRoot: string): string
+// → <projectRoot>/.module-agent/config/
 ```
+
+所有 prompt 文件和 knowledge 子目录存放在项目本地，跟随项目走。
 
 ### Prompt 配置目录
 
 ```typescript
-getPromptConfigDir(basePath: string): string
+getPromptConfigDir(basePath: string, projectRoot?: string): string
 ```
 
-- **开发模式**：`<basePath>/config/`（项目仓库中的 config/）
-- **生产模式**：`~/.module-agent/config/`（用户配置目录）
+- **开发模式**：`<basePath>/config/`（代码仓库中的 config/）
+- **生产模式**：`<projectRoot>/.module-agent/config/`（项目本地）
 
 ### 配置文件初始化
 
 ```typescript
-ensureConfigFiles(bundledConfigDir: string): void
+ensureConfigFiles(bundledConfigDir: string, projectRoot: string): void
 ```
 
-首次运行时，将应用捆绑的 `.md` prompt 文件和 `.module-agent.json` 复制到用户配置目录（跳过已存在的文件）。
+首次运行时，将应用捆绑的 `.md` prompt 文件和 `.module-agent.json` 从代码仓库复制到项目 `.module-agent/config/` 目录（跳过已存在的文件）。dev 模式下跳过复制。
 
 ### cosmiconfig 探索器
 
@@ -97,7 +97,7 @@ ConfigLoader.load(projectRoot)
 
 | Schema | 对应类型 | 说明 |
 |--------|---------|------|
-| `AgentConfigSchema` | `AgentConfig` | Agent 命令、参数、模型配置 |
+| `AgentConfigSchema` | `AgentConfig` | Agent 命令、参数、模型、mode 配置 |
 | `ProjectConfigSchema` | `ProjectConfig` | 单条项目配置（agents + exclude + projectPath） |
 | `ConfigEntrySchema` | `ConfigEntry` | 带名称的配置条目（extends ProjectConfigSchema） |
 | `RoleConfigSchema` | `RoleConfig` | 角色 Agent 配置（name + description + visibleModulePaths） |
@@ -111,7 +111,7 @@ ConfigLoader.load(projectRoot)
   "configs": [{
     "name": "default",
     "agents": {
-      "default": { "command": "opencode", "args": ["acp"] },
+      "default": { "command": "opencode", "args": ["acp"], "model": "gpt-4", "defaultMode": "ask" },
       "modules": {
         "backend": { "command": "codebuddy", "args": ["--acp"] }
       }
