@@ -501,7 +501,7 @@ export class ModuleAgentSubsystem {
       // 打印 configOptions 并尝试切换到限制性模式
       try {
         const configOptions = sessionResult?.configOptions as any[];
-        this.logger.info(`[${moduleName}] session configOptions: ${JSON.stringify(configOptions)}`);
+        this.logger.info(`[${moduleName}] session configOptions: ${JSON.stringify(sessionResult)}`);
         if (configOptions) {
           const modeOpt = configOptions.find((o: any) => o.id === 'mode' || o.category === 'mode');
           if (modeOpt) {
@@ -530,6 +530,17 @@ export class ModuleAgentSubsystem {
         }
       } catch (err) {
         this.logger.info(`[${moduleName}] setSessionConfigOption: ${(err as Error).message}`);
+      }
+
+      // 通过协议设置模型（独立于 CLI 参数）
+      const model = agentConfig.model;
+      if (model) {
+        try {
+          await launched.connection.setSessionConfigOption({ sessionId, configId: 'model', value: model });
+          this.logger.info(`[${moduleName}] setSessionConfigOption model=${model}`);
+        } catch (err) {
+          this.logger.info(`[${moduleName}] setSessionConfigOption model: ${(err as Error).message}`);
+        }
       }
 
       // 保存 mode 配置到 entry 供查询

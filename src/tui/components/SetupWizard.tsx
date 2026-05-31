@@ -70,14 +70,10 @@ export default function SetupWizard(props: SetupWizardProps) {
   async function handleComplete(): Promise<void> {
     const data = tuiState.setupData();
 
-    // 构建 args：model 参数 + 额外参数
-    const parts: string[] = [];
-    if (data.model) {
-      parts.push('--model', data.model);
-    }
-    if (data.args) {
-      parts.push(...data.args.split(/\s+/).filter(Boolean));
-    }
+    // 构建 args：只放额外参数，model 独立字段不混入
+    const argsParts: string[] = data.args
+      ? data.args.split(/\s+/).filter(Boolean)
+      : [];
 
     const resolvedProjectPath = data.projectPath || fallbackProjectPath;
 
@@ -85,7 +81,8 @@ export default function SetupWizard(props: SetupWizardProps) {
       agents: {
         default: {
           command: data.command || defaultConfig.agents.default.command,
-          args: parts.length > 0 ? parts : defaultConfig.agents.default.args,
+          args: argsParts.length > 0 ? argsParts : defaultConfig.agents.default.args,
+          ...(data.model ? { model: data.model } : {}),
         },
       },
       projectPath: resolvedProjectPath,
@@ -107,10 +104,10 @@ export default function SetupWizard(props: SetupWizardProps) {
     const data = tuiState.setupData();
     const lines: string[] = [];
 
-    const modelPart = data.model ? ` --model ${data.model}` : '';
-    const argsPart = data.args ? ` ${data.args}` : '';
+    const modelPart = data.model ? ` (model: ${data.model})` : '';
+    const argsPart = data.args ? ` [${data.args}]` : '';
     lines.push(
-      `Agent 命令: ${data.command || defaultConfig.agents.default.command}${modelPart}${argsPart}`,
+      `Agent: ${data.command || defaultConfig.agents.default.command}${modelPart}${argsPart}`,
     );
     lines.push(`项目目录: ${data.projectPath || fallbackProjectPath}`);
     lines.push(`配置保存目录: ${tuiState.workingDir() || process.cwd()}`);

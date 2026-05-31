@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const AgentConfigSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).optional(),
+  model: z.string().optional(),
   fastModel: z.string().optional(),
   normalModel: z.string().optional(),
   autoSwitchModel: z.boolean().optional(),

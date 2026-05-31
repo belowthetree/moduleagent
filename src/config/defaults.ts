@@ -3,10 +3,12 @@ export interface ProjectConfig {
     default: {
       command: string;
       args?: string[];
+      model?: string;
     };
     modules?: Record<string, {
       command: string;
       args?: string[];
+      model?: string;
     }>;
   };
   exclude: string[];

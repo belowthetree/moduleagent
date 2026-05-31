@@ -1,3 +1,4 @@
+import path from 'path';
 import { createAgentConnection, type AgentConnection } from '../protocol/acp/connection.js';
 import { FsHandler } from '../protocol/acp/handlers/fs.js';
 import { TerminalHandler } from '../protocol/acp/handlers/terminal.js';
@@ -54,7 +55,26 @@ export class AgentLauncher {
 
     const clientFactory = (): Client => ({
       requestPermission: async (params) => {
-        log.info(`[${name}] Permission requested: ${params.toolCall.toolCallId}, auto-allowing`);
+        const toolCall = params.toolCall;
+        log.info(`[${name}] Permission requested: ${toolCall.title || 'unknown'} (${JSON.stringify(toolCall)})`);
+
+        // 检查工具 rawInput 中的路径是否在 agent cwd 内
+        const rawInput = (toolCall.rawInput || {}) as Record<string, unknown>;
+        const pathKeys = ['filePath', 'filepath', 'path', 'directory', 'parentDir',
+          'sourcePath', 'targetPath', 'file', 'dir', 'folder'];
+        const pathsToCheck: string[] = [];
+        for (const key of pathKeys) {
+          const v = rawInput[key];
+          if (typeof v === 'string' && v.length > 0) pathsToCheck.push(v);
+        }
+        for (const p of pathsToCheck) {
+          const resolved = path.resolve(p);
+          if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
+            log.warn(`[${name}] Permission DENIED: ${p} is outside workspace ${cwd}`);
+            return { outcome: { outcome: 'cancelled' as const } };
+          }
+        }
+
         return {
           outcome: {
             outcome: 'selected' as const,

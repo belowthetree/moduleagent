@@ -28,7 +28,7 @@ export class FsHandler {
       content = await fs.readFile(filePath, 'utf-8');
     }
 
-    log.debug(`FsHandler read: ${params.path} (${content.length} chars)`);
+    log.info(`FsHandler read: ${params.path} (${content.length} chars)`);
     return { content };
   }
 
@@ -36,7 +36,7 @@ export class FsHandler {
     const filePath = this.resolvePath(params.path);
     await fs.ensureDir(path.dirname(filePath));
     await fs.writeFile(filePath, params.content, 'utf-8');
-    log.debug(`FsHandler write: ${params.path} (${params.content.length} chars)`);
+    log.info(`FsHandler write: ${params.path} (${params.content.length} chars)`);
   }
 
   private resolvePath(filePath: string): string {
