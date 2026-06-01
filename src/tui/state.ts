@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { createSignal } from 'solid-js';
-import type { AgentStatus, ChatMessage, CommandDef, TuiScreen } from './types.js';
+import type { AgentStatus, ChatMessage, CommandDef, TuiScreen, ExperienceEntry } from './types.js';
 import type { DiffSummary } from '../types/shared.js';
 
 export interface ReactiveTuiState {
@@ -46,6 +46,12 @@ export interface ReactiveTuiState {
   setDiffPrompt: (v: DiffSummary | null) => void;
   showDiffPanel: () => boolean;
   setShowDiffPanel: (v: boolean) => void;
+  showExperiencePanel: () => boolean;
+  setShowExperiencePanel: (v: boolean) => void;
+  experienceEntries: () => ExperienceEntry[];
+  setExperienceEntries: (v: ExperienceEntry[]) => void;
+  experienceModuleIndex: () => number;
+  setExperienceModuleIndex: (v: number) => void;
 }
 
 export function createTuiState(): ReactiveTuiState {
@@ -68,6 +74,9 @@ export function createTuiState(): ReactiveTuiState {
   const [agentCwd, setAgentCwd] = createSignal('');
   const [diffPrompt, setDiffPrompt] = createSignal<DiffSummary | null>(null);
   const [showDiffPanel, setShowDiffPanel] = createSignal(false);
+  const [showExperiencePanel, setShowExperiencePanel] = createSignal(false);
+  const [experienceEntries, setExperienceEntries] = createSignal<ExperienceEntry[]>([]);
+  const [experienceModuleIndex, setExperienceModuleIndex] = createSignal(0);
 
   return {
     screen,
@@ -108,6 +117,12 @@ export function createTuiState(): ReactiveTuiState {
     setDiffPrompt,
     showDiffPanel,
     setShowDiffPanel,
+    showExperiencePanel,
+    setShowExperiencePanel,
+    experienceEntries,
+    setExperienceEntries,
+    experienceModuleIndex,
+    setExperienceModuleIndex,
   };
 }
 

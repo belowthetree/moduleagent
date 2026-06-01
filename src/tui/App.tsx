@@ -15,6 +15,7 @@ import SetupWizard from './components/SetupWizard.js';
 import ModuleTree from './components/ModuleTree.js';
 import DiffBar from './components/DiffBar.js';
 import DiffPanel from './components/DiffPanel.js';
+import ExperiencePanel from './components/ExperiencePanel.js';
 
 function addSystemMessage(text: string) {
   const msg: ChatMessage = {
@@ -50,13 +51,28 @@ export default function App() {
     }
   });
 
-  // Esc 关闭模块树
+  // Esc: 关闭模块树 / 经验选择回退
   useKeyboard((key) => {
     if (screen() !== 'tree') return;
     if (key.name === 'escape') {
-      tuiState.setScreen('chat');
-      tuiState.setInputValue('');
-      tuiState.setShowCommands(false);
+      if (tuiState.showExperiencePanel()) {
+        const idx = tuiState.experienceModuleIndex();
+        if (idx >= 0) {
+          // 经验内容 → 回到树继续选择
+          tuiState.setExperienceModuleIndex(-1);
+        } else {
+          // 树 → 关闭经验面板
+          tuiState.setShowExperiencePanel(false);
+          tuiState.setScreen('chat');
+          tuiState.setInputValue('');
+          tuiState.setShowCommands(false);
+        }
+      } else {
+        // 普通树模式 → 关闭
+        tuiState.setScreen('chat');
+        tuiState.setInputValue('');
+        tuiState.setShowCommands(false);
+      }
       key.preventDefault();
     }
   });
@@ -119,19 +135,39 @@ export default function App() {
     <box flexDirection="column" width="100%" height="100%">
       {screen() === 'setup' ? (
         <SetupWizard onComplete={handleSetupComplete} />
+      ) : screen() === 'tree' && tuiState.showExperiencePanel() && tuiState.experienceModuleIndex() >= 0 ? (
+        <ExperiencePanel />
       ) : screen() === 'tree' ? (
         <ModuleTree
           graph={(globalThis as any).__tuiAgentService?.getGraph?.() ?? null}
           moduleStatuses={(globalThis as any).__tuiAgentService?.getModuleStatuses?.() ?? new Map()}
           loadedModules={(globalThis as any).__tuiAgentService?.loadedModulesSet ?? new Set()}
           currentAgent={tuiState.currentAgent()}
+          selectionMode={tuiState.showExperiencePanel() ? 'experience' : 'agent'}
           onSelect={(name: string) => {
-            (globalThis as any).__tuiAgentService?.setCurrentAgent?.(name);
+            if (tuiState.showExperiencePanel()) {
+              // 经验选择模式：查找模块在 experienceEntries 中的索引
+              const entries = tuiState.experienceEntries();
+              const idx = entries.findIndex(e => e.moduleName === name);
+              if (idx >= 0) {
+                tuiState.setExperienceModuleIndex(idx);
+              }
+            } else {
+              // 普通 Agent 切换模式
+              (globalThis as any).__tuiAgentService?.setCurrentAgent?.(name);
+              tuiState.setScreen('chat');
+              tuiState.setInputValue('');
+              tuiState.setShowCommands(false);
+            }
+          }}
+          onClose={() => {
+            if (tuiState.showExperiencePanel()) {
+              tuiState.setShowExperiencePanel(false);
+            }
             tuiState.setScreen('chat');
             tuiState.setInputValue('');
             tuiState.setShowCommands(false);
           }}
-          onClose={() => tuiState.setScreen('chat')}
         />
       ) : tuiState.showDiffPanel() && tuiState.diffPrompt() ? (
         <DiffPanel />

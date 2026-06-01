@@ -13,6 +13,7 @@ import { tuiState } from './state.js';
 import { executeCommand } from './commands.js';
 import { TuiBridge } from './bridge.js';
 import { defaultLogger, LogLevel } from '../core/Logger.js';
+import fs from 'fs-extra';
 import type { ChatMessage } from './types.js';
 
 export async function startTui(projectRoot: string) {
@@ -52,10 +53,50 @@ export async function startTui(projectRoot: string) {
           }
         },
       },
+      {
+        name: 'toggle-experience',
+        run() {
+          if (tuiState.showExperiencePanel()) {
+            tuiState.setShowExperiencePanel(false);
+            tuiState.setScreen('chat');
+            tuiState.setInputValue('');
+            tuiState.setShowCommands(false);
+            return;
+          }
+          // 加载所有模块的 experience.md（仅首次）
+          const entries = tuiState.experienceEntries();
+          if (entries.length === 0) {
+            const bridge = (globalThis as any).__tuiAgentService;
+            if (!bridge?.core) return;
+            const graph = bridge.core.getGraph?.();
+            if (!graph) return;
+            const loaded: { moduleName: string; content: string; filePath: string }[] = [];
+            for (const [name, node] of graph.nodes) {
+              const expPath = path.join(node.absolutePath, 'experience.md');
+              try {
+                const content = fs.readFileSync(expPath, 'utf-8').trim();
+                if (content) {
+                  const body = content.replace(/^# .+?\n+/, '').trim();
+                  if (body) {
+                    loaded.push({ moduleName: name, content, filePath: expPath });
+                  }
+                }
+              } catch { /* 跳过无 experience.md 的模块 */ }
+            }
+            if (loaded.length === 0) return;
+            tuiState.setExperienceEntries(loaded);
+          }
+          // 切到树模式，用户选择模块后显示经验
+          tuiState.setExperienceModuleIndex(-1);
+          tuiState.setShowExperiencePanel(true);
+          tuiState.setScreen('tree');
+        },
+      },
     ],
     bindings: [
       { key: 'ctrl+x t', cmd: 'toggle-tree' },
       { key: 'ctrl+x d', cmd: 'toggle-diff' },
+      { key: 'ctrl+x h', cmd: 'toggle-experience' },
     ],
   });
 

@@ -98,6 +98,8 @@ interface ModuleTreeProps {
   currentAgent: string;
   onSelect: (name: string) => void;
   onClose: () => void;
+  /** 选择模式：'agent'=切换聊天(默认)，'experience'=选择模块查看经验 */
+  selectionMode?: 'agent' | 'experience';
 }
 
 export default function ModuleTree(props: ModuleTreeProps) {
@@ -182,8 +184,14 @@ export default function ModuleTree(props: ModuleTreeProps) {
         backgroundColor="#161b22"
         focused={true}
       >
-        <text fg="#58a6ff"> 模块树 </text>
-        <text fg="#888888" dim>↑↓←→ 导航  Enter 切换  Esc 关闭</text>
+        <text fg="#58a6ff">
+          {props.selectionMode === 'experience' ? ' 选择模块 — 查看经验' : ' 模块树'}
+        </text>
+        <text fg="#888888" dim>
+          {props.selectionMode === 'experience'
+            ? '↑↓←→ 导航  Enter 选择  Esc 关闭'
+            : '↑↓←→ 导航  Enter 切换  Esc 关闭'}
+        </text>
       </box>
       {/*
         隐藏 input：OpenTUI 的键盘事件路由依赖聚焦的 input 元素。

@@ -24,6 +24,13 @@ export interface CommandDef {
 
 export type TuiScreen = 'setup' | 'chat' | 'tree';
 
+/** 经验浏览器中的单条模块经验 */
+export interface ExperienceEntry {
+  moduleName: string;
+  content: string;
+  filePath: string;
+}
+
 export interface TuiState {
   screen: TuiScreen;
   agentStatus: AgentStatus;
