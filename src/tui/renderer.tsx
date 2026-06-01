@@ -5,6 +5,8 @@
 
 import { createCliRenderer } from '@opentui/core';
 import { render } from '@opentui/solid';
+import { createDefaultOpenTuiKeymap } from '@opentui/keymap/opentui';
+import { registerEmacsBindings } from '@opentui/keymap/addons';
 import path from 'path';
 import App from './App.js';
 import { tuiState } from './state.js';
@@ -20,6 +22,41 @@ export async function startTui(projectRoot: string) {
     exitOnCtrlC: false,
     targetFps: 30,
     autoFocus: false,
+  });
+
+  // ── @opentui/keymap — 组合/序列快捷键 ──
+  const keymap = createDefaultOpenTuiKeymap(renderer);
+
+  // 注册 Emacs 风格解析器以支持 "ctrl+x t" 空格分隔的多键序列
+  registerEmacsBindings(keymap);
+
+  keymap.registerLayer({
+    commands: [
+      {
+        name: 'toggle-tree',
+        run() {
+          if (tuiState.screen() === 'tree') {
+            tuiState.setScreen('chat');
+            tuiState.setInputValue('');
+            tuiState.setShowCommands(false);
+          } else {
+            tuiState.setScreen('tree');
+          }
+        },
+      },
+      {
+        name: 'toggle-diff',
+        run() {
+          if (tuiState.diffPrompt()) {
+            tuiState.setShowDiffPanel(!tuiState.showDiffPanel());
+          }
+        },
+      },
+    ],
+    bindings: [
+      { key: 'ctrl+x t', cmd: 'toggle-tree' },
+      { key: 'ctrl+x d', cmd: 'toggle-diff' },
+    ],
   });
 
   // ── 键盘快捷键 ──
