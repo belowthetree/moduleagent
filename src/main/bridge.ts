@@ -1,3 +1,9 @@
+// ---------------------------------------------------------------------------
+// main/bridge.ts — ElectronBridge：Electron 主进程 Core 桥接层
+// 将 CoreCallbacks 翻译为 IPC 事件，注册全部 11 个领域 handler，
+// 管理 Agent 状态、MCP 后端和对话总结
+// ---------------------------------------------------------------------------
+
 import path from 'path';
 import fs from 'fs-extra';
 import { ipcMain, type BrowserWindow } from 'electron';

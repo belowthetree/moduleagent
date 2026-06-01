@@ -1,3 +1,8 @@
+<!--
+  SettingsDialog.vue — 设置对话框
+  配置 Agent 命令、模型、参数和项目路径
+-->
+
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useConfigStore } from '../stores/config'

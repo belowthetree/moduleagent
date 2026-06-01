@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// core/ExperienceSummarizer.ts — 经验总结器
+// 将 Agent 对话历史总结为经验并写入 experience.md，供后续会话注入
+// ---------------------------------------------------------------------------
+
 import path from 'path';
 import fs from 'fs';
 import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';

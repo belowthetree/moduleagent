@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// RoleAgentManager.ts — 角色 Agent 生命周期管理器
+// 负责角色 Agent 的启动/停止，管理工作空间、MCP 服务器和 ACP 会话
+// ---------------------------------------------------------------------------
+
 import { AgentLauncher, type LaunchedAgent, type AgentConfig } from './AgentLauncher.js';
 import path from 'path';
 import fs from 'fs';

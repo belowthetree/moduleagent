@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// renderer/src/main.ts — Vue 3 渲染进程入口
+// 创建并挂载 Vue 应用，安装 Pinia、Element Plus、Router
+// ---------------------------------------------------------------------------
+
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'

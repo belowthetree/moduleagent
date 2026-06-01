@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// renderer/src/components/__tests__/SVGTree.test.ts — SVGTree 组件单元测试
+// ---------------------------------------------------------------------------
+
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'

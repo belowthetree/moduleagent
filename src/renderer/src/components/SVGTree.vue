@@ -1,3 +1,8 @@
+<!--
+  SVGTree.vue — 模块依赖 SVG 树图组件
+  交互式模块依赖关系图，支持拖拽、缩放、点击选择
+-->
+
 <template>
   <div
     ref="panelRef"

@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/state.ts — TUI 响应式状态
+// SolidJS 信号驱动的全局状态管理，包含消息、状态、屏幕、历史
+// ---------------------------------------------------------------------------
+
 import { createSignal } from 'solid-js';
 import type { AgentStatus, ChatMessage, CommandDef, TuiScreen } from './types.js';
 import type { DiffSummary } from '../types/shared.js';

@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// core/__tests__/ExclusionRules.test.ts — 排除规则单元测试
+// ---------------------------------------------------------------------------
+
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_EXCLUDED_DIRS, BUILTIN_EXCLUDED_FILES, isBuiltinExcluded } from '../ExclusionRules.js';
 

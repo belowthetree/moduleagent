@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// config/ConfigLoader.ts — 配置文件加载器
+// 使用 cosmiconfig 发现 .module-agent.json，zod 校验后返回 WorkspaceConfig
+// ---------------------------------------------------------------------------
+
 import fs from 'fs-extra';
 import path from 'path';
 import { DEFAULT_CONFIG_ENTRY, DEFAULT_WORKSPACE_CONFIG, type ConfigEntry, type WorkspaceConfig } from './defaults.js';

@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// protocol/acp/connection.ts — ACP 连接管理器
+// 创建 Agent 子进程、建立 ACP 协议连接（ndjson 流）、处理握手/初始化/会话管理
+// ---------------------------------------------------------------------------
+
 import { spawn, type ChildProcess } from 'child_process';
 import { createInterface } from 'readline';
 import { Readable, Writable } from 'node:stream';

@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/App.tsx — TUI 主应用组件
+// 使用 OpenTUI SolidJS 渲染主界面，管理键盘事件和屏幕切换
+// ---------------------------------------------------------------------------
+
 import { useKeyboard, useRenderer, useSelectionHandler } from '@opentui/solid';
 import type { Selection, KeyEvent } from '@opentui/core';
 import { tuiState } from './state.js';

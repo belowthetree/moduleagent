@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// renderer/src/composables/useTheme.ts — 主题管理 composable
+// 管理系统亮色/暗色主题切换，持久化到 localStorage
+// ---------------------------------------------------------------------------
+
 import { ref, watch } from 'vue'
 
 const THEME_KEY = 'theme'

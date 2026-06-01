@@ -1,3 +1,8 @@
+<!--
+  WorkflowEditDialog.vue — 工作流编辑对话框
+  创建/编辑工作流名称、描述和步骤列表
+-->
+
 <script setup lang="ts">
 import { reactive, watch, ref } from 'vue'
 import { useWorkflowStore } from '../stores/workflow'

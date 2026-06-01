@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// renderer/src/__mocks__/moduleAgent.ts — window.moduleAgent Mock
+// 在测试环境中模拟 Electron contextBridge 的 API
+// ---------------------------------------------------------------------------
+
 import type {
   ModuleAgentApi,
   AgentStreamData,

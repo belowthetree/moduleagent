@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// renderer/src/router/index.ts — Vue Router 路由配置
+// setup 视图（首次运行）和 main 视图（主工作区）路由定义
+// ---------------------------------------------------------------------------
+
 import { createRouter, createWebHashHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { useConfigStore } from '../stores/config'

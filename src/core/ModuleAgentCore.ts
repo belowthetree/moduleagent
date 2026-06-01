@@ -1,3 +1,9 @@
+// ---------------------------------------------------------------------------
+// core/ModuleAgentCore.ts — 统一 Agent 编排核心
+// 组合 ModuleAgentSubsystem、RoleAgentSubsystem、WorkflowSubsystem 和 MCP 后端
+// 提供统一的消息发送、Agent 管理和生命周期控制
+// ---------------------------------------------------------------------------
+
 import path from 'path';
 import { defaultLogger, type Logger } from './Logger.js';
 import { ModuleAgentSubsystem } from './ModuleAgentSubsystem.js';

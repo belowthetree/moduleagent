@@ -1,3 +1,8 @@
+<!--
+  WorkspaceDiffPanel.vue — 工作空间差异对比面板
+  展示 Agent 编辑产生的文件差异，支持逐行审查和 Apply/丢弃
+-->
+
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { DiffFile, DiffSummary } from '../../types/shared'

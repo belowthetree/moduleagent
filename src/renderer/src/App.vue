@@ -1,3 +1,8 @@
+<!--
+  App.vue — 应用根组件
+  配置 Element Plus 国际化（中文），触发主题副作用
+-->
+
 <template>
   <el-config-provider :locale="zhCn">
     <router-view />

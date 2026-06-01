@@ -1,3 +1,8 @@
+<!--
+  SetupView.vue — 项目配置视图
+  项目扫描/初始化向导：配置 Agent 命令、项目路径，生成 module.md
+-->
+
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'

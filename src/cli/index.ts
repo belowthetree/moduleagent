@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// cli/index.ts — CLI 入口点
+// 主 CLI 入口，解析命令（list/get/serve/tui/config）并路由到对应处理函数
+// ---------------------------------------------------------------------------
+
 #!/usr/bin/env node
 import { resolveProjectRoot } from './utils/project-root.js';
 import { CliError } from './utils/output.js';

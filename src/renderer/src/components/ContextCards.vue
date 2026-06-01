@@ -1,3 +1,8 @@
+<!--
+  ContextCards.vue — 聊天消息卡片列表
+  渲染 Agent 回复、思考、工具调用时间线，支持流式更新和 Markdown
+-->
+
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { ChatMsg, TimelineEvent } from '../../../types/shared'

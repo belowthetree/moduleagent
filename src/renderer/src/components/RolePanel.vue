@@ -1,3 +1,8 @@
+<!--
+  RolePanel.vue — 角色 Agent 面板
+  显示角色 Agent 卡片列表，支持启动/停止/发送消息
+-->
+
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useAgentStore } from '../stores/agent'

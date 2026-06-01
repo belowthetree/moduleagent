@@ -1,3 +1,8 @@
+<!--
+  KnowledgeEditDialog.vue — 知识条目编辑对话框
+  创建/编辑知识库条目的名称和 Markdown 内容
+-->
+
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import type { KnowledgeEntry } from '../../../types/shared'

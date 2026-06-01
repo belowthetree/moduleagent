@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// protocol/mcp/tools/ModuleTools.ts — MCP 工具函数
+// 提供 module_call/module_query/module_list/create_module 工具的处理逻辑
+// ---------------------------------------------------------------------------
+
 import { CommunicationBus } from '../CommunicationBus.js';
 import type { ModuleCallResult, ModuleQueryResult } from '../CommunicationBus.js';
 import fs from 'fs-extra';

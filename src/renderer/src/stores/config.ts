@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// renderer/src/stores/config.ts — 配置 Pinia Store
+// 管理应用设置（Agent 命令、模型、主题）和 localStorage 持久化
+// ---------------------------------------------------------------------------
+
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 

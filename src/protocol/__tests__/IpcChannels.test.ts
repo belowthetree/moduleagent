@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// protocol/__tests__/IpcChannels.test.ts — IPC 通道名测试
+// 验证通道名无重复
+// ---------------------------------------------------------------------------
+
 import { describe, expect, it } from 'vitest';
 import { IpcChannel } from '../IpcChannels.js';
 

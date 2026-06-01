@@ -1,6 +1,7 @@
-// 独立的角色 Agent MCP 服务器入口点——由 Agent 通过 mcpServers 配置启动。
-// 通过 stdio（MCP 协议）与 Agent 通信。
-// 没有 CommunicationBus、模块图和后端 URL——仅在工作区内读写文件。
+// ---------------------------------------------------------------------------
+// protocol/mcp/role-server-entry.ts — 角色 MCP 服务器独立入口点
+// 由角色 Agent 通过 mcpServers 配置启动，仅暴露文件读写工具
+// ---------------------------------------------------------------------------
 
 import { RoleMCPServer } from './RoleMCPServer.js';
 import fs from 'fs';

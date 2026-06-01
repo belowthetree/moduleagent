@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/bridge.ts — TuiBridge：TUI 模式 Core 桥接层
+// 将 CoreCallbacks 翻译为 SolidJS 信号，管理模块/角色/工作流子系统的生命周期
+// ---------------------------------------------------------------------------
+
 import path from 'path';
 import fs from 'fs-extra';
 import { ModuleAgentCore } from '../core/ModuleAgentCore.js';

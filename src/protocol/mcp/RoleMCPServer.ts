@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// protocol/mcp/RoleMCPServer.ts — 角色 Agent MCP 服务器
+// 向角色 Agent 暴露 workrole_read_file/workrole_write_file 文件读写工具
+// ---------------------------------------------------------------------------
+
 import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server';
 import { z } from 'zod';

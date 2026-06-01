@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// core/__tests__/PathUtils.test.ts — 路径工具函数单元测试
+// ---------------------------------------------------------------------------
+
 import { describe, expect, it } from 'vitest';
 import { normalizeCodeSourcePath } from '../PathUtils.js';
 import path from 'path';

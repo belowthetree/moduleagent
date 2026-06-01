@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/components/SetupWizard.tsx — TUI 设置向导组件
+// 引导用户在 TUI 模式下配置项目路径、Agent 命令等
+// ---------------------------------------------------------------------------
+
 import { createSignal, createMemo } from "solid-js";
 import { useKeyboard } from "@opentui/solid";
 import { tuiState } from "../state.js";

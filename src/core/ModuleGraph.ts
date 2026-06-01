@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// core/ModuleGraph.ts — 模块依赖图构建器
+// 基于扫描结果构建模块依赖树，提供按名称查找和子树收集功能
+// ---------------------------------------------------------------------------
+
 import type { ModuleDescriptor, ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../types/module.js';
 import { defaultLogger as log } from './Logger.js';
 

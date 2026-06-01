@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// context/ContextManager.ts — 对话上下文管理器
+// 提供带缓存的消息读写、清除操作，通过 ContextStore 接口与底层存储解耦
+// ---------------------------------------------------------------------------
+
 import { defaultLogger as log } from '../core/Logger.js';
 
 export interface ChatMsg {

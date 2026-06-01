@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// config/__tests__/schema.test.ts — Schema 校验测试
+// 测试 ProjectConfig/ConfigEntry/RoleConfig/WorkspaceConfig 各 Schema 的验证行为
+// ---------------------------------------------------------------------------
+
 import { describe, expect, it } from 'vitest';
 import {
   ProjectConfigSchema,

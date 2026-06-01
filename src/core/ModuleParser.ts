@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// core/ModuleParser.ts — module.md 解析器
+// 解析模块描述文件的 YAML frontmatter 和正文，提取子模块列表
+// ---------------------------------------------------------------------------
+
 import fs from 'fs-extra';
 import path from 'path';
 import matter from 'gray-matter';

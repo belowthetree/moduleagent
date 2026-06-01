@@ -1,3 +1,8 @@
+<!--
+  ProjectChatModal.vue — 项目级聊天模态框
+  全局 Agent 对话窗口，支持跨模块通信和流式响应
+-->
+
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
 import type { AgentStreamData } from '../../../types/shared'

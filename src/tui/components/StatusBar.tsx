@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/components/StatusBar.tsx — TUI 状态栏组件
+// 显示 Agent 状态、活动计数、信息提示
+// ---------------------------------------------------------------------------
+
 import { createMemo } from "solid-js";
 import { useRenderer } from "@opentui/solid";
 import { tuiState } from "../state.js";

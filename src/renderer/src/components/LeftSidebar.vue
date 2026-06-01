@@ -1,3 +1,8 @@
+<!--
+  LeftSidebar.vue — 左侧边栏
+  标签页切换（模块树 / 角色 Agent）
+-->
+
 <script setup lang="ts">
 defineProps<{
   activeTab: string

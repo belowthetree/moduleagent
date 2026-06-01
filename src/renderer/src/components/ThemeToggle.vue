@@ -1,3 +1,8 @@
+<!--
+  ThemeToggle.vue — 主题切换按钮
+  亮色/暗色主题切换开关
+-->
+
 <script setup lang="ts">
 import { Sunny, Moon } from '@element-plus/icons-vue'
 import { useTheme } from '../composables/useTheme'

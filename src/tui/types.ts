@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/types.ts — TUI 类型定义
+// Agent 状态、消息类型、命令定义、屏幕等类型
+// ---------------------------------------------------------------------------
+
 import type { ChatMsg } from '../types/shared.js';
 
 export type AgentStatus = 'idle' | 'streaming' | 'error' | 'disconnected' | 'loading';

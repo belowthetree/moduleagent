@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// config/defaults.ts — 配置类型定义与默认值
+// 定义 ProjectConfig、ConfigEntry、RoleConfig、Workflow 等配置接口和默认常量
+// ---------------------------------------------------------------------------
+
 export interface ProjectConfig {
   agents: {
     default: {

@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// protocol/acp/handlers/terminal.ts — ACP 终端处理器
+// 管理 Agent 子进程的终端创建、输出采集和生命周期
+// ---------------------------------------------------------------------------
+
 import { spawn as cpSpawn, type ChildProcess } from 'child_process';
 import { createInterface } from 'readline';
 import path from 'path';

@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/config.ts — TUI 配置管理
+// 项目根目录解析、配置加载、最后项目路径持久化
+// ---------------------------------------------------------------------------
+
 import { ConfigLoader } from '../config/ConfigLoader.js';
 import { DEFAULT_CONFIG_ENTRY, type ConfigEntry, type WorkspaceConfig } from '../config/defaults.js';
 import { defaultLogger } from '../core/Logger.js';

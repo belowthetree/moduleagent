@@ -1,3 +1,8 @@
+<!--
+  KnowledgePanel.vue — 知识库面板
+  显示和管理知识条目列表，支持创建/编辑/删除
+-->
+
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useKnowledgeStore } from '../stores/knowledge'

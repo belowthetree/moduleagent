@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// core/__tests__/ModuleScanner.test.ts — 模块扫描器单元测试
+// ---------------------------------------------------------------------------
+
 import { afterAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

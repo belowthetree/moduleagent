@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// main/index.ts — Electron 主进程入口
+// 创建浏览器窗口、配置 CSP、初始化 ElectronBridge，管理应用生命周期
+// ---------------------------------------------------------------------------
+
 import { app, BrowserWindow, Menu } from 'electron';
 import path from 'path';
 import { defaultLogger, LogLevel } from '../core/Logger.js';

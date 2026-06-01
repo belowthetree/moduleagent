@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// renderer/src/stores/agent.ts — Agent Pinia Store
+// 管理模块 Agent 和角色 Agent 的运行状态、聊天消息、流式响应
+// ---------------------------------------------------------------------------
+
 import { ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 import type { AgentStatus, ChatMsg, RoleConfigData } from '../../../types/shared'

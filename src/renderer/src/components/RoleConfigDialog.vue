@@ -1,3 +1,8 @@
+<!--
+  RoleConfigDialog.vue — 角色配置对话框
+  创建/编辑角色 Agent 的名称、描述、可见模块路径
+-->
+
 <script setup lang="ts">
 import { computed, reactive, watch, onMounted } from 'vue'
 import { useProjectStore } from '../stores/project'

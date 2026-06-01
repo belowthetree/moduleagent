@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// config/__tests__/ConfigLoader.test.ts — ConfigLoader 单元测试
+// 测试配置文件加载、格式兼容、默认值回退、创建行为
+// ---------------------------------------------------------------------------
+
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import fs from 'fs-extra'
 import { ConfigLoader } from '../ConfigLoader'

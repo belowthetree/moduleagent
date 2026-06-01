@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/persistence.ts — TUI 对话持久化
+// 保存/加载 TUI 聊天消息和输入历史到 JSON 文件
+// ---------------------------------------------------------------------------
+
 import path from 'path';
 import fs from 'fs-extra';
 import { defaultLogger } from '../core/Logger.js';

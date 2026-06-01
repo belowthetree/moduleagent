@@ -1,3 +1,8 @@
+<!--
+  StepEditDialog.vue — 工作流步骤编辑对话框
+  编辑步骤的名称、描述、输入源、验收标准、Agent 配置
+-->
+
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue'
 import { useProjectStore } from '../stores/project'

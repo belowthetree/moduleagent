@@ -1,3 +1,9 @@
+// ---------------------------------------------------------------------------
+// protocol/mcp/CommunicationBus.ts — MCP 通信总线
+// 管理模块间调用路由，处理 module_call / module_query 请求，
+// 提供模块列表查询和新模块创建功能
+// ---------------------------------------------------------------------------
+
 import type { ModuleGraph as ModuleGraphType, ModuleGraphNode } from '../../types/module.js';
 import fs from 'fs-extra';
 import path from 'path';

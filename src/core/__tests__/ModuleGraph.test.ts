@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// core/__tests__/ModuleGraph.test.ts — 模块依赖图单元测试
+// ---------------------------------------------------------------------------
+
 import { describe, expect, it } from 'vitest';
 import { ModuleGraph } from '../ModuleGraph.js';
 import type { ModuleDescriptor } from '../../types/module.js';

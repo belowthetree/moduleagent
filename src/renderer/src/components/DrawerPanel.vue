@@ -1,3 +1,8 @@
+<!--
+  DrawerPanel.vue — 模块树抽屉面板
+  显示可拖拽的模块依赖 SVG 图，支持模块打开/聊天
+-->
+
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { TreeNode } from '../../../types/shared'

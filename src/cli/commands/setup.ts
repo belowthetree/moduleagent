@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// cli/commands/setup.ts — 交互式配置向导
+// 引导用户创建/更新 .module-agent.json 配置文件，自动生成 module.md
+// ---------------------------------------------------------------------------
+
 import readline from 'readline';
 import fs from 'fs';
 import path from 'path';

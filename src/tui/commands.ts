@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/commands.ts — TUI 斜杠命令处理器
+// 定义 /help、/modules、/roles、/clear 等斜杠命令的注册和执行
+// ---------------------------------------------------------------------------
+
 import type { ChatMessage, CommandDef } from './types.js';
 import { tuiState } from './state.js';
 

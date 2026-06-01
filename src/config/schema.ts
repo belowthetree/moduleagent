@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// config/schema.ts — Zod 配置校验 Schema
+// 定义所有配置结构的 Zod Schema，包括 Agent/Role/Workflow/Workspace 配置
+// ---------------------------------------------------------------------------
+
 import { z } from 'zod';
 
 export const AgentConfigSchema = z.object({

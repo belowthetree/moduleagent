@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// renderer/src/stores/__tests__/agent.test.ts — Agent Store 单元测试
+// ---------------------------------------------------------------------------
+
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAgentStore } from '../agent'

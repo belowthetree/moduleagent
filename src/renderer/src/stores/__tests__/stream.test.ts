@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// renderer/src/stores/__tests__/stream.test.ts — 流式响应单元测试
+// ---------------------------------------------------------------------------
+
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAgentStore } from '../agent'

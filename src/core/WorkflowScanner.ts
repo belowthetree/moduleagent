@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// core/WorkflowScanner.ts — 工作流扫描器
+// 扫描 .module-agent/workflow/ 目录，发现并解析工作流定义和各步骤 STEP.md
+// ---------------------------------------------------------------------------
+
 import path from 'path';
 import fs from 'fs';
 import matter from 'gray-matter';

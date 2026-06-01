@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// core/__tests__/ModuleParser.test.ts — module.md 解析器单元测试
+// ---------------------------------------------------------------------------
+
 import { afterAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

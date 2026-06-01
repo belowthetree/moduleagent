@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/components/DiffPanel.tsx — TUI 差异详情面板组件
+// 展示文件差异详情，支持逐行浏览、文件选择和 Apply/丢弃操作
+// ---------------------------------------------------------------------------
+
 import { createSignal } from "solid-js";
 import { useKeyboard, useRenderer } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";

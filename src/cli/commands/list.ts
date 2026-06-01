@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// cli/commands/list.ts — 列出所有模块命令
+// 扫描项目并输出所有模块的列表
+// ---------------------------------------------------------------------------
+
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';

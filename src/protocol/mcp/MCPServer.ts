@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// protocol/mcp/MCPServer.ts — 模块 Agent MCP 服务器
+// 通过 stdio 向 Agent 暴露 module_list/module_call/module_query/create_module 工具
+// ---------------------------------------------------------------------------
+
 import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server';
 import { z } from 'zod';

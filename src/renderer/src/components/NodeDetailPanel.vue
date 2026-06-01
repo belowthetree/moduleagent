@@ -1,3 +1,8 @@
+<!--
+  NodeDetailPanel.vue — 模块详情面板
+  内联显示模块信息、描述、子模块，并支持对模块发送消息
+-->
+
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import type { TreeNode } from '../../../types/shared'

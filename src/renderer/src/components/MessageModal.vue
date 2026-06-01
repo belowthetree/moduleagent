@@ -1,3 +1,8 @@
+<!--
+  MessageModal.vue — 消息详情模态框
+  展示单条消息的完整内容，支持 Markdown 渲染
+-->
+
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { ChatMsg } from '../../../types/shared'

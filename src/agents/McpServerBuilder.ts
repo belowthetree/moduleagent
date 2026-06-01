@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// McpServerBuilder.ts — MCP 服务器构建工具
+// 提供 writeMcpGraphFile（序列化模块图为 JSON）和 buildMcpServers（构建 MCP server 配置）
+// ---------------------------------------------------------------------------
+
 import fs from 'fs';
 import os from 'os';
 import path from 'path';

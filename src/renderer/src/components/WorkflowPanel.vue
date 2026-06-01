@@ -1,3 +1,8 @@
+<!--
+  WorkflowPanel.vue — 工作流面板
+  显示工作流列表，支持执行、状态查看和管理
+-->
+
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useWorkflowStore } from '../stores/workflow'

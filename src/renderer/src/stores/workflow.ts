@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// renderer/src/stores/workflow.ts — 工作流 Pinia Store
+// 管理工作流的 CRUD、执行状态、步骤编辑
+// ---------------------------------------------------------------------------
+
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import type { WorkflowListItem, WorkflowDetail, WorkflowStatus, StepEditData } from '../../../types/shared'

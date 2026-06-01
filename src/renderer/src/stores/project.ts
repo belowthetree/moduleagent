@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// renderer/src/stores/project.ts — 项目 Pinia Store
+// 管理项目扫描结果、模块树、布局节点
+// ---------------------------------------------------------------------------
+
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { TreeNode, LayoutNode, ScanResult } from '../../../types/shared'

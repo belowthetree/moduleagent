@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/components/CommandPalette.tsx — TUI 命令面板组件
+// 弹出式斜杠命令选择面板，支持模糊搜索和键盘导航
+// ---------------------------------------------------------------------------
+
 import { createSignal, createMemo, Show } from "solid-js";
 import { useKeyboard } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";

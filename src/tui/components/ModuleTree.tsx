@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/components/ModuleTree.tsx — TUI 模块树组件
+// 显示模块依赖树，支持展开/折叠、选择、切换模块聊天
+// ---------------------------------------------------------------------------
+
 import { createMemo, createSignal } from "solid-js";
 import { useRenderer, useKeyboard } from "@opentui/solid";
 import { defaultLogger } from "../../core/Logger.js";

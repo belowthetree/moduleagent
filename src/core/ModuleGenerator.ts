@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// core/ModuleGenerator.ts — module.md 文件生成器
+// 自动生成模块描述文件，推断描述、子模块列表和正文
+// ---------------------------------------------------------------------------
+
 import fs from 'fs-extra';
 import path from 'path';
 import { isBuiltinExcluded } from './ExclusionRules.js';

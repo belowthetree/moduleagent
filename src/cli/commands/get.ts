@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// cli/commands/get.ts — 获取模块详情命令
+// 显示指定模块的详细信息和结构
+// ---------------------------------------------------------------------------
+
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';

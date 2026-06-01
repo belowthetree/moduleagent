@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/components/ContextArea.tsx — TUI 聊天上下文区域组件
+// 渲染消息列表、思考内容、工具调用时间线
+// ---------------------------------------------------------------------------
+
 import { createMemo } from "solid-js";
 import { useRenderer } from "@opentui/solid";
 import { tuiState } from "../state.js";

@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// McpBackend.ts — MCP 后端 HTTP 服务器
+// 接收模块间 MCP 调用（module_call / module_query），路由到目标 Agent 并返回结果
+// ---------------------------------------------------------------------------
+
 import http from 'node:http';
 import type { ClientSideConnection, ContentBlock } from '@agentclientprotocol/sdk';
 import { defaultLogger } from '../core/Logger.js';

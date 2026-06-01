@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// WorkflowManager.ts — 工作流步骤 Agent 生命周期管理器
+// 管理工作流步骤 Agent 的启动/停止，构建工作流 MCP 服务器与 ACP 会话
+// ---------------------------------------------------------------------------
+
 import { AgentLauncher, type LaunchedAgent, type AgentConfig } from './AgentLauncher.js';
 import path from 'path';
 import fs from 'fs';

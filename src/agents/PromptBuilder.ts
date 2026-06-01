@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// PromptBuilder.ts — 系统提示加载与消息 Prompt 构建
+// 加载 main/sub agent 系统提示、模块上下文、修改规范、近期经验，为 Agent 消息构建 ContentBlock
+// ---------------------------------------------------------------------------
+
 import fs from 'fs';
 import path from 'path';
 import type { ContentBlock } from '@agentclientprotocol/sdk';

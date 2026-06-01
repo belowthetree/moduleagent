@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// AgentLauncher.ts — Agent 子进程的统一启动器，负责 spawn 进程、建立 ACP 连接
+// 注册文件系统/终端客户端处理器，是所有 Agent 的启动入口
+// ---------------------------------------------------------------------------
+
 import path from 'path';
 import { createAgentConnection, type AgentConnection } from '../protocol/acp/connection.js';
 import { FsHandler } from '../protocol/acp/handlers/fs.js';

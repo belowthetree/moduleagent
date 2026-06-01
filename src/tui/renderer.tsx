@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/renderer.tsx — TUI 渲染器入口
+// 使用 OpenTUI 创建 CLI 渲染器，挂载 SolidJS 应用根组件
+// ---------------------------------------------------------------------------
+
 import { createCliRenderer } from '@opentui/core';
 import { render } from '@opentui/solid';
 import path from 'path';

@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// preload/index.ts — Electron preload 脚本
+// 通过 contextBridge 向渲染进程暴露 window.moduleAgent API，桥接 IPC 调用
+// ---------------------------------------------------------------------------
+
 import { contextBridge, ipcRenderer } from 'electron';
 import { IpcChannel } from '../protocol/IpcChannels.js';
 import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus, DiffSummary, WorkspaceDiffReadyData } from '../types/shared.js';

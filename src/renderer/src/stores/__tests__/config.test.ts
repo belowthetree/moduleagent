@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// renderer/src/stores/__tests__/config.test.ts — Config Store 单元测试
+// ---------------------------------------------------------------------------
+
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useConfigStore } from '../config'

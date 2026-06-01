@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// context/__tests__/FileStore.test.ts — FileStore 单元测试
+// 测试 JSON 文件的读写、删除、列表功能
+// ---------------------------------------------------------------------------
+
 import { afterAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

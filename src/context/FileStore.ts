@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// context/FileStore.ts — 文件系统上下文存储
+// 将对话消息持久化为 JSON 文件，实现 ContextStore 接口
+// ---------------------------------------------------------------------------
+
 import fs from 'fs';
 import path from 'path';
 import type { ChatMsg, ContextStore } from './ContextManager.js';

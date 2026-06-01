@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// protocol/acp/handlers/fs.ts — ACP 文件系统处理器
+// 处理 Agent 的文件读写请求，包含路径越界检查
+// ---------------------------------------------------------------------------
+
 import fs from 'fs-extra';
 import path from 'path';
 import type { ReadTextFileRequest, ReadTextFileResponse, WriteTextFileRequest } from '@agentclientprotocol/sdk';

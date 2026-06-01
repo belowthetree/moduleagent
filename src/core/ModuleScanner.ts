@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// core/ModuleScanner.ts — 模块扫描器
+// 递归扫描 module.md 文件，构建模块描述列表，确保必要的文档文件存在
+// ---------------------------------------------------------------------------
+
 import fs from 'fs-extra';
 import path from 'path';
 import { isBuiltinExcluded } from './ExclusionRules.js';

@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// renderer/src/stores/knowledge.ts — 知识库 Pinia Store
+// 管理知识条目的 CRUD 和列表刷新
+// ---------------------------------------------------------------------------
+
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { KnowledgeEntry, KnowledgeListItem } from '../../../types/shared'

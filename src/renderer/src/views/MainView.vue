@@ -1,3 +1,8 @@
+<!--
+  MainView.vue — 主工作区视图
+  左侧边栏 + 模块树抽屉 + 角色 Agent 抽屉 + 中央聊天面板 + 底部输入区
+-->
+
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { marked } from 'marked'

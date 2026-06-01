@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// context/__tests__/ContextManager.test.ts — ContextManager 单元测试
+// 测试上下文读写、清空、Mock Store 集成
+// ---------------------------------------------------------------------------
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMsg, ContextStore } from '../ContextManager.js';
 import { ContextManager } from '../ContextManager.js';

@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// cli/commands/serve.ts — CLI stdio 服务模式
+// 持久化 NDJSON 交互服务，支持 list/get/rescan/exit 命令
+// ---------------------------------------------------------------------------
+
 import readline from 'readline';
 import path from 'path';
 import fs from 'fs-extra';

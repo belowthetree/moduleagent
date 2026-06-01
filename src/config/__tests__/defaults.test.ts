@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// config/__tests__/defaults.test.ts — 默认配置常量测试
+// 验证 DEFAULT_CONFIG、DEFAULT_CONFIG_ENTRY 等常量的完整性和 Schema 合规性
+// ---------------------------------------------------------------------------
+
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_CONFIG,

@@ -1,3 +1,8 @@
+<!--
+  ChatInput.vue — 聊天消息输入组件
+  支持多行输入、发送、模型模式切换、模块选择
+-->
+
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { Promotion } from '@element-plus/icons-vue'

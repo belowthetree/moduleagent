@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// core/CoreTypes.ts — Core 层核心类型定义
+// 包含 CoreCallbacks、IAgentBridge 接口、状态/消息/Agent 信息类型
+// ---------------------------------------------------------------------------
+
 export type CoreStatus = 'idle' | 'streaming' | 'error' | 'disconnected' | 'loading';
 
 export interface CoreMessage {

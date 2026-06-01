@@ -1,3 +1,8 @@
+// ---------------------------------------------------------------------------
+// tui/components/InputBox.tsx — TUI 输入框组件
+// 支持文本输入、键盘事件、粘贴、输入历史导航
+// ---------------------------------------------------------------------------
+
 import { createEffect, onCleanup, untrack } from "solid-js";
 import { useKeyboard, useRenderer, usePaste } from "@opentui/solid";
 import { defaultLogger } from "../../core/Logger.js";
