@@ -54,73 +54,6 @@ export async function startTui(projectRoot: string) {
         },
       },
       {
-        name: 'toggle-quickpanel',
-        run() {
-          if (tuiState.showQuickPanel()) {
-            tuiState.setShowQuickPanel(false);
-            return;
-          }
-          // 构建面板条目
-          const entries: { label: string; keys: string; description: string; action: () => void }[] = [
-            {
-              label: '模块树',
-              keys: 'Ctrl+X  T',
-              description: '浏览模块依赖树',
-              action: () => {
-                tuiState.setScreen('tree');
-                tuiState.setShowExperiencePanel(false);
-              },
-            },
-            {
-              label: '经验浏览',
-              keys: 'Ctrl+X  H',
-              description: '查看模块经验记录',
-              action: () => {
-                // 复用 toggle-experience 逻辑的简化版
-                if (tuiState.showExperiencePanel()) return;
-                if (tuiState.experienceEntries().length === 0) {
-                  const bridge = (globalThis as any).__tuiAgentService;
-                  if (bridge?.core) {
-                    const graph = bridge.core.getGraph?.();
-                    if (graph) {
-                      const loaded: any[] = [];
-                      for (const [name, node] of graph.nodes) {
-                        const expPath = path.join(node.absolutePath, 'experience.md');
-                        try {
-                          const content = fs.readFileSync(expPath, 'utf-8').trim();
-                          if (content) {
-                            const body = content.replace(/^# .+?\n+/, '').trim();
-                            if (body) loaded.push({ moduleName: name, content, filePath: expPath });
-                          }
-                        } catch { /* skip */ }
-                      }
-                      if (loaded.length > 0) tuiState.setExperienceEntries(loaded);
-                    }
-                  }
-                }
-                tuiState.setExperienceModuleIndex(-1);
-                tuiState.setShowExperiencePanel(true);
-                tuiState.setScreen('tree');
-              },
-            },
-          ];
-          // 仅在 diff 可用时加入
-          if (tuiState.diffPrompt()) {
-            entries.push({
-              label: '差异对比',
-              keys: 'Ctrl+X  D',
-              description: '查看工作区文件变更',
-              action: () => {
-                tuiState.setShowDiffPanel(!tuiState.showDiffPanel());
-              },
-            });
-          }
-          (globalThis as any).__quickPanelIndex = 0;
-          tuiState.setQuickPanelEntries(entries);
-          tuiState.setShowQuickPanel(true);
-        },
-      },
-      {
         name: 'toggle-experience',
         run() {
           if (tuiState.showExperiencePanel()) {
@@ -164,12 +97,57 @@ export async function startTui(projectRoot: string) {
       { key: 'ctrl+x t', cmd: 'toggle-tree' },
       { key: 'ctrl+x d', cmd: 'toggle-diff' },
       { key: 'ctrl+x h', cmd: 'toggle-experience' },
-      { key: 'ctrl+p', cmd: 'toggle-quickpanel' },
+      // Ctrl+P 在下方 renderer.keyInput 中直接处理（避免 keymap consume 事件）
     ],
   });
 
   // ── 键盘快捷键 ──
-  renderer.keyInput.on('keypress', (key: { name: string; ctrl: boolean; shift: boolean }) => {
+  renderer.keyInput.on('keypress', (key: any) => {
+    // 快捷面板打开时：由 QuickPanel 组件的 useKeyboard 处理
+    if (tuiState.showQuickPanel()) {
+      return;
+    }
+
+    // Ctrl+P: 打开快捷面板
+    if (key.name === 'p' && key.ctrl) {
+      const bridge = (globalThis as any).__tuiAgentService;
+      const graph = bridge?.core?.getGraph?.();
+      const entries: { label: string; keys: string; description: string; action: () => void }[] = [
+        { label: '模块树', keys: 'Ctrl+X  T', description: '浏览模块依赖树',
+          action: () => { tuiState.setScreen('tree'); tuiState.setShowExperiencePanel(false); } },
+        { label: '经验浏览', keys: 'Ctrl+X  H', description: '查看模块经验记录',
+          action: () => {
+            if (tuiState.showExperiencePanel()) return;
+            if (tuiState.experienceEntries().length === 0) {
+              if (bridge?.core && graph) {
+                const loaded: any[] = [];
+                for (const [, node] of graph.nodes) {
+                  const expPath = path.join(node.absolutePath, 'experience.md');
+                  try {
+                    const content = fs.readFileSync(expPath, 'utf-8').trim();
+                    if (content) {
+                      const body = content.replace(/^# .+?\n+/, '').trim();
+                      if (body) loaded.push({ moduleName: node.name, content, filePath: expPath });
+                    }
+                  } catch { /* skip */ }
+                }
+                if (loaded.length > 0) tuiState.setExperienceEntries(loaded);
+              }
+            }
+            tuiState.setExperienceModuleIndex(-1);
+            tuiState.setShowExperiencePanel(true);
+            tuiState.setScreen('tree');
+          } },
+        { label: '差异对比', keys: 'Ctrl+X  D', description: '查看工作区文件变更',
+          action: () => { if (tuiState.diffPrompt()) tuiState.setShowDiffPanel(!tuiState.showDiffPanel()); } },
+      ].filter(e => e.label !== '差异对比' || tuiState.diffPrompt());
+      tuiState.setQuickPanelIndex(0);
+      tuiState.setQuickPanelEntries(entries);
+      tuiState.setShowQuickPanel(true);
+      key.stopPropagation?.();
+      return;
+    }
+
     if (key.name === 'c' && key.ctrl) {
       // Ctrl+C: 流式输出中取消当前请求
       if (tuiState.agentStatus() === 'streaming') {

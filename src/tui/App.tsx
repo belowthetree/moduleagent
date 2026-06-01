@@ -3,7 +3,6 @@
 // 使用 OpenTUI SolidJS 渲染主界面，管理键盘事件和屏幕切换
 // ---------------------------------------------------------------------------
 
-import { Show } from 'solid-js';
 import { useKeyboard, useRenderer, useSelectionHandler } from '@opentui/solid';
 import type { Selection, KeyEvent } from '@opentui/core';
 import { tuiState } from './state.js';
@@ -124,8 +123,10 @@ export default function App() {
   };
 
   return (
-    <box position="relative" width="100%" height="100%">
-      {screen() === 'setup' ? (
+    <box width="100%" height="100%">
+      {tuiState.showQuickPanel() ? (
+        <QuickPanel />
+      ) : screen() === 'setup' ? (
         <SetupWizard onComplete={handleSetupComplete} />
       ) : screen() === 'tree' && tuiState.showExperiencePanel() && tuiState.experienceModuleIndex() >= 0 ? (
         <ExperiencePanel />
@@ -166,20 +167,13 @@ export default function App() {
           <ContextArea />
           {tuiState.diffPrompt() ? <DiffBar /> : null}
           <CommandPalette />
-          <box flexDirection="column" flexShrink={0} height={5}>
+          <box flexDirection="column" flexShrink={0}>
             <InputBox onSend={handleSend} onCommand={handleCommand} />
-            <text fg="#555555" height={1}>Ctrl+P 打开快捷面板</text>
+            <text fg="#555555" height={1}>  Ctrl+P 打开快捷面板</text>
             <StatusBar />
           </box>
         </>
       )}
-
-      {/* 快捷面板弹窗 — 覆盖在当前界面之上 */}
-      <Show when={tuiState.showQuickPanel()}>
-        <box position="absolute" top={0} right={0} bottom={0} left={0} backgroundColor="#0d1117EE">
-          <QuickPanel />
-        </box>
-      </Show>
     </box>
   );
 }
