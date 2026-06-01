@@ -149,7 +149,7 @@ export class TerminalHandler {
 
     if (!state.process.killed) {
       state.process.kill();
-      log.debug(`Terminal killed: ${params.terminalId}`);
+      log.info(`Terminal killed: ${params.terminalId}`);
     }
   }
 
@@ -159,6 +159,6 @@ export class TerminalHandler {
       state.process.kill();
     }
     this.terminals.delete(params.terminalId);
-    log.debug(`Terminal released: ${params.terminalId}`);
+    log.info(`Terminal released: ${params.terminalId}`);
   }
 }

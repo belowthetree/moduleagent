@@ -60,6 +60,7 @@ export const DEFAULT_CONFIG_ENTRY: ConfigEntry = {
   },
   exclude: [],
   projectPath: '.',
+  summarization: { enabled: false },
 };
 
 export const DEFAULT_MODULE_GEN_ROLE: RoleConfig = {

@@ -1,21 +1,85 @@
 // ---------------------------------------------------------------------------
-// tui/components/QuickPanel.tsx — 快速面板
+// tui/components/QuickPanel.tsx — 快速面板（模态弹窗）
 // 按 Ctrl+P 呼出，显示可打开的面板及快捷键，↑↓ 选择，Enter 打开
+// 数据构建和键盘处理都在此文件内完成
 // ---------------------------------------------------------------------------
 
 import { createSignal } from 'solid-js';
 import { useKeyboard, useRenderer } from '@opentui/solid';
 import { tuiState } from '../state.js';
 import type { KeyEvent } from '@opentui/core';
+import fs from 'fs-extra';
+import path from 'path';
 
+interface QuickPanelEntry {
+  label: string;
+  keys: string;
+  description: string;
+  action: () => void;
+}
+
+function buildEntries(): QuickPanelEntry[] {
+  const bridge = (globalThis as any).__tuiAgentService;
+  const graph = bridge?.core?.getGraph?.();
+  const result: QuickPanelEntry[] = [];
+
+  result.push({
+    label: '模块树',
+    keys: 'Ctrl+X  T',
+    description: '浏览模块依赖树',
+    action: () => {
+      tuiState.setScreen('tree');
+      tuiState.setShowExperiencePanel(false);
+    },
+  });
+
+  result.push({
+    label: '经验浏览',
+    keys: 'Ctrl+X  H',
+    description: '查看模块经验记录',
+    action: () => {
+      if (tuiState.showExperiencePanel()) return;
+      if (tuiState.experienceEntries().length === 0 && bridge?.core && graph) {
+        const loaded: any[] = [];
+        for (const [, node] of graph.nodes) {
+          const expPath = path.join(node.absolutePath, 'experience.md');
+          try {
+            const content = fs.readFileSync(expPath, 'utf-8').trim();
+            if (content) {
+              const body = content.replace(/^# .+?\n+/, '').trim();
+              if (body) loaded.push({ moduleName: node.name, content, filePath: expPath });
+            }
+          } catch { /* skip */ }
+        }
+        if (loaded.length > 0) tuiState.setExperienceEntries(loaded);
+      }
+      tuiState.setExperienceModuleIndex(-1);
+      tuiState.setShowExperiencePanel(true);
+      tuiState.setScreen('tree');
+    },
+  });
+
+  if (tuiState.diffPrompt()) {
+    result.push({
+      label: '差异对比',
+      keys: 'Ctrl+X  D',
+      description: '查看工作区文件变更',
+      action: () => {
+        tuiState.setShowDiffPanel(!tuiState.showDiffPanel());
+      },
+    });
+  }
+
+  return result;
+}
 
 export default function QuickPanel() {
   const renderer = useRenderer();
-  const entries = () => tuiState.quickPanelEntries();
+  const entries = buildEntries();
   const [selectedIdx, setSelectedIdx] = createSignal(0);
 
   useKeyboard((key: KeyEvent) => {
-    const list = entries();
+    const list = entries;
     if (list.length === 0) return;
 
     if (key.name === 'escape' || (key.ctrl && key.name === 'p')) {
@@ -46,64 +110,55 @@ export default function QuickPanel() {
     }
   });
 
+  const panelWidth = Math.min(56, renderer?.width ?? 80);
+
   return (
     <box flexDirection="column" width="100%" height="100%">
-      {/*
-        隐藏 input：OpenTUI 的键盘事件路由依赖聚焦的 input 元素。
-        没有 input 聚焦时 useKeyboard 不会被派发。
-      */}
-      <input
-        width={0}
-        height={0}
-        visible={false}
-        value=""
-        keyBindings={[]}
-      />
-      <text height={3}> </text>
-      <box
-        flexDirection="column"
-        width={Math.min(56, renderer?.width ?? 80)}
-        alignSelf="center"
-        backgroundColor="#161b22"
-        borderStyle="round"
-        borderColor="#58a6ff"
-        padding={1}
-      >
-        <text fg="#58a6ff" bold>  快捷面板</text>
-        <text fg="#888888" dim>  ———————————</text>
-        <text height={1}> </text>
+      <input width={0} height={0} visible={false} value="" keyBindings={[]} />
 
-        {(() => {
-          const list = entries();
-          const sel = selectedIdx();
-          return list.map((entry, i) => {
-            const isSelected = i === sel;
-            return (
-              <box flexDirection="row" height={1} backgroundColor="#161b22">
-                <text fg={isSelected ? '#58a6ff' : '#555555'}>
-                  {isSelected ? '▸ ' : '  '}
-                </text>
-                <text fg={isSelected ? '#58a6ff' : '#c9d1d9'} bold={isSelected} width={20}>
-                  {entry.label}
-                </text>
-                <text fg="#FFA07A" dim width={16}>
-                  {entry.keys}
-                </text>
-                <text fg="#888888" dim>
-                  {entry.description}
-                </text>
-              </box>
-            );
-          });
-        })()}
+      {/* 暗色遮罩 + 垂直居中 */}
+      <box flexDirection="column" width="100%" height="100%" alignSelf="center" justifyContent="center">
+        <box
+          flexDirection="column"
+          width={panelWidth}
+          alignSelf="center"
+          backgroundColor="#161b22"
+          borderStyle="round"
+          borderColor="#58a6ff"
+          padding={1}
+        >
+          <text fg="#58a6ff" bold>快捷面板</text>
+          <text fg="#555555" dim height={1}>——————————————</text>
 
-        <text height={1}> </text>
-        <text fg="#555555" dim>
-          {'  '}↑↓ 选择 &nbsp; Enter 打开 &nbsp; Esc 关闭
-        </text>
+          {(() => {
+            const sel = selectedIdx();
+            return entries.map((entry, i) => {
+              const isSelected = i === sel;
+              return (
+                <box flexDirection="row" height={1}>
+                  <text width={2} fg={isSelected ? '#58a6ff' : '#555555'}>
+                    {isSelected ? '▸' : ' '}
+                  </text>
+                  <text width={18} fg={isSelected ? '#58a6ff' : '#c9d1d9'} bold={isSelected}>
+                    {entry.label}
+                  </text>
+                  <text width={14} fg="#FFA07A" dim>
+                    {entry.keys}
+                  </text>
+                  <text fg="#888888" dim>
+                    {entry.description}
+                  </text>
+                </box>
+              );
+            });
+          })()}
+
+          <text height={1}> </text>
+          <text fg="#555555" dim height={1}>
+            ↑↓ 选择  Enter 打开  Esc 关闭
+          </text>
+        </box>
       </box>
     </box>
   );
 }
-
-

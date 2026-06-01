@@ -123,10 +123,8 @@ export default function App() {
   };
 
   return (
-    <box width="100%" height="100%">
-      {tuiState.showQuickPanel() ? (
-        <QuickPanel />
-      ) : screen() === 'setup' ? (
+    <box position="relative" width="100%" height="100%">
+      {screen() === 'setup' ? (
         <SetupWizard onComplete={handleSetupComplete} />
       ) : screen() === 'tree' && tuiState.showExperiencePanel() && tuiState.experienceModuleIndex() >= 0 ? (
         <ExperiencePanel />
@@ -173,6 +171,20 @@ export default function App() {
             <StatusBar />
           </box>
         </>
+      )}
+
+      {/* 快捷面板 — 绝对定位覆盖在当前界面之上 */}
+      {tuiState.showQuickPanel() && (
+        <box
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          backgroundColor="#0d1117DD"
+        >
+          <QuickPanel />
+        </box>
       )}
     </box>
   );

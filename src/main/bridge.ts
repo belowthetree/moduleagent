@@ -66,7 +66,7 @@ export class ElectronBridge implements IAgentBridge {
   private stateManager: AgentStateManager | null = null;
   private mcpBackend: unknown = null; // McpBackendServer — typed loosely to avoid import
   private summarizer: ExperienceSummarizer;
-  private summarizationEnabled = true;
+  private summarizationEnabled = false;
   private logger: Logger;
   private configDir: string;
 

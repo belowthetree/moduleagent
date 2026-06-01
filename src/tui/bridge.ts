@@ -37,6 +37,7 @@ export class TuiBridge implements IAgentBridge {
   private loadedModules = new Set<string>();
   private summarizer: ExperienceSummarizer;
   private configDir: string;
+  private summarizationEnabled = false;
 
   // 多模块/角色/工作流状态跟踪
   private moduleStatuses = new Map<string, AgentStatus>();
@@ -331,6 +332,15 @@ export class TuiBridge implements IAgentBridge {
     // 从仓库 config/ 复制到项目（如不存在）
     ensureConfigFiles(path.join(basePath, 'config'), projectRoot);
 
+    // 从配置加载 summarization 开关
+    try {
+      const workspaceConfig = await ConfigLoader.load(projectRoot);
+      const config = ConfigLoader.getDefaultConfig(workspaceConfig);
+      this.summarizationEnabled = config.summarization?.enabled ?? false;
+    } catch {
+      this.summarizationEnabled = false;
+    }
+
     const result = await this.core.initAll(projectRoot, this.configDir);
 
     // 初始化持久化
@@ -448,10 +458,10 @@ export class TuiBridge implements IAgentBridge {
         await this.core.sendMessage(text);
       }
 
-      // 触发即忘的经验总结（后台执行）
+      // 触发即忘的经验总结（后台执行，默认关闭）
       const projectRoot = this.core.getProjectRoot();
       const targetName = this.core.getCurrentAgent();
-      if (projectRoot && targetName) {
+      if (projectRoot && targetName && this.summarizationEnabled) {
         this._triggerSummarizer(targetName, projectRoot);
       }
 

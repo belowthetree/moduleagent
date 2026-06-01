@@ -43,14 +43,14 @@ export function registerConfigHandlers(ctx: HandlerContext): void {
         command: config.agents.default.command,
         args: config.agents.default.args || [],
         projectPath: config.projectPath,
-        summarizationEnabled: config.summarization?.enabled ?? true,
+        summarizationEnabled: config.summarization?.enabled ?? false,
       };
     } catch {
       return {
         command: DEFAULT_CONFIG.agents.default.command,
         args: DEFAULT_CONFIG.agents.default.args || [],
         projectPath: DEFAULT_CONFIG.projectPath,
-        summarizationEnabled: true,
+        summarizationEnabled: false,
       };
     }
   });

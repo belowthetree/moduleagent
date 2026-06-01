@@ -163,6 +163,138 @@ Solid uses underscores for multi-word component names:
 | ASCII Font | `<ascii-font>` | `<ascii_font>` |
 | Line Number | `<line-number>` | `<line_number>` |
 
+## Rendering & Reactivity Gotchas
+
+### `backgroundColor` Changes Not Visible
+
+**Symptom**: Setting `backgroundColor` dynamically based on a signal has no visible effect, even though the signal value changes correctly.
+
+```tsx
+// WRONG - backgroundColor changes won't render
+<box backgroundColor={isSelected() ? '#1a2538' : 'transparent'}>
+  <text>Item</text>
+</box>
+```
+
+**Root cause**: OpenTUI's Solid reconciler does not re-render elements when only the `backgroundColor` attribute changes. The reconciler skips attribute-only updates for certain styling props.
+
+**Fix**: Use text-based visual indicators instead:
+
+```tsx
+// CORRECT - Use text content/color for selection
+<text fg={isSelected ? '#58a6ff' : '#555555'}>
+  {isSelected ? '▸ ' : '  '}
+</text>
+<text fg={isSelected ? '#58a6ff' : '#c9d1d9'} bold={isSelected}>
+  Item
+</text>
+```
+
+### `<For>` Children Not Re-rendering on Signal Change
+
+**Symptom**: A signal read inside `<For>` child function updates, but the rendered list items don't reflect the change.
+
+```tsx
+// WRONG - selectedIdx changes but items don't re-render
+const [selectedIdx, setSelectedIdx] = createSignal(0)
+
+<For each={items()}>
+  {(item, i) => {
+    const isSelected = i() === selectedIdx();  // Signal read here
+    return <box backgroundColor={isSelected ? '#333' : 'transparent'}>...</box>;
+  }}
+</For>
+```
+
+**Root cause**: `<For>` creates stable child scopes that don't invalidate when external signals (not part of the iterated data) change. The reconciler treats `<For>` children as bound to the list identity.
+
+**Fix**: Use `.map()` inside an immediately-invoked function block instead of `<For>`:
+
+```tsx
+// CORRECT - Use .map() for reactive selection
+const [selectedIdx, setSelectedIdx] = createSignal(0)
+
+{(() => {
+  const list = items();
+  const sel = selectedIdx();
+  return list.map((item, i) => {
+    const isSelected = i === sel;
+    return <box>...</box>;
+  });
+})()}
+```
+
+### `<For>` vs `Index` Confusion
+
+See the existing "For vs Index" section above. For reactive item rendering with external signal dependencies, prefer `.map()`.
+
+### Signal Update Not Triggering Render
+
+**Symptom**: Signal changes in a raw event handler (`renderer.keyInput.on('keypress', ...)`) don't cause the UI to update.
+
+**Root cause**: SolidJS reactivity requires the signal read to happen inside a tracking scope (component render function or `createEffect`). Raw event handlers run outside SolidJS's reactive context.
+
+**Fix**: Either (a) use `useKeyboard` hook instead of raw handler, or (b) call `renderer.requestRender()` after the signal update.
+
+```tsx
+// Option A: useKeyboard (preferred)
+useKeyboard((key) => {
+  setMySignal(newValue); // SolidJS tracks this automatically
+});
+
+// Option B: Raw handler with manual render request
+renderer.keyInput.on('keypress', (key) => {
+  setMySignal(newValue);
+  renderer.requestRender(); // Force OpenTUI to re-render
+});
+```
+
+## Focus & Keyboard Routing Issues
+
+### `useKeyboard` Requires Hidden `<input>`
+
+**Symptom**: `useKeyboard` callback never fires, even though the component is rendered and visible.
+
+```tsx
+// WRONG - useKeyboard won't fire
+function MyPanel() {
+  useKeyboard((key) => {
+    console.log('Key pressed:', key.name); // Never called
+  });
+  return <box>...</box>;
+}
+```
+
+**Root cause**: OpenTUI routes keyboard events based on focus. Only components with a focused `<input>` element receive keyboard events. Without an input, there's nothing to focus.
+
+**Fix**: Add a hidden `<input>` element:
+
+```tsx
+// CORRECT
+function MyPanel() {
+  useKeyboard((key) => {
+    console.log('Key pressed:', key.name);
+  });
+
+  return (
+    <box>
+      <input width={0} height={0} visible={false} value="" keyBindings={[]} />
+      <text>Content</text>
+    </box>
+  );
+}
+```
+
+This is the same pattern used by `ModuleTree` and `QuickPanel`.
+
+### `position="absolute"` Can Break Keyboard Routing
+
+**Symptom**: A component with `position="absolute"` doesn't receive `useKeyboard` events, even with a hidden `<input>`.
+
+**Root cause**: OpenTUI's focus system may not correctly identify absolutely-positioned elements as focus targets. The hidden `<input>` workaround helps but is not guaranteed in all OpenTUI versions.
+
+**Mitigation**: If absolute positioning breaks keyboard input, render the component as a normal-flow child instead (replace content rather than overlay). For modals, a full-screen replacement is the most reliable pattern.
+
 ## Focus Issues
 
 ### Focus Not Working

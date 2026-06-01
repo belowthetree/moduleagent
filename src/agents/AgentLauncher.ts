@@ -81,17 +81,18 @@ export class AgentLauncher {
             const reason = `Path "${p}" is outside workspace (${normalizedCwd}). Use files within the workspace.`;
             log.warn(`[${name}] Permission REJECTED: ${reason}`);
             // 通过 sessionUpdate 注入 tool_call error，让模型看到被拒原因
-            if (launched.onSessionUpdate) {
-              launched.onSessionUpdate(name, params.sessionId, {
-                update: {
-                  sessionUpdate: 'tool_call',
-                  title: toolCall.title || 'unknown',
-                  status: 'error',
-                  toolCallId: toolCall.toolCallId,
-                  rawInput: { error: reason },
-                },
-              } as any);
-            }
+            // if (launched.onSessionUpdate) {
+            //   launched.onSessionUpdate(name, params.sessionId, {
+            //     update: {
+            //       sessionUpdate: 'tool_call',
+            //       title: toolCall.title || 'unknown',
+            //       status: 'error',
+            //       toolCallId: toolCall.toolCallId,
+            //       rawInput: { error: reason },
+            //     },
+            //   } as any);
+            // }
+            log.warn(`[${JSON.stringify(params)}]`);
             return {
               outcome: {
                 outcome: 'selected' as const,

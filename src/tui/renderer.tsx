@@ -108,41 +108,8 @@ export async function startTui(projectRoot: string) {
       return;
     }
 
-    // Ctrl+P: 打开快捷面板
+    // Ctrl+P: 打开快捷面板（数据由 QuickPanel 组件自己构建）
     if (key.name === 'p' && key.ctrl) {
-      const bridge = (globalThis as any).__tuiAgentService;
-      const graph = bridge?.core?.getGraph?.();
-      const entries: { label: string; keys: string; description: string; action: () => void }[] = [
-        { label: '模块树', keys: 'Ctrl+X  T', description: '浏览模块依赖树',
-          action: () => { tuiState.setScreen('tree'); tuiState.setShowExperiencePanel(false); } },
-        { label: '经验浏览', keys: 'Ctrl+X  H', description: '查看模块经验记录',
-          action: () => {
-            if (tuiState.showExperiencePanel()) return;
-            if (tuiState.experienceEntries().length === 0) {
-              if (bridge?.core && graph) {
-                const loaded: any[] = [];
-                for (const [, node] of graph.nodes) {
-                  const expPath = path.join(node.absolutePath, 'experience.md');
-                  try {
-                    const content = fs.readFileSync(expPath, 'utf-8').trim();
-                    if (content) {
-                      const body = content.replace(/^# .+?\n+/, '').trim();
-                      if (body) loaded.push({ moduleName: node.name, content, filePath: expPath });
-                    }
-                  } catch { /* skip */ }
-                }
-                if (loaded.length > 0) tuiState.setExperienceEntries(loaded);
-              }
-            }
-            tuiState.setExperienceModuleIndex(-1);
-            tuiState.setShowExperiencePanel(true);
-            tuiState.setScreen('tree');
-          } },
-        { label: '差异对比', keys: 'Ctrl+X  D', description: '查看工作区文件变更',
-          action: () => { if (tuiState.diffPrompt()) tuiState.setShowDiffPanel(!tuiState.showDiffPanel()); } },
-      ].filter(e => e.label !== '差异对比' || tuiState.diffPrompt());
-      tuiState.setQuickPanelIndex(0);
-      tuiState.setQuickPanelEntries(entries);
       tuiState.setShowQuickPanel(true);
       key.stopPropagation?.();
       return;

@@ -43,7 +43,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
       }
 
       const config = ConfigLoader.getDefaultConfig(workspaceConfig);
-      ctx.summarizationEnabled = config.summarization?.enabled ?? true;
+      ctx.summarizationEnabled = config.summarization?.enabled ?? false;
       const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
 
       // 从解析后的 config 目录加载提示词
