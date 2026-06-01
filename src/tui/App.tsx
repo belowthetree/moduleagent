@@ -3,6 +3,7 @@
 // 使用 OpenTUI SolidJS 渲染主界面，管理键盘事件和屏幕切换
 // ---------------------------------------------------------------------------
 
+import { Show } from 'solid-js';
 import { useKeyboard, useRenderer, useSelectionHandler } from '@opentui/solid';
 import type { Selection, KeyEvent } from '@opentui/core';
 import { tuiState } from './state.js';
@@ -16,6 +17,7 @@ import ModuleTree from './components/ModuleTree.js';
 import DiffBar from './components/DiffBar.js';
 import DiffPanel from './components/DiffPanel.js';
 import ExperiencePanel from './components/ExperiencePanel.js';
+import QuickPanel from './components/QuickPanel.js';
 
 function addSystemMessage(text: string) {
   const msg: ChatMessage = {
@@ -77,18 +79,8 @@ export default function App() {
     }
   });
 
-  // Diff 快捷键（全局）
+  // Diff 快捷键（全局）— Y/R/N 操作
   useKeyboard((key: KeyEvent) => {
-    // Ctrl+P → 打开/关闭 diff 面板
-    if (key.ctrl && key.name === 'p') {
-      const diff = tuiState.diffPrompt();
-      if (diff) {
-        tuiState.setShowDiffPanel(!tuiState.showDiffPanel());
-        key.preventDefault();
-      }
-      return;
-    }
-
     // diffPrompt 激活时的 Y/R/N 操作
     const diff = tuiState.diffPrompt();
     if (!diff || tuiState.showDiffPanel() || screen() !== 'chat') return;
@@ -132,7 +124,7 @@ export default function App() {
   };
 
   return (
-    <box flexDirection="column" width="100%" height="100%">
+    <box position="relative" width="100%" height="100%">
       {screen() === 'setup' ? (
         <SetupWizard onComplete={handleSetupComplete} />
       ) : screen() === 'tree' && tuiState.showExperiencePanel() && tuiState.experienceModuleIndex() >= 0 ? (
@@ -146,14 +138,12 @@ export default function App() {
           selectionMode={tuiState.showExperiencePanel() ? 'experience' : 'agent'}
           onSelect={(name: string) => {
             if (tuiState.showExperiencePanel()) {
-              // 经验选择模式：查找模块在 experienceEntries 中的索引
               const entries = tuiState.experienceEntries();
               const idx = entries.findIndex(e => e.moduleName === name);
               if (idx >= 0) {
                 tuiState.setExperienceModuleIndex(idx);
               }
             } else {
-              // 普通 Agent 切换模式
               (globalThis as any).__tuiAgentService?.setCurrentAgent?.(name);
               tuiState.setScreen('chat');
               tuiState.setInputValue('');
@@ -176,14 +166,20 @@ export default function App() {
           <ContextArea />
           {tuiState.diffPrompt() ? <DiffBar /> : null}
           <CommandPalette />
-          <box flexDirection="column" flexShrink={0}>
+          <box flexDirection="column" flexShrink={0} height={5}>
             <InputBox onSend={handleSend} onCommand={handleCommand} />
+            <text fg="#555555" height={1}>Ctrl+P 打开快捷面板</text>
             <StatusBar />
-            <text height={1}> </text>
-            <text height={1}> </text>
           </box>
         </>
       )}
+
+      {/* 快捷面板弹窗 — 覆盖在当前界面之上 */}
+      <Show when={tuiState.showQuickPanel()}>
+        <box position="absolute" top={0} right={0} bottom={0} left={0} backgroundColor="#0d1117EE">
+          <QuickPanel />
+        </box>
+      </Show>
     </box>
   );
 }

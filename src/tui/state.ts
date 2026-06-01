@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { createSignal } from 'solid-js';
-import type { AgentStatus, ChatMessage, CommandDef, TuiScreen, ExperienceEntry } from './types.js';
+import type { AgentStatus, ChatMessage, CommandDef, TuiScreen, ExperienceEntry, QuickPanelEntry } from './types.js';
 import type { DiffSummary } from '../types/shared.js';
 
 export interface ReactiveTuiState {
@@ -52,6 +52,10 @@ export interface ReactiveTuiState {
   setExperienceEntries: (v: ExperienceEntry[]) => void;
   experienceModuleIndex: () => number;
   setExperienceModuleIndex: (v: number) => void;
+  showQuickPanel: () => boolean;
+  setShowQuickPanel: (v: boolean) => void;
+  quickPanelEntries: () => QuickPanelEntry[];
+  setQuickPanelEntries: (v: QuickPanelEntry[]) => void;
 }
 
 export function createTuiState(): ReactiveTuiState {
@@ -77,6 +81,8 @@ export function createTuiState(): ReactiveTuiState {
   const [showExperiencePanel, setShowExperiencePanel] = createSignal(false);
   const [experienceEntries, setExperienceEntries] = createSignal<ExperienceEntry[]>([]);
   const [experienceModuleIndex, setExperienceModuleIndex] = createSignal(0);
+  const [showQuickPanel, setShowQuickPanel] = createSignal(false);
+  const [quickPanelEntries, setQuickPanelEntries] = createSignal<QuickPanelEntry[]>([]);
 
   return {
     screen,
@@ -123,6 +129,10 @@ export function createTuiState(): ReactiveTuiState {
     setExperienceEntries,
     experienceModuleIndex,
     setExperienceModuleIndex,
+    showQuickPanel,
+    setShowQuickPanel,
+    quickPanelEntries,
+    setQuickPanelEntries,
   };
 }
 

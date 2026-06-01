@@ -24,6 +24,14 @@ export interface CommandDef {
 
 export type TuiScreen = 'setup' | 'chat' | 'tree';
 
+/** 快速面板中的一条入口 */
+export interface QuickPanelEntry {
+  label: string;
+  keys: string;
+  description: string;
+  action: () => void;
+}
+
 /** 经验浏览器中的单条模块经验 */
 export interface ExperienceEntry {
   moduleName: string;
