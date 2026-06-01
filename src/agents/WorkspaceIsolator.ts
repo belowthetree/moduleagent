@@ -12,8 +12,18 @@ import { defaultLogger } from '../core/Logger.js';
 /**
  * Compute the workspace directory path for a given module node.
  *
- * When a workspace root is configured, the module is placed at:
- *   <workspaceRoot>/<relativePath>  (or <workspaceRoot>/<name> when relativePath is '.')
+ * When a workspace root is configured, the module is placed in a
+ * flat directory named after its relativePath with separators
+ * replaced by underscores:
+ *
+ *   src/core      → <workspaceRoot>/src_core
+ *   packages/foo  → <workspaceRoot>/packages_foo
+ *   根模块 ('.')  → <workspaceRoot>/__root__
+ *
+ * This prevents parent-child hierarchy leaks — no two modules share
+ * a parent directory on disk, so `cd ..` from one module's workspace
+ * never lands inside another module's source tree.
+ *
  * Otherwise, the module's absolutePath is used, falling back to:
  *   <projectRoot>/<relativePath>
  *
@@ -28,9 +38,10 @@ export function workspacePathForModule(
   projectRoot: string,
 ): string {
   if (workspaceRoot) {
-    return node.relativePath === '.'
-      ? path.join(workspaceRoot, node.name)
-      : path.join(workspaceRoot, node.relativePath);
+    const safeName = node.relativePath === '.'
+      ? '__root__'
+      : node.relativePath.replace(/[\/\\]/g, '_');
+    return path.join(workspaceRoot, safeName);
   }
   return node.absolutePath || path.join(projectRoot, node.relativePath);
 }
