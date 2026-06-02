@@ -74,10 +74,17 @@ export class TuiBridge implements IAgentBridge {
     this.moduleStreamState.set(name, s);
   }
   private get currentThoughtMsgId(): string | null {
-    return this.moduleStreamState.get(this.core.getCurrentAgent())?.thoughtId ?? null;
+    const name = this.core.getCurrentAgent();
+    const state = this.moduleStreamState.get(name);
+    const id = state?.thoughtId ?? null;
+    if (id === null) {
+      defaultLogger.info(`[TUI] currentThoughtMsgId=NULL agent=${name} hasState=${!!state} stateKeys=[${[...this.moduleStreamState.keys()].join(',')}]`);
+    }
+    return id;
   }
   private set currentThoughtMsgId(id: string | null) {
     const name = this.core.getCurrentAgent();
+    defaultLogger.info(`[TUI] currentThoughtMsgId SET name=${name} id=${id}`);
     const s = this.moduleStreamState.get(name) || { replyId: null, thoughtId: null };
     s.thoughtId = id;
     this.moduleStreamState.set(name, s);
@@ -112,8 +119,8 @@ export class TuiBridge implements IAgentBridge {
           tuiState.setCollapsedThoughts(set);
         }
 
-        self.currentReplyMsgId = null;
-        self.currentThoughtMsgId = null;
+        // 不清空 ID：system message 的 queue drain 完成后 agent 可能还在推送残余 chunk，
+        // 清空会导致后续 chunk 逐个创建新消息块。下一次 sendMessage 会覆写为新 ID。
         self.moduleStatuses.set(moduleName, 'idle');
         self.roleStatuses.set(moduleName, 'idle');
         self.setStatus('idle');
@@ -818,8 +825,10 @@ export class TuiBridge implements IAgentBridge {
 
     let idx = msgs.findIndex(m => m.id === id);
     if (idx === -1) {
+      defaultLogger.info(`[TUI] appendToStreamMsg NEW id=${id} type=${msgType} text="${text.slice(0, 30)}"`);
       msgs.push({ id, role: 'agent', msgType, content: text, time: '' });
     } else {
+      defaultLogger.info(`[TUI] appendToStreamMsg APPEND id=${id} type=${msgType} text="${text.slice(0, 30)}"`);
       msgs[idx] = { ...msgs[idx]!, content: msgs[idx]!.content + text };
     }
     if (targetModule === this.core.getCurrentAgent()) this.syncMessages();

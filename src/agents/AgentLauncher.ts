@@ -32,6 +32,8 @@ export interface LaunchOptions {
   subModuleDirs?: string[];
   /** 测试注入：替换 spawn 连接为内存 faux connection */
   createConnection?: ConnectionFactory;
+  /** 权限拒绝回调（Agent.start() 注入，用于排队系统消息） */
+  onPermissionRejected?: (toolName: string, reason: string) => void;
 }
 
 export interface LaunchedAgent {
@@ -80,17 +82,8 @@ export class AgentLauncher {
           if (!resolved.startsWith(normalizedCwd + '/') && resolved !== normalizedCwd) {
             const reason = `Path "${p}" is outside workspace (${normalizedCwd}). Use files within the workspace.`;
             log.warn(`[${name}] Permission REJECTED: ${reason}`);
-            // 通过 sessionUpdate 注入 permission_rejected 通知，
-            // Agent 状态机会将其加入队列，在 agent 恢复 idle 后作为系统消息发送
-            if (launched.onSessionUpdate) {
-              launched.onSessionUpdate(name, params.sessionId, {
-                update: {
-                  sessionUpdate: 'permission_rejected',
-                  toolName: toolCall.title || 'unknown',
-                  reason,
-                },
-              } as any);
-            }
+            // 通过专用回调通知 Agent 排队系统消息（不伪造 ACP 通知）
+            options?.onPermissionRejected?.(toolCall.title || 'unknown', reason);
             return {
               outcome: {
                 outcome: 'selected' as const,

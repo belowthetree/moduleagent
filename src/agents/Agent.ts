@@ -185,10 +185,25 @@ export class Agent {
     const log = options.logger || defaultLogger;
     const { name, config, cwd, launcher, buildMcpServers, onNotification, onStateChange } = options;
 
+    // Agent 实例的间接引用（用于 onPermissionRejected 回调，在 Agent 构造后赋值）
+    let agentRef: Agent | null = null;
+
     // 1. 启动子进程 + 建立 ACP 连接
     const launched = await launcher.launch(config, name, cwd, log, {
       subModuleDirs: options.subModuleDirs,
       createConnection: options.createConnection,
+      onPermissionRejected: (toolName, reason) => {
+        // 在 ACP 回调栈之外通过 queueMicrotask 安全入队
+        const agent = agentRef;
+        if (agent) {
+          queueMicrotask(() => agent._enqueueSystemMessage(
+            `[系统通知] 工具调用被拒绝\n` +
+            `工具: ${toolName}\n` +
+            `原因: ${reason}\n` +
+            `请使用工作区内的路径重试。`,
+          ));
+        }
+      },
     });
 
     // 打印 agent 能力
@@ -234,6 +249,7 @@ export class Agent {
 
     // 5. 构建 Agent 实例（初始状态 Starting）
     const agent = new Agent(name, config, cwd, launched, sessionId, sessionResult, log, buildMcpServers, onStateChange, options.onQueue, options.onSystemMessage);
+    agentRef = agent; // 激活 onPermissionRejected 回调
 
     // 6. 连接 session 更新 → 内部状态机 + 外部回调
     //    使用 agentRef 间接引用，因为 launched.onSessionUpdate 在 Agent 构造后设置
@@ -382,20 +398,6 @@ export class Agent {
           this._transition(AgentState.Streaming);
         }
       }
-    } else if (update === 'permission_rejected') {
-      const tc = data as { toolName?: string; reason?: string };
-      const toolName = tc.toolName || 'unknown';
-      const reason = tc.reason || 'Permission denied';
-      this._logger.warn(
-        `[${this.name}] permission rejected: ${toolName} — ${reason}`,
-      );
-      // 将拒绝原因作为系统消息加入队列，agent 恢复 idle 后自动发送
-      this._enqueueSystemMessage(
-        `[系统通知] 工具调用被拒绝\n` +
-        `工具: ${toolName}\n` +
-        `原因: ${reason}\n` +
-        `请使用工作区内的路径重试。`,
-      );
     }
   }
 

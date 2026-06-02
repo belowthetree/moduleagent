@@ -73,6 +73,17 @@ export default function InputBox(props: {
     if (tuiState.showQuickPanel()) return;
     // 不再阻止 streaming 时的键盘输入 — 消息会自动排队
 
+    // Ctrl+C：流式输出中取消当前请求（在组件层处理，确保聚焦时也能触发）
+    if (key.name === 'c' && key.ctrl) {
+      defaultLogger.info(`[InputBox] cancel"`);
+      if (tuiState.agentStatus() === 'streaming') {
+        tuiState.setAgentStatus('idle');
+        (globalThis as any).__tuiCancelStream?.();
+      }
+      key.preventDefault();
+      return;
+    }
+
     const val = tuiState.inputValue();
 
     // 回车：提交消息或命令
