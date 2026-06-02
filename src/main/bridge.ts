@@ -1,25 +1,24 @@
 // ---------------------------------------------------------------------------
 // main/bridge.ts — ElectronBridge：Electron 主进程 Core 桥接层
-// 将 CoreCallbacks 翻译为 IPC 事件，注册全部 11 个领域 handler，
-// 管理 Agent 状态、MCP 后端和对话总结
-// ---------------------------------------------------------------------------
+//
+// 职责（精简后）：
+//   1. 创建 ModuleAgentCore + 配置 PostSendHooks
+//   2. 构建 HandlerContext（仅 IPC/传输层资源）
+//   3. 委托 10 个领域 handler 注册全部 ~46 个 IPC 通道
+//
+// 状态管理（AgentStateManager、agentStatus、sendLock、prompts）已移入 Core 层。
+// Post-send 逻辑（summarizer + workspace diff）通过 PostSendHooks 注入 Core。
+// ============================================================================
 
 import path from 'path';
-import fs from 'fs-extra';
 import { ipcMain, type BrowserWindow } from 'electron';
 import { IpcChannel } from '../protocol/IpcChannels.js';
 import { ModuleAgentCore } from '../core/ModuleAgentCore.js';
-import { ConfigLoader } from '../config/ConfigLoader.js';
-import type { RoleConfig } from '../config/defaults.js';
 import { defaultLogger, type Logger } from '../core/Logger.js';
-import { AgentStateManager } from '../agents/AgentStateManager.js';
 import { ExperienceSummarizer } from '../core/ExperienceSummarizer.js';
-import * as WorkspaceDiff from '../core/WorkspaceDiff.js';
-import {
-  loadSystemPrompts,
-} from '../agents/PromptBuilder.js';
+import { createPostSendHook } from '../core/PostSendHooks.js';
 import { getPromptConfigDir, ensureConfigFiles } from '../core/ConfigPaths.js';
-import type { DiffSummary, ChatMsg } from '../types/shared.js';
+import type { DiffSummary } from '../types/shared.js';
 import type { CoreCallbacks, IAgentBridge } from '../core/CoreTypes.js';
 import type { HandlerContext } from './handlers/HandlerContext.js';
 
@@ -38,42 +37,31 @@ import { registerWorkspaceDiffHandlers } from './handlers/workspaceDiffHandlers.
 // ============================================================================
 // ElectronBridge — Electron 桥接层（编排层）
 //
-// 职责：
-//   1. 持有 ModuleAgentCore 实例 + AgentStateManager + ExperienceSummarizer
-//   2. 构建 HandlerContext（共享上下文）
-//   3. 委托 11 个领域 handler 注册全部 ~46 个 IPC 通道
-//   4. 提供 _triggerWorkspaceDiff（agent 完成后异步 diff 工作区）
-//
-// 架构：
-//   ElectronBridge (228行)  ← 编排
+// 架构（精简后）：
+//   ElectronBridge (~80行)  ← 编排
 //     ├── dialogHandlers       ← 1 通道
-//     ├── projectHandlers      ← 3 通道 (scan/getTree/generateModules)
-//     ├── agentHandlers        ← 6 通道 (start/send/cancel/stop/...)
-//     ├── contextHandlers      ← 3 通道
+//     ├── projectHandlers      ← 3 通道
+//     ├── agentHandlers        ← 6 通道（委托给 core.modules.sendMessage）
+//     ├── contextHandlers      ← 3 通道（委托给 core.modules）
 //     ├── configHandlers       ← 2 通道
-//     ├── roleHandlers         ← 9 通道
+//     ├── roleHandlers         ← 9 通道（委托给 core.roles.sendMessage）
 //     ├── workflowHandlers     ← 9 通道
 //     ├── migrationHandlers    ← 2 通道
 //     ├── knowledgeHandlers    ← 5 通道
 //     └── workspaceDiffHandlers← 5 通道
 //
-// 所有 handler 通过 HandlerContext 共享主进程资源，零循环依赖。
+// HandlerContext 从 14 字段缩减至 6 字段。
 // ============================================================================
 
 export class ElectronBridge implements IAgentBridge {
   private mainWindow: BrowserWindow;
   private core: ModuleAgentCore;
-  private stateManager: AgentStateManager | null = null;
-  private mcpBackend: unknown = null; // McpBackendServer — typed loosely to avoid import
-  private summarizer: ExperienceSummarizer;
-  private summarizationEnabled = false;
   private logger: Logger;
   private configDir: string;
 
-  private prompts = { mainPrompt: '', subPrompt: '', rolePrompt: '' };
-  private agentStatus = new Map<string, 'idle' | 'streaming' | 'error'>();
-  private sendLock = new Map<string, Promise<void>>();
-  private roleSendLock = new Map<string, Promise<void>>();
+  // 保留在 bridge 的共享资源
+  private summarizer: ExperienceSummarizer;
+  private summarizationEnabled = false;
   private diffCache = new Map<string, DiffSummary>();
 
   // Handler context — passed to all handler registration functions
@@ -89,62 +77,80 @@ export class ElectronBridge implements IAgentBridge {
 
     const callbacks: CoreCallbacks = this._buildCallbacks();
 
-    this.core = new ModuleAgentCore({
-      callbacks,
-      basePath,
-      configDir: this.configDir,
+    // 构建 PostSendHook（summarizer + workspace diff）
+    const onPostSend = createPostSendHook({
       logger: this.logger,
-      onSessionUpdate: (moduleName, sessionId, notification) => {
-        const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
-        this.stateManager?.appendChunk(moduleName, update || '', notification.update as Record<string, unknown>);
-        const acc = this.stateManager?.getStreamState(moduleName);
+      summarizer: this.summarizer,
+      getSummarizationEnabled: () => this.summarizationEnabled,
+      configDir: this.configDir,
+      getProjectRoot: () => this.core.getProjectRoot(),
+      diffCache: this.diffCache,
+      onDiffReady: (moduleName, summary) => {
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send(IpcChannel.Push.AgentStream, {
-            moduleName, sessionId, update,
-            data: notification.update,
-            reply: acc?.reply, thinking: acc?.thinking,
-            tools: acc?.tools, timeline: acc?.timeline, sections: acc?.sections,
-          });
-        }
-      },
-      onRoleSessionUpdate: (roleName, sessionId, notification) => {
-        const ctxKey = `workrole:${roleName}`;
-        const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
-        this.stateManager?.appendChunk(ctxKey, update || '', notification.update as Record<string, unknown>);
-        const acc = this.stateManager?.getStreamState(ctxKey);
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send(IpcChannel.Push.RoleStream, {
-            moduleName: roleName, sessionId, update,
-            data: notification.update,
-            reply: acc?.reply, thinking: acc?.thinking,
-            tools: acc?.tools, timeline: acc?.timeline, sections: acc?.sections,
+          this.mainWindow.webContents.send(IpcChannel.Push.WorkspaceDiffReady, {
+            moduleName,
+            summary,
           });
         }
       },
     });
 
-    // Build handler context — all handler functions share this mutable object
+    this.core = new ModuleAgentCore({
+      callbacks,
+      basePath,
+      configDir: this.configDir,
+      logger: this.logger,
+      onPostSend,
+      onSessionUpdate: (moduleName, _sessionId, notification) => {
+        // Bridge only handles IPC push — stream accumulation is in core
+        const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
+        const acc = this.core.modules.getStreamState(moduleName);
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send(IpcChannel.Push.AgentStream, {
+            moduleName,
+            update,
+            data: notification.update,
+            reply: acc?.reply,
+            thinking: acc?.thinking,
+            tools: acc?.tools,
+            timeline: acc?.timeline,
+            sections: acc?.sections,
+          });
+        }
+      },
+      onRoleSessionUpdate: (roleName, _sessionId, notification) => {
+        const ctxKey = `workrole:${roleName}`;
+        const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
+        const acc = this.core.modules.getStreamState(ctxKey);
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send(IpcChannel.Push.RoleStream, {
+            moduleName: roleName,
+            update,
+            data: notification.update,
+            reply: acc?.reply,
+            thinking: acc?.thinking,
+            tools: acc?.tools,
+            timeline: acc?.timeline,
+            sections: acc?.sections,
+          });
+        }
+      },
+    });
+
+    // Build handler context — shared mutable state
     this.handlerCtx = {
       core: this.core,
       mainWindow: this.mainWindow,
       diffCache: this.diffCache,
-      prompts: this.prompts,
       configDir: this.configDir,
       logger: this.logger,
-      summarizer: this.summarizer,
-      summarizationEnabled: this.summarizationEnabled,
-      sendLock: this.sendLock,
-      roleSendLock: this.roleSendLock,
-      agentStatus: this.agentStatus,
-      _triggerWorkspaceDiff: this._triggerWorkspaceDiff.bind(this),
       _getBasePath: this._getBasePath.bind(this),
     } as HandlerContext;
 
-    // Wire mutable stateManager via proxy getter
-    const self = this;
-    Object.defineProperty(this.handlerCtx, 'stateManager', {
-      get: () => self.stateManager,
-      set: (v: AgentStateManager | null) => { self.stateManager = v; },
+    // Wire summarizationEnabled through HandlerContext (mutable — configHandlers updates it)
+    Object.defineProperty(this.handlerCtx, 'summarizationEnabled', {
+      get: () => this.summarizationEnabled,
+      set: (v: boolean) => { this.summarizationEnabled = v; },
     });
   }
 
@@ -166,49 +172,10 @@ export class ElectronBridge implements IAgentBridge {
   }
 
   // -----------------------------------------------------------------------
-  // 工作区 Diff 触发（供 agent handler 后处理调用）
+  // IAgentBridge 实现
   // -----------------------------------------------------------------------
-
-  private _triggerWorkspaceDiff(moduleName: string, workspaceCwd: string, projectRoot: string): void {
-    if (!workspaceCwd || !projectRoot) return;
-    const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
-    if (!workspaceCwd.startsWith(workspaceBase)) return;
-
-    const relPath = path.relative(workspaceBase, workspaceCwd);
-    const sourceDir = relPath ? path.join(projectRoot, relPath) : projectRoot;
-
-    setImmediate(() => {
-      try {
-        this.logger.info(`WorkspaceDiff: analyzing ${workspaceCwd} vs ${sourceDir}`);
-        const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir);
-        summary.moduleName = moduleName;
-        this.diffCache.set(moduleName, summary);
-        if (summary.files.length > 0) {
-          this.logger.info(`WorkspaceDiff [${moduleName}]: ${summary.addedCount} added, ${summary.modifiedCount} modified, ${summary.deletedCount} deleted`);
-        }
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send(IpcChannel.Push.WorkspaceDiffReady, {
-            moduleName,
-            summary: summary.files.length > 0 ? summary : null,
-          });
-        }
-      } catch (err) {
-        this.logger.error(`WorkspaceDiff error [${moduleName}]: ${(err as Error).message}`);
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send(IpcChannel.Push.WorkspaceDiffReady, { moduleName, summary: null });
-        }
-      }
-    });
-  }
-
-  // -----------------------------------------------------------------------
-  // 清理
-  // -----------------------------------------------------------------------
-
-  // ── IAgentBridge 实现 ──
 
   async init(projectRoot: string): Promise<{ moduleNames: string[]; rootAgent: string }> {
-    // 更新 configDir 指向项目的 .module-agent/config/
     this.configDir = getPromptConfigDir(this._getBasePath(), projectRoot);
     ensureConfigFiles(path.join(this._getBasePath(), 'config'), projectRoot);
     return this.core.init(projectRoot, this.configDir);
@@ -219,17 +186,8 @@ export class ElectronBridge implements IAgentBridge {
   }
 
   async sendMessage(moduleName: string, text: string): Promise<{ result?: { reply: string }; error?: string }> {
-    // 委托给 agent:send handler（通过 IPC invoke 自调用）
-    const { ipcMain } = await import('electron');
-    // 直接使用 core 内部方法
     if (!this.core.isInitialized()) return { error: 'not initialized' };
-    let entry = this.core.modules.getAgent(moduleName);
-    if (!entry) entry = await this.core.modules.startAgent(moduleName);
-    const result = await entry.agent.connection.prompt({
-      sessionId: entry.agent.sessionId,
-      prompt: [{ type: 'text' as const, text }],
-    });
-    return { result: { reply: '' } };
+    return this.core.modules.sendMessage(text, moduleName);
   }
 
   async cancelAgent(moduleName: string): Promise<void> {
@@ -247,7 +205,6 @@ export class ElectronBridge implements IAgentBridge {
     return this.core.modules.listAgents();
   }
 
-  // 兼容旧 API
   async cleanup(): Promise<void> {
     return this.dispose();
   }
@@ -272,15 +229,23 @@ export class ElectronBridge implements IAgentBridge {
         }
       },
       onStreamComplete(moduleName) {
-        self.agentStatus.set(moduleName, 'idle');
+        // Status is now managed by core; bridge just forwards
       },
       onStreamError(moduleName, error) {
-        self.agentStatus.set(moduleName, 'error');
         self.logger.error(`[${moduleName}] stream error: ${error}`);
       },
-      onStatusChange(_status) { /* handled by agentStatus map */ },
+      onStatusChange(_status) {
+        // Status is now managed by core's per-module tracking
+      },
       onMessage(message) {
-        self.agentStatus.set(message.name, 'idle');
+        // Core manages status internally
+      },
+      onModuleStatusChange(moduleName, status) {
+        if (self.mainWindow && !self.mainWindow.isDestroyed()) {
+          self.mainWindow.webContents.send(IpcChannel.Push.AgentStatus, {
+            name: moduleName, status,
+          });
+        }
       },
     };
   }

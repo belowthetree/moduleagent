@@ -8,10 +8,12 @@ import fs from 'fs';
 import os from 'os';
 import { AgentLauncher } from '../agents/AgentLauncher.js';
 import { RoleAgentManager, type RoleAgentEntry } from '../agents/RoleAgentManager.js';
+import { AgentStateManager } from '../agents/AgentStateManager.js';
 import type { RoleConfig } from '../config/defaults.js';
 import type { SessionNotification, ContentBlock } from '@agentclientprotocol/sdk';
 import { defaultLogger, type Logger } from './Logger.js';
 import type { CoreCallbacks } from './CoreTypes.js';
+import type { ChatMsg } from '../types/shared.js';
 
 // ---------------------------------------------------------------------------
 // RoleAgentSubsystem 选项
@@ -26,6 +28,10 @@ export interface RoleAgentSubsystemOptions {
   logger?: Logger;
   /** 可选的外部会话更新监听器（如 AgentStateManager） */
   onSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
+  /** Shared AgentStateManager for stream accumulation + context persistence */
+  stateManager?: AgentStateManager;
+  /** Post-send hook (summarizer + workspace diff) */
+  onPostSend?: (roleName: string, msgs: ChatMsg[], entry: RoleAgentEntry) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,12 +47,16 @@ export class RoleAgentSubsystem {
   private sessionPrompted = new Set<string>();
   private sendLock = new Map<string, Promise<void>>();
   private _onSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
+  private _stateManager: AgentStateManager | null = null;
+  private _onPostSend?: (roleName: string, msgs: ChatMsg[], entry: RoleAgentEntry) => void;
 
   constructor(options: RoleAgentSubsystemOptions) {
     this.callbacks = options.callbacks;
     this.logger = options.logger || defaultLogger;
     this.projectPath = options.projectPath;
     this._onSessionUpdate = options.onSessionUpdate;
+    this._stateManager = options.stateManager || null;
+    this._onPostSend = options.onPostSend;
 
     // 加载角色 Agent 提示词
     const resolvedConfigDir = options.configDir || path.join(options.basePath, 'config');
@@ -96,6 +106,11 @@ export class RoleAgentSubsystem {
             }
           }
 
+          // 流累积：将通知路由到 AgentStateManager
+          if (update) {
+            self._stateManager?.appendChunk(`workrole:${roleName}`, update, data);
+          }
+
           if (self._onSessionUpdate) {
             self._onSessionUpdate(roleName, sessionId, notification);
           }
@@ -142,7 +157,10 @@ export class RoleAgentSubsystem {
   // 发送 / 取消
   // -----------------------------------------------------------------------
 
-  async sendMessage(roleName: string, text: string): Promise<void> {
+  async sendMessage(
+    roleName: string,
+    text: string,
+  ): Promise<{ result?: { reply: string; thinking: string; tools: string; timeline?: unknown[]; stopReason?: string }; error?: string }> {
     const prevLock = this.sendLock.get(roleName);
     if (prevLock) {
       try { await prevLock; } catch { /* 继续 */ }
@@ -155,22 +173,73 @@ export class RoleAgentSubsystem {
     try {
       let entry = this.manager.getAgent(roleName);
       if (!entry) {
-        // 需要 RoleConfig 才能启动——调用者必须先通过 startRole() 启动
         throw new Error(`Role agent "${roleName}" not started. Call startRole() first.`);
       }
+
+      const ctxKey = `workrole:${roleName}`;
+
+      // ── 开始流累积 ──
+      this._stateManager?.startStream(ctxKey);
 
       const blocks = this.buildPromptBlocks(roleName, text);
 
       this.callbacks.onStatusChange('streaming');
       this.logger.info(`role:send [${roleName}] len=${text.length} blocks=${blocks.length}`);
 
-      await entry.agent.send(blocks);
+      const promptResult = await entry.agent.connection.prompt({
+        sessionId: entry.agent.sessionId,
+        prompt: blocks,
+      });
+
+      // ── 结束流累积 ──
+      const acc = this._stateManager?.finishStream(ctxKey);
 
       this.callbacks.onStreamComplete(roleName);
       this.callbacks.onStatusChange('idle');
+
+      // ── 构建消息并持久化上下文 ──
+      const timeStr = new Date().toLocaleTimeString();
+      const userMsg: ChatMsg = {
+        id: 'r' + Date.now().toString(36),
+        role: 'user',
+        content: text,
+        thinking: '',
+        time: timeStr,
+        status: 'sent',
+        moduleName: ctxKey,
+      };
+      const agentMsg: ChatMsg = {
+        id: 'r' + (Date.now() + 1).toString(36),
+        role: 'agent',
+        content: acc?.reply || '',
+        thinking: acc?.thinking || '',
+        timeline: acc?.timeline || [],
+        time: timeStr,
+        status: 'completed',
+        moduleName: ctxKey,
+      };
+
+      const existingMsgs = await this._stateManager?.loadContext(ctxKey) ?? [];
+      existingMsgs.push(userMsg, agentMsg);
+      await this._stateManager?.saveContext(ctxKey, existingMsgs);
+
+      // ── 后处理钩子 ──
+      this._onPostSend?.(roleName, existingMsgs, entry);
+
+      return {
+        result: {
+          reply: acc?.reply || '',
+          thinking: acc?.thinking || '',
+          tools: acc?.tools || '',
+          timeline: acc?.timeline || [],
+          stopReason: (promptResult as { stopReason?: string }).stopReason,
+        },
+      };
     } catch (err) {
       const message = (err as Error).message;
       this.logger.error(`role:send [${roleName}] failed: ${message}`);
+      const ctxKey = `workrole:${roleName}`;
+      this._stateManager?.stopStream(ctxKey);
       this.callbacks.onStreamError(roleName, message);
       this.callbacks.onStatusChange('error');
       this.callbacks.onMessage({
@@ -179,6 +248,7 @@ export class RoleAgentSubsystem {
         content: `Error: ${message}`,
         time: new Date().toLocaleTimeString(),
       });
+      return { error: message };
     } finally {
       resolveLock();
       this.sendLock.delete(roleName);

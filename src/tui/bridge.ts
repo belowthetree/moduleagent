@@ -17,6 +17,7 @@ import type { RoleConfig } from '../config/defaults.js';
 import { tuiState } from './state.js';
 import { TuiPersistence, InputHistoryPersistence } from './persistence.js';
 import { getProjectConfigDir, ensureConfigFiles } from '../core/ConfigPaths.js';
+import { createPostSendHook } from '../core/PostSendHooks.js';
 import * as WorkspaceDiff from '../core/WorkspaceDiff.js';
 import type { DiffSummary } from '../types/shared.js';
 
@@ -121,19 +122,15 @@ export class TuiBridge implements IAgentBridge {
 
         // 不清空 ID：system message 的 queue drain 完成后 agent 可能还在推送残余 chunk，
         // 清空会导致后续 chunk 逐个创建新消息块。下一次 sendMessage 会覆写为新 ID。
-        self.moduleStatuses.set(moduleName, 'idle');
-        self.roleStatuses.set(moduleName, 'idle');
+        self.core.modules.setAgentStatus(moduleName, 'idle');
         self.setStatus('idle');
 
         // 更新 cwd（agent 启动后 workspace 路径才确定）
         tuiState.setAgentCwd(self.getAgentCwd());
-
-        // 触发工作区变更检测（后台异步）
-        setImmediate(() => self._triggerWorkspaceDiff(moduleName));
       },
       onStreamError: (moduleName, error) => {
         self.setStatus('error');
-        self.moduleStatuses.set(moduleName, 'error');
+        self.core.modules.setAgentStatus(moduleName, 'error');
         self.currentMsgs.push({
           id: `err-${Date.now()}`, role: 'system', msgType: 'system',
           content: `Error: ${error}`, time: new Date().toLocaleTimeString(),
@@ -326,6 +323,17 @@ export class TuiBridge implements IAgentBridge {
         };
         tuiState.setMessages([...tuiState.messages(), msg]);
       },
+      onPostSend: createPostSendHook({
+        logger: defaultLogger,
+        summarizer: self.summarizer,
+        getSummarizationEnabled: () => self.summarizationEnabled,
+        configDir: '', // set during init()
+        getProjectRoot: () => self.core.getProjectRoot(),
+        diffCache: self.diffCache,
+        onDiffReady: (moduleName, summary) => {
+          tuiState.setDiffPrompt(summary);
+        },
+      }),
     });
   }
 
@@ -450,7 +458,6 @@ export class TuiBridge implements IAgentBridge {
       if (targetType === 'role') {
         const roleName = this.core.getCurrentAgent();
         if (!this.core.roles) throw new Error('Role subsystem not initialized');
-        this.roleStatuses.set(roleName, 'streaming');
         await this.core.roles.sendMessage(roleName, text);
       } else if (targetType === 'workflow') {
         // 工作流模式下，消息发送给当前工作流步骤 agent
@@ -462,16 +469,10 @@ export class TuiBridge implements IAgentBridge {
         if (targetName && !this.loadedModules.has(targetName)) {
           this.loadedModules.add(targetName);
         }
-        this.moduleStatuses.set(targetName, 'streaming');
         await this.core.sendMessage(text);
       }
 
-      // 触发即忘的经验总结（后台执行，默认关闭）
-      const projectRoot = this.core.getProjectRoot();
-      const targetName = this.core.getCurrentAgent();
-      if (projectRoot && targetName && this.summarizationEnabled) {
-        this._triggerSummarizer(targetName, projectRoot);
-      }
+      // Summarizer + workspace diff 现在由 PostSendHooks 自动处理
 
       // 自动保存对话（debounced）
       this.autoSave();

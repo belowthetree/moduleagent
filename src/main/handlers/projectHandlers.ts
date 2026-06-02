@@ -2,7 +2,9 @@
 // projectHandlers — 项目 IPC handler
 // 注册通道: project:scan / project:getTree / project:generateModules
 // 项目扫描、模块树构建、MCP 后端初始化、模块自动生成
-// 这是最大的 handler 文件（~330 行），因为 scan 包含大量初始化逻辑
+//
+// AgentStateManager、prompts、agentStatus 已移入 Core 层。
+// project:scan 委托 initAll() 完成初始化，MCP 后端回调使用 core.modules API。
 // ============================================================================
 
 import { ipcMain } from 'electron';
@@ -13,18 +15,15 @@ import { IpcChannel } from '../../protocol/IpcChannels.js';
 import type { HandlerContext } from './HandlerContext.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';
 import { DEFAULT_CONFIG, DEFAULT_MODULE_GEN_ROLE, type RoleConfig } from '../../config/defaults.js';
-import { AgentStateManager } from '../../agents/AgentStateManager.js';
 import { McpBackendServer } from '../../agents/McpBackend.js';
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
-import { ModuleGenerator } from '../../core/ModuleGenerator.js';
 import { writeMcpGraphFile, buildMcpServers } from '../../agents/McpServerBuilder.js';
-import { buildPromptBlocks, loadSystemPrompts } from '../../agents/PromptBuilder.js';
+import { buildPromptBlocks } from '../../agents/PromptBuilder.js';
 import { AgentLauncher } from '../../agents/AgentLauncher.js';
 import { workspacePathForModule, getSubModuleDirs, prepareModuleWorkspace } from '../../agents/WorkspaceIsolator.js';
 import type { ModuleGraphNode } from '../../types/module.js';
 import type { ChatMsg, TreeNode } from '../../types/shared.js';
-import { defaultLogger } from '../../core/Logger.js';
 
 export function registerProjectHandlers(ctx: HandlerContext): void {
 
@@ -46,22 +45,10 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
       ctx.summarizationEnabled = config.summarization?.enabled ?? false;
       const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
 
-      // 从解析后的 config 目录加载提示词
-      ctx.prompts = { ...loadSystemPrompts(ctx.configDir), rolePrompt: '' };
-      try {
-        const rpPath = path.join(ctx.configDir, 'knowledge', 'roleagentprompt.md');
-        ctx.prompts.rolePrompt = fs.readFileSync(rpPath, 'utf-8');
-      } catch { /* 可选 */ }
-
-      // 初始化核心和角色（在模块扫描之前，这样即使扫描失败角色也可用）
+      // 初始化核心和角色（Core.init 内部会创建 AgentStateManager 并加载 prompts）
       const result = await ctx.core.init(projectRoot);
       ctx.core.initRoles(config.projectPath, workspaceRoot);
       ctx.core.initWorkflows(config.projectPath, workspaceRoot);
-
-      // 提前初始化状态管理器——必须在任何流开始之前，以及在可能抛出异常并跳过后续初始化的模块扫描之前
-      ctx.stateManager = new AgentStateManager(
-        path.join(projectRoot, '.module-agent', 'context'),
-      );
 
       const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
       fs.mkdirSync(moduleScanPath, { recursive: true });
@@ -73,11 +60,11 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
       const graph = new ModuleGraph().build(descriptors, projectRoot);
 
       // 设置 MCP 后端端口到 core.modules
-      ctx.core.modules.mcpBackendPort = 0; // Will be set after backend starts
+      ctx.core.modules.mcpBackendPort = 0;
       ctx.core.modules.mcpGraphFile = writeMcpGraphFile(graph, os.tmpdir());
 
-      // 创建 MCP 后端
-      ctx.mcpBackend = new McpBackendServer({
+      // 创建 MCP 后端 — 回调委托给 core.modules API
+      const mcpBackend = new McpBackendServer({
         getAgentEntry(name) {
           const e = ctx.core.modules.getAgent(name);
           return e ? e.agent : undefined;
@@ -91,23 +78,14 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
             });
         },
         buildPromptBlocks(name, text) {
-          return buildPromptBlocks({
-            moduleName: name,
-            userText: text,
-            graph: graph!,
-            prompts: ctx.prompts,
-            sessionPrompted: new Set(),
-          });
+          return ctx.core.modules.buildPromptBlocksForModule(name, text);
         },
         sendCrossContext(source, target, direction, phase, content) {
-          // 管理跨模块请求目标模块的 stateManager 生命周期。
-          // 目标模块接收这些方向/阶段配对：
-          //   received+request → 请求到达，开始流积累
-          //   sent+response    → 响应就绪，完成并持久化上下文
+          // 跨模块通信：管理目标模块的流状态
           if (direction === 'received' && phase === 'request') {
-            ctx.stateManager?.startStream(source);
+            ctx.core.modules.startStream(source);
           } else if (direction === 'sent' && phase === 'response') {
-            const acc = ctx.stateManager?.finishStream(source);
+            const acc = ctx.core.modules.finishStream(source);
             if (acc) {
               const timeStr = new Date().toLocaleTimeString();
               const agentMsg: ChatMsg = {
@@ -120,27 +98,25 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
                 status: 'completed',
                 moduleName: source,
               };
-              ctx.stateManager?.loadContext(source).then(existing => {
+              ctx.core.modules.loadContext(source).then(existing => {
                 existing.push(agentMsg);
-                ctx.stateManager?.saveContext(source, existing);
+                ctx.core.modules.saveContext(source, existing);
               }).catch(() => {});
             }
           }
 
-          // 更新 stateManager 时间线以便跨模块元数据被持久化
-          const st = ctx.stateManager?.getStreamState(source);
+          // 更新时间线元数据
+          const st = ctx.core.modules.getStreamState(source);
           if (st && st.timeline) {
             for (let i = st.timeline.length - 1; i >= 0; i--) {
               const ev = st.timeline[i]!;
               if (ev.type === 'tool_call' && (ev.content.includes('module_call') || ev.content.includes('module_query'))) {
-                // 仅在第一个事件（请求）上设置跨模块元数据；响应追加细节
                 if (!ev.crossModule) {
                   ev.crossDirection = direction;
                   ev.crossModule = target;
                   ev.crossPhase = phase;
                   ev.detail = content;
                 } else {
-                  // 响应：追加到现有详情，保持原始方向/模块
                   ev.crossPhase = phase;
                   if (ev.detail) {
                     ev.detail = ev.detail + '\n\n---\n\n' + content;
@@ -150,6 +126,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
               }
             }
           }
+
           if (ctx.mainWindow && !ctx.mainWindow.isDestroyed()) {
             ctx.mainWindow.webContents.send(IpcChannel.Push.CrossContext, {
               moduleName: source,
@@ -162,10 +139,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
           }
         },
         setAgentStatus(name, status) {
-          ctx.agentStatus.set(name, status);
-          if (ctx.mainWindow && !ctx.mainWindow.isDestroyed()) {
-            ctx.mainWindow.webContents.send(IpcChannel.Push.AgentStatus, { name, status });
-          }
+          ctx.core.modules.setAgentStatus(name, status);
         },
         onLog(level, message) {
           if (level === 'error') ctx.logger.error(message);
@@ -174,7 +148,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
         },
       });
 
-      const port = await ctx.mcpBackend.start();
+      const port = await mcpBackend.start();
       ctx.core.modules.mcpBackendPort = port;
 
       ctx.logger.info(`MCP setup complete: graph=${ctx.core.modules.mcpGraphFile} port=${port}`);
@@ -280,7 +254,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
         { command: agentCommand, args: agentArgs },
         rootNode.name,
         cwd,
-        defaultLogger,
+        ctx.logger,
         { subModuleDirs },
       );
 

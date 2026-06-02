@@ -40,6 +40,8 @@ export interface ModuleAgentCoreOptions {
   onWorkflowSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
   /** Optional cross-context notification callback (for UI) */
   onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
+  /** Optional post-send hook (summarizer + workspace diff) */
+  onPostSend?: (moduleName: string, msgs: import('../types/shared.js').ChatMsg[], entry: import('./ModuleAgentSubsystem.js').AgentEntry) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +79,7 @@ export class ModuleAgentCore {
       logger: this.logger,
       onSessionUpdate: options.onSessionUpdate,
       onCrossContext: options.onCrossContext,
+      onPostSend: options.onPostSend,
     });
 
     if (options.enableRoles) {
@@ -192,6 +195,7 @@ export class ModuleAgentCore {
       workspaceRoot,
       logger: this.logger,
       onSessionUpdate: onSessionUpdate || this.onRoleSessionUpdate,
+      stateManager: this.modules.stateManager ?? undefined,
     });
   }
 

@@ -8,6 +8,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';
 import { Agent } from '../agents/Agent.js';
+import { AgentStateManager } from '../agents/AgentStateManager.js';
 import { ConfigLoader } from '../config/ConfigLoader.js';
 import { ModuleScanner } from './ModuleScanner.js';
 import { ModuleGraph } from './ModuleGraph.js';
@@ -29,6 +30,7 @@ import {
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { SessionNotification, ContentBlock, McpServerStdio } from '@agentclientprotocol/sdk';
 import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from './CoreTypes.js';
+import type { ChatMsg } from '../types/shared.js';
 
 // ---------------------------------------------------------------------------
 // AgentEntry 接口
@@ -55,6 +57,8 @@ export interface ModuleAgentSubsystemOptions {
   onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void;
   /** Optional cross-context notification callback (for UI) */
   onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
+  /** Post-send hook: invoked after context save (for summarizer + workspace diff) */
+  onPostSend?: (moduleName: string, msgs: ChatMsg[], entry: AgentEntry) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +87,12 @@ export class ModuleAgentSubsystem {
   private sendLock = new Map<string, Promise<void>>();
   private toolNameById = new Map<string, string>(); // toolCallId → 真实工具名
 
+  // Agent 状态管理（流累积 + 上下文持久化）
+  private _stateManager: AgentStateManager | null = null;
+
+  // 每个模块的 Agent 运行状态
+  private _agentStatus = new Map<string, 'idle' | 'streaming' | 'error'>();
+
   // MCP 状态
   mcpBackendPort = 0;
   mcpGraphFile = '';
@@ -90,6 +100,7 @@ export class ModuleAgentSubsystem {
   // 外部钩子
   private _onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void;
   private _onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
+  private _onPostSend?: (moduleName: string, msgs: ChatMsg[], entry: AgentEntry) => void;
 
   constructor(options: ModuleAgentSubsystemOptions) {
     this.callbacks = options.callbacks;
@@ -98,6 +109,7 @@ export class ModuleAgentSubsystem {
     this.logger = options.logger || defaultLogger;
     this._onSessionUpdate = options.onSessionUpdate;
     this._onCrossContext = options.onCrossContext;
+    this._onPostSend = options.onPostSend;
   }
 
   // -----------------------------------------------------------------------
@@ -127,6 +139,9 @@ export class ModuleAgentSubsystem {
 
     this.mcpGraphFile = writeMcpGraphFile(this.graph, os.tmpdir());
     this.prompts = loadSystemPrompts(this.configDir);
+    this._stateManager = new AgentStateManager(
+      path.join(projectRoot, '.module-agent', 'context'),
+    );
     this.currentModule = this.graph.root;
 
     this.setStatus('idle');
@@ -146,13 +161,18 @@ export class ModuleAgentSubsystem {
     this.pendingStarts.clear();
     this.sendLock.clear();
     this.sessionPrompted.clear();
+    this._agentStatus.clear();
   }
 
   // -----------------------------------------------------------------------
   // Agent 交互
   // -----------------------------------------------------------------------
 
-  async sendMessage(text: string, moduleName?: string): Promise<void> {
+  /** Send result returned by sendMessage */
+  async sendMessage(
+    text: string,
+    moduleName?: string,
+  ): Promise<{ result?: { reply: string; thinking: string; tools: string; timeline?: unknown[]; stopReason?: string }; error?: string }> {
     if (!this.graph) throw new Error('Not initialized — call init() first');
 
     const targetName = moduleName || this.currentModule;
@@ -160,7 +180,9 @@ export class ModuleAgentSubsystem {
     const finalTarget = routed.targetName || targetName;
     const finalText = routed.prompt || text;
 
-    if (dedupMessage(this.lastSent, finalTarget, finalText)) return;
+    if (dedupMessage(this.lastSent, finalTarget, finalText)) {
+      return { result: { reply: '', thinking: '', tools: '' } };
+    }
 
     // 按模块发送互斥锁
     const prevLock = this.sendLock.get(finalTarget);
@@ -177,7 +199,11 @@ export class ModuleAgentSubsystem {
         entry = await this.startAgent(finalTarget);
       }
 
+      this.setAgentStatus(finalTarget, 'streaming');
       this.setStatus('streaming');
+
+      // ── 开始流累积 ──
+      this._stateManager?.startStream(finalTarget);
 
       const blocks = buildPromptBlocks({
         moduleName: finalTarget,
@@ -188,14 +214,64 @@ export class ModuleAgentSubsystem {
       });
 
       this.logger.info(`sendMessage [${finalTarget}]: ${finalText.length} chars, ${blocks.length} blocks`);
-      await entry.agent.send(blocks);
+      const promptResult = await entry.agent.connection.prompt({
+        sessionId: entry.agent.sessionId,
+        prompt: blocks,
+      });
+
+      // ── 结束流累积 ──
+      const acc = this._stateManager?.finishStream(finalTarget);
 
       this.callbacks.onStreamComplete(finalTarget);
+
+      // ── 构建消息并持久化上下文 ──
+      const timeStr = new Date().toLocaleTimeString();
+      const userMsg: ChatMsg = {
+        id: 'm' + Date.now().toString(36),
+        role: 'user',
+        content: finalText,
+        thinking: '',
+        time: timeStr,
+        status: 'sent',
+        moduleName: finalTarget,
+        sessionId: entry.agent.sessionId,
+      };
+      const agentMsg: ChatMsg = {
+        id: 'm' + (Date.now() + 1).toString(36),
+        role: 'agent',
+        content: acc?.reply || '',
+        thinking: acc?.thinking || '',
+        timeline: acc?.timeline || [],
+        time: timeStr,
+        status: 'completed',
+        moduleName: finalTarget,
+      };
+
+      const existingMsgs = await this.loadContext(finalTarget);
+      existingMsgs.push(userMsg, agentMsg);
+      await this._stateManager?.saveContext(finalTarget, existingMsgs);
+
+      // ── 后处理钩子（总结 + 工作区 diff） ──
+      this._onPostSend?.(finalTarget, existingMsgs, entry);
+
+      this.setAgentStatus(finalTarget, 'idle');
       this.setStatus('idle');
+
+      return {
+        result: {
+          reply: acc?.reply || '',
+          thinking: acc?.thinking || '',
+          tools: acc?.tools || '',
+          timeline: acc?.timeline || [],
+          stopReason: (promptResult as { stopReason?: string }).stopReason,
+        },
+      };
     } catch (err) {
       const message = (err as Error).message;
       this.logger.error(`sendMessage [${finalTarget}] failed: ${message}`);
+      this._stateManager?.stopStream(finalTarget);
       this.callbacks.onStreamError(finalTarget, message);
+      this.setAgentStatus(finalTarget, 'error');
       this.setStatus('error');
       this.callbacks.onMessage({
         id: `err-${Date.now()}`,
@@ -203,6 +279,7 @@ export class ModuleAgentSubsystem {
         content: `Error: ${message}`,
         time: new Date().toLocaleTimeString(),
       });
+      return { error: message };
     } finally {
       resolveLock();
       this.sendLock.delete(finalTarget);
@@ -214,6 +291,7 @@ export class ModuleAgentSubsystem {
     if (!entry) return;
 
     await entry.agent.cancel();
+    this.setAgentStatus(this.currentModule, 'idle');
     this.logger.info(`cancel [${this.currentModule}]`);
   }
 
@@ -243,6 +321,7 @@ export class ModuleAgentSubsystem {
         this.logger.warn(`clearContext: newSession failed for [${name}], killing process: ${(err as Error).message}`);
         entry.agent.stop();
         this.agents.delete(name);
+        this._agentStatus.delete(name);
         this._deleteSessionId(name);
       }
     } else {
@@ -394,6 +473,70 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
+  // Stream & context API（委托给 AgentStateManager）
+  // -----------------------------------------------------------------------
+
+  /** 获取 AgentStateManager 实例（供外部消费者如 bridge 使用） */
+  get stateManager(): AgentStateManager | null {
+    return this._stateManager;
+  }
+
+  // ── Agent 状态追踪 ──
+
+  getAgentStatus(moduleName: string): 'idle' | 'streaming' | 'error' {
+    return this._agentStatus.get(moduleName) || 'idle';
+  }
+
+  setAgentStatus(moduleName: string, status: 'idle' | 'streaming' | 'error'): void {
+    this._agentStatus.set(moduleName, status);
+    this.callbacks.onModuleStatusChange?.(moduleName, status);
+  }
+
+  deleteAgentStatus(moduleName: string): void {
+    this._agentStatus.delete(moduleName);
+  }
+
+  listAgentStatuses(): Array<{ name: string; status: 'idle' | 'streaming' | 'error' }> {
+    return [...this._agentStatus.entries()].map(([name, status]) => ({ name, status }));
+  }
+
+  startStream(moduleName: string): void {
+    this._stateManager?.startStream(moduleName);
+  }
+
+  finishStream(moduleName: string) {
+    return this._stateManager?.finishStream(moduleName);
+  }
+
+  cancelStream(moduleName: string) {
+    return this._stateManager?.cancelStream(moduleName);
+  }
+
+  stopStream(moduleName: string): void {
+    this._stateManager?.stopStream(moduleName);
+  }
+
+  getStreamState(moduleName: string) {
+    return this._stateManager?.getStreamState(moduleName);
+  }
+
+  async loadContext(moduleName: string): Promise<import('../types/shared.js').ChatMsg[]> {
+    return this._stateManager?.loadContext(moduleName) ?? [];
+  }
+
+  async saveContext(moduleName: string, msgs: import('../types/shared.js').ChatMsg[]): Promise<void> {
+    await this._stateManager?.saveContext(moduleName, msgs);
+  }
+
+  async clearModuleContext(moduleName: string): Promise<void> {
+    await this._stateManager?.clearContext(moduleName);
+  }
+
+  async clearAllContexts(): Promise<void> {
+    await this._stateManager?.clearAllContexts();
+  }
+
+  // -----------------------------------------------------------------------
   // 内部：启动管道
   // -----------------------------------------------------------------------
 
@@ -455,6 +598,7 @@ export class ModuleAgentSubsystem {
           const detail = toolInput ? JSON.stringify(toolInput).slice(0, 200) : undefined;
           self.callbacks.onToolCall?.(moduleName, toolName, toolStatus, detail);
           if (tc.status === 'error') {
+            self.setAgentStatus(moduleName, 'error');
             self.callbacks.onStreamError(moduleName, `Tool call failed: ${toolName}`);
           }
         } else if (update === 'tool_call_update') {
@@ -463,6 +607,11 @@ export class ModuleAgentSubsystem {
           if (tc.status) {
             self.callbacks.onToolCall?.(moduleName, realName, tc.status);
           }
+        }
+
+        // 流累积：将通知路由到 AgentStateManager
+        if (update) {
+          self._stateManager?.appendChunk(moduleName, update, data);
         }
 
         if (self._onSessionUpdate) {
@@ -535,9 +684,11 @@ export class ModuleAgentSubsystem {
       this.agents.set(moduleName, entry);
 
       this.logger.info(`startAgent [${moduleName}] ready, sessionId=${agent.sessionId}`);
+      this.setAgentStatus(moduleName, 'idle');
       return entry;
     } catch (err) {
       this.logger.error(`startAgent [${moduleName}] failed: ${(err as Error).message}`);
+      this.setAgentStatus(moduleName, 'error');
       throw err;
     }
   }

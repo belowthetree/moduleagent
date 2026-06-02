@@ -5,9 +5,6 @@
 // ============================================================================
 
 import { ipcMain } from 'electron';
-import path from 'path';
-import fs from 'fs-extra';
-import os from 'os';
 import { IpcChannel } from '../../protocol/IpcChannels.js';
 import type { HandlerContext } from './HandlerContext.js';
 import type { ChatMsg } from '../../types/shared.js';
@@ -15,21 +12,18 @@ import type { ChatMsg } from '../../types/shared.js';
 export function registerMigrationHandlers(ctx: HandlerContext): void {
 
   ipcMain.handle(IpcChannel.Migrate.Check, async (_event, keys: string[]) => {
-    if (!ctx.stateManager) return { needed: [], streamNeeded: false };
     const needed: string[] = [];
     for (const key of keys) {
       if (key.startsWith('ctx_')) {
         const moduleName = key.slice(4);
-        const existing = await ctx.stateManager.loadContext(moduleName);
+        const existing = await ctx.core.modules.loadContext(moduleName);
         if (existing.length === 0) needed.push(key);
       }
     }
-    const streamNeeded = keys.includes('stream_snapshot');
-    return { needed, streamNeeded };
+    return { needed, streamNeeded: keys.includes('stream_snapshot') };
   });
 
   ipcMain.handle(IpcChannel.Migrate.Data, async (_event, payload: { moduleName: string; msgs: ChatMsg[] }) => {
-    if (!ctx.stateManager) return;
-    await ctx.stateManager.saveContext(payload.moduleName, payload.msgs);
+    await ctx.core.modules.saveContext(payload.moduleName, payload.msgs);
   });
 }

@@ -1,6 +1,6 @@
 {
   "name": "@belowthetree/module-agent",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "模块化 Agent 编排框架",
   "author": "belowthetree <37807774+belowthetree@users.noreply.github.com>",
   "type": "module",
