@@ -17,9 +17,9 @@ export default function InputBox(props: {
   let inputEl: unknown = null;
 
   // 焦点移开时自动重聚焦输入框（程序化焦点变化的安全网）
+  // 不再在 streaming 时阻止重聚焦 — 用户可在 agent 输出时继续输入
   createEffect(() => {
     const handler = (current: unknown) => {
-      if (untrack(() => tuiState.agentStatus()) === "streaming") return;
       if (current !== inputEl && inputEl) {
         (inputEl as { focus?: () => void }).focus?.();
       }
@@ -71,7 +71,7 @@ export default function InputBox(props: {
   useKeyboard((key) => {
     if (tuiState.screen() !== 'chat') return;
     if (tuiState.showQuickPanel()) return;
-    if (tuiState.agentStatus() === "streaming") return;
+    // 不再阻止 streaming 时的键盘输入 — 消息会自动排队
 
     const val = tuiState.inputValue();
 
@@ -178,10 +178,9 @@ export default function InputBox(props: {
     }
   });
 
-  // 粘贴处理
+  // 粘贴处理（streaming 时也允许粘贴，消息自动排队）
   usePaste((event: { bytes: Uint8Array; preventDefault?: () => void }) => {
     if (tuiState.screen() !== 'chat') return;
-    if (tuiState.agentStatus() === 'streaming') return;
     event.preventDefault?.(); // 阻止 <input> 内置粘贴，避免双重写入
     const text = new TextDecoder().decode(event.bytes);
     tuiState.setInputValue(tuiState.inputValue() + text);
@@ -201,17 +200,15 @@ export default function InputBox(props: {
           placeholder="输入消息 (输入 / 查看命令)..."
           width="100%"
           value={tuiState.inputValue()}
-          focused={!isStreaming()}
-          opacity={isStreaming() ? 0.5 : 1}
+          focused={true}
+          opacity={isStreaming() ? 0.7 : 1}
           onChange={(value: string) => {
             defaultLogger.info(`[InputBox] onChange: "${value}"`);
-            if (tuiState.agentStatus() !== "streaming") {
-              tuiState.setInputValue(value);
-              if (!value.startsWith("/")) {
-                tuiState.setShowCommands(false);
-              }
-              renderer.requestRender();
+            tuiState.setInputValue(value);
+            if (!value.startsWith("/")) {
+              tuiState.setShowCommands(false);
             }
+            renderer.requestRender();
           }}
         />
       </box>

@@ -100,6 +100,22 @@ export class RoleAgentSubsystem {
             self._onSessionUpdate(roleName, sessionId, notification);
           }
         },
+        onQueue: (qlen: number) => {
+          self.callbacks.onMessage({
+            id: `queue-${Date.now()}`,
+            role: 'system',
+            content: `Agent 正在工作中，您的输入已加入队列（第 ${qlen} 位）。`,
+            time: new Date().toLocaleTimeString(),
+          });
+        },
+        onSystemMessage: (text: string, _qlen: number) => {
+          self.callbacks.onMessage({
+            id: `sys-${Date.now()}`,
+            role: 'system',
+            content: text,
+            time: new Date().toLocaleTimeString(),
+          });
+        },
       },
     });
   }

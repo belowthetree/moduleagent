@@ -35,6 +35,8 @@ export interface RoleAgentManagerOptions {
   logger?: Logger;
   callbacks?: {
     onSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
+    onQueue?: (queueLength: number) => void;
+    onSystemMessage?: (text: string, queueLength: number) => void;
   };
 }
 
@@ -167,6 +169,8 @@ export class RoleAgentManager {
         logger: this.logger,
         buildMcpServers: buildMcpServersFn,
         onNotification,
+        onQueue: self.callbacks?.onQueue,
+        onSystemMessage: self.callbacks?.onSystemMessage,
       });
 
       // 6. Build and store entry

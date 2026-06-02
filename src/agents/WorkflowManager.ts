@@ -32,6 +32,8 @@ export interface WorkflowManagerOptions {
   logger?: Logger;
   callbacks?: {
     onSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
+    onQueue?: (queueLength: number) => void;
+    onSystemMessage?: (text: string, queueLength: number) => void;
   };
 }
 
@@ -105,6 +107,8 @@ export class WorkflowManager {
         logger: this.logger,
         buildMcpServers: buildMcpServersFn,
         onNotification,
+        onQueue: self.callbacks?.onQueue,
+        onSystemMessage: self.callbacks?.onSystemMessage,
       });
 
       const entry: WorkflowStepAgentEntry = {

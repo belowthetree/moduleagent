@@ -490,6 +490,26 @@ export class ModuleAgentSubsystem {
         subModuleDirs,
         buildMcpServers: buildMcpServersFn,
         onNotification,
+        onQueue: (qlen: number) => {
+          self.callbacks.onMessage({
+            id: `queue-${Date.now()}`,
+            role: 'system',
+            content: `Agent 正在工作中，您的输入已加入队列（第 ${qlen} 位）。`,
+            time: new Date().toLocaleTimeString(),
+          });
+        },
+        onSystemMessage: (text: string, qlen: number) => {
+          // 系统消息（如 permission 拒绝）排队时立即加入对话列表
+          self.callbacks.onMessage({
+            id: `sys-${Date.now()}`,
+            role: 'system',
+            content: text,
+            time: new Date().toLocaleTimeString(),
+          });
+          self.logger.info(
+            `[${moduleName}] system message queued (queue=${qlen}): ${text.slice(0, 80)}`,
+          );
+        },
         sessionResume: {
           savedSessionId: this._loadSessionId(moduleName) || '',
           save: (id: string) => this._saveSessionId(moduleName, id),
