@@ -225,8 +225,8 @@ export class ElectronBridge implements IAgentBridge {
     if (!this.core.isInitialized()) return { error: 'not initialized' };
     let entry = this.core.modules.getAgent(moduleName);
     if (!entry) entry = await this.core.modules.startAgent(moduleName);
-    const result = await entry.launched.connection.prompt({
-      sessionId: entry.sessionId,
+    const result = await entry.agent.connection.prompt({
+      sessionId: entry.agent.sessionId,
       prompt: [{ type: 'text' as const, text }],
     });
     return { result: { reply: '' } };
@@ -235,7 +235,7 @@ export class ElectronBridge implements IAgentBridge {
   async cancelAgent(moduleName: string): Promise<void> {
     const entry = this.core.modules.getAgent(moduleName);
     if (entry) {
-      try { await entry.launched.connection.cancel({ sessionId: entry.sessionId }); } catch { /* ignore */ }
+      try { await entry.agent.cancel(); } catch { /* ignore */ }
     }
   }
 

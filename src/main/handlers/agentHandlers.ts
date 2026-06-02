@@ -22,7 +22,7 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
     if (existing) return { sessionId: existing.sessionId };
     try {
       const entry = await ctx.core.modules.startAgent(moduleName);
-      return { sessionId: entry.sessionId };
+      return { sessionId: entry.agent.sessionId };
     } catch (err) {
       ctx.logger.error(`agent:start failed [${moduleName}]: ${(err as Error).message}`);
       ctx.agentStatus.set(moduleName, 'error');
@@ -62,8 +62,8 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
       ctx.stateManager?.startStream(moduleName);
 
       ctx.logger.info(`agent:send [${moduleName}] len=${text.length} blocks=${promptBlocks.length}`);
-      const result = await entry.launched.connection.prompt({
-        sessionId: entry.sessionId,
+      const result = await entry.agent.connection.prompt({
+        sessionId: entry.agent.sessionId,
         prompt: promptBlocks,
       });
 
@@ -71,7 +71,7 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
 
       // 保存上下文
       const timeStr = new Date().toLocaleTimeString();
-      const agentCmd = entry.config.command || '';
+      const agentCmd = entry.agent.config.command || '';
       const userMsg: ChatMsg = {
         id: 'm' + Date.now().toString(36),
         role: 'user',
@@ -80,7 +80,7 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
         time: timeStr,
         status: 'sent',
         moduleName,
-        sessionId: entry.sessionId,
+        sessionId: entry.agent.sessionId,
       };
       const agentMsg: ChatMsg = {
         id: 'm' + (Date.now() + 1).toString(36),
@@ -105,15 +105,15 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
           chatMsgs: existingMsgs,
           projectRoot,
           configDir: ctx.configDir,
-          agentConfig: { command: entry.config.command, args: entry.config.args },
-          agentCwd: entry.launched.cwd,
+          agentConfig: { command: entry.agent.config.command, args: entry.agent.config.args },
+          agentCwd: entry.agent.cwd,
         }).catch(err => {
           ctx.logger.warn(`Summarizer error [${moduleName}]: ${(err as Error).message}`);
         });
       }
 
       // ── 触发工作区变更检测（后台异步） ──
-      ctx._triggerWorkspaceDiff(moduleName, entry.launched.cwd, projectRoot);
+      ctx._triggerWorkspaceDiff(moduleName, entry.agent.cwd, projectRoot);
 
       ctx.agentStatus.set(moduleName, 'idle');
       ctx.mainWindow?.webContents.send(IpcChannel.Push.AgentStatus, { name: moduleName, status: 'idle' });
@@ -142,7 +142,7 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
   ipcMain.handle(IpcChannel.Agent.Cancel, async (_event, moduleName: string) => {
     const entry = ctx.core.modules.getAgent(moduleName);
     if (entry) {
-      try { await entry.launched.connection.cancel({ sessionId: entry.sessionId }); } catch { /* 忽略 */ }
+      try { await entry.agent.cancel(); } catch { /* 忽略 */ }
       ctx.agentStatus.set(moduleName, 'idle');
       ctx.mainWindow?.webContents.send(IpcChannel.Push.AgentStatus, { name: moduleName, status: 'idle' });
     }
@@ -153,7 +153,7 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
   ipcMain.handle(IpcChannel.Agent.Stop, async (_event, moduleName: string) => {
     const entry = ctx.core.modules.getAgent(moduleName);
     if (entry) {
-      try { entry.launched.process.kill(); } catch { /* 忽略 */ }
+      entry.agent.stop();
       // 通过内部访问直接从 agents 映射中移除
       (ctx.core.modules as any).agents?.delete?.(moduleName);
       ctx.agentStatus.delete(moduleName);

@@ -131,7 +131,10 @@ export default function App() {
       ) : screen() === 'tree' ? (
         <ModuleTree
           graph={(globalThis as any).__tuiAgentService?.getGraph?.() ?? null}
-          moduleStatuses={(globalThis as any).__tuiAgentService?.getModuleStatuses?.() ?? new Map()}
+          moduleStatuses={
+            // 读取版本信号确保状态变化时重新求值
+            (tuiState.moduleStatusVersion(), (globalThis as any).__tuiAgentService?.getModuleStatuses?.() ?? new Map())
+          }
           loadedModules={(globalThis as any).__tuiAgentService?.loadedModulesSet ?? new Set()}
           currentAgent={tuiState.currentAgent()}
           selectionMode={tuiState.showExperiencePanel() ? 'experience' : 'agent'}

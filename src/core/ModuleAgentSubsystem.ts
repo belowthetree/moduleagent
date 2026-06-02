@@ -6,7 +6,8 @@
 import path from 'path';
 import fs from 'fs-extra';
 import os from 'os';
-import { AgentLauncher, type LaunchedAgent, type AgentConfig } from '../agents/AgentLauncher.js';
+import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';
+import { Agent } from '../agents/Agent.js';
 import { ConfigLoader } from '../config/ConfigLoader.js';
 import { ModuleScanner } from './ModuleScanner.js';
 import { ModuleGraph } from './ModuleGraph.js';
@@ -17,7 +18,6 @@ import {
 } from '../agents/McpServerBuilder.js';
 import {
   workspacePathForModule,
-  codeSourcePathForModule,
   getSubModuleDirs,
   prepareModuleWorkspace,
 } from '../agents/WorkspaceIsolator.js';
@@ -26,8 +26,8 @@ import {
   buildPromptBlocks,
   dedupMessage,
 } from '../agents/PromptBuilder.js';
-import type { ModuleGraphNode, ModuleGraph as ModuleGraphType } from '../types/module.js';
-import type { AgentCapabilities, SessionNotification, ContentBlock } from '@agentclientprotocol/sdk';
+import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
+import type { SessionNotification, ContentBlock, McpServerStdio } from '@agentclientprotocol/sdk';
 import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from './CoreTypes.js';
 
 // ---------------------------------------------------------------------------
@@ -35,12 +35,8 @@ import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from './CoreT
 // ---------------------------------------------------------------------------
 
 export interface AgentEntry {
-  name: string;
-  config: AgentConfig;
-  launched: LaunchedAgent;
-  sessionId: string;
+  agent: Agent;
   modulePath: string;
-  capabilities?: AgentCapabilities;
   modeOptions?: { value: string; name: string }[];
   currentMode?: string;
 }
@@ -144,7 +140,7 @@ export class ModuleAgentSubsystem {
   async dispose(): Promise<void> {
     this.logger.info('ModuleAgentSubsystem: disposing');
     for (const [, entry] of this.agents) {
-      try { entry.launched.process.kill(); } catch { /* 忽略 */ }
+      entry.agent.stop();
     }
     this.agents.clear();
     this.pendingStarts.clear();
@@ -192,10 +188,7 @@ export class ModuleAgentSubsystem {
       });
 
       this.logger.info(`sendMessage [${finalTarget}]: ${finalText.length} chars, ${blocks.length} blocks`);
-      await entry.launched.connection.prompt({
-        sessionId: entry.sessionId,
-        prompt: blocks,
-      });
+      await entry.agent.send(blocks);
 
       this.callbacks.onStreamComplete(finalTarget);
       this.setStatus('idle');
@@ -220,20 +213,16 @@ export class ModuleAgentSubsystem {
     const entry = this.agents.get(this.currentModule);
     if (!entry) return;
 
-    try {
-      await entry.launched.connection.cancel({ sessionId: entry.sessionId });
-      this.logger.info(`cancel [${this.currentModule}]`);
-    } catch {
-      // 忽略
-    }
+    await entry.agent.cancel();
+    this.logger.info(`cancel [${this.currentModule}]`);
   }
 
-  /** 清空当前模块的上下文（停止 Agent 进程 + 清除会话标记） */
+  /** 清空当前模块的上下文（创建新会话，不杀进程；失败时回退到杀进程） */
   async clearContext(moduleName?: string): Promise<void> {
     const name = moduleName || this.currentModule;
     const entry = this.agents.get(name);
     if (entry) {
-      this._ensureGitAnchor(entry.launched.cwd);
+      this._ensureGitAnchor(entry.agent.cwd);
 
       // 优先调用 newSession 创建新会话（不杀进程，agent 保持运行）
       try {
@@ -243,17 +232,16 @@ export class ModuleAgentSubsystem {
           backendPort: this.mcpBackendPort,
           graphFile: this.mcpGraphFile,
         });
-        const result = await entry.launched.connection.newSession({ cwd: entry.launched.cwd, mcpServers });
-        entry.sessionId = result.sessionId;
-        this._saveSessionId(name, result.sessionId);
-        this.logger.info(`clearContext: new session for [${name}], sessionId=${result.sessionId}`);
+        const newSessionId = await entry.agent.clearContext(mcpServers);
+        this._saveSessionId(name, newSessionId);
+        this.logger.info(`clearContext: new session for [${name}], sessionId=${newSessionId}`);
 
         // 恢复 mode/model 配置
-        await this._applySessionConfig(name, entry.config, entry.launched.connection, result.sessionId, result);
+        await this._applySessionConfig(name, entry.agent);
       } catch (err) {
         // newSession 失败回退：杀进程，下次使用时自动重启
         this.logger.warn(`clearContext: newSession failed for [${name}], killing process: ${(err as Error).message}`);
-        try { entry.launched.process.kill(); } catch { /* ignore */ }
+        entry.agent.stop();
         this.agents.delete(name);
         this._deleteSessionId(name);
       }
@@ -328,7 +316,7 @@ export class ModuleAgentSubsystem {
   }
 
   getAgentCwd(moduleName: string): string | null {
-    return this.agents.get(moduleName)?.launched.cwd ?? null;
+    return this.agents.get(moduleName)?.agent.cwd ?? null;
   }
 
   /** 计算模块的 workspace cwd（无需 agent 运行） */
@@ -360,7 +348,7 @@ export class ModuleAgentSubsystem {
   async setAgentMode(moduleName: string, modeValue: string): Promise<void> {
     const entry = this.agents.get(moduleName);
     if (!entry) throw new Error(`Agent ${moduleName} not running`);
-    await entry.launched.connection.setSessionConfigOption({ sessionId: entry.sessionId, configId: 'mode', value: modeValue });
+    await entry.agent.setConfigOption('mode', modeValue);
     entry.currentMode = modeValue;
     this.logger.info(`[${moduleName}] mode switched to ${modeValue}`);
   }
@@ -406,25 +394,20 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // 内部：启动管道（从 AgentOrchestrator 合并）
+  // 内部：启动管道
   // -----------------------------------------------------------------------
 
   private async _startAgentInternal(moduleName: string): Promise<AgentEntry> {
-    let launched: LaunchedAgent | null = null;
-
     try {
       const agentConfig = this.resolveAgentConfig(moduleName);
       const node = this.graph?.nodes.get(moduleName) ?? null;
 
       const workspaceRoot = path.join(this.projectRoot, '.module-agent', 'workspace');
       let cwd: string;
-      this.logger.info(`_startAgentInternal ${node?.relativePath} this.config?.projectPath`);
       if (node && this.config?.projectPath) {
         if (node.relativePath === '.') {
-          // 根模块: cwd 放在 .module-agent/module/，不拷贝
           cwd = path.join(this.projectRoot, '.module-agent', 'module');
         } else {
-          // 非根模块: workspace 隔离拷贝
           await prepareModuleWorkspace(node, {
             workspaceRoot,
             projectPath: this.config.projectPath,
@@ -433,7 +416,6 @@ export class ModuleAgentSubsystem {
           cwd = workspacePathForModule(node, workspaceRoot, this.projectRoot);
         }
       } else {
-        // 无 projectPath 时：根模块也用 .module-agent/module/，非根模块用 node 绝对路径
         cwd = node?.relativePath === '.'
           ? path.join(this.projectRoot, '.module-agent', 'module')
           : node?.absolutePath || this.projectRoot;
@@ -451,124 +433,90 @@ export class ModuleAgentSubsystem {
         `startAgent [${moduleName}] cmd=${agentConfig.command} args=[${(agentConfig.args || []).join(',')}] cwd=${cwd}`,
       );
 
-      launched = await this.launcher.launch(agentConfig, moduleName, cwd, this.logger, { subModuleDirs });
-
-      // 打印 Agent 能力
-      const caps = launched.agentCapabilities;
-      this.logger.info(`[${moduleName}] agent capabilities: ${JSON.stringify(caps)}`);
-      const sessionCaps = (caps as any)?.sessionCapabilities;
-      this.logger.info(`[${moduleName}] session capabilities: ${JSON.stringify(sessionCaps)}`);
-      const hasResume = !!(sessionCaps?.resume);
-
-      // 连接会话更新 → CoreCallbacks + 外部监听器
+      // 构建 onNotification 回调（将 ACP 通知分发给 CoreCallbacks + 外部监听器）
       const self = this;
-      launched.onSessionUpdate = (name, sessionId, notification) => {
+      const onNotification = (sessionId: string, notification: SessionNotification): void => {
         const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
         const data = notification.update as Record<string, unknown>;
 
         if (update === 'agent_message_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.callbacks.onStreamChunk(name, block.text, 'message');
+          if (block?.text) self.callbacks.onStreamChunk(moduleName, block.text, 'message');
         } else if (update === 'agent_thought_chunk') {
           const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.callbacks.onStreamChunk(name, block.text, 'thought');
+          if (block?.text) self.callbacks.onStreamChunk(moduleName, block.text, 'thought');
         } else if (update === 'tool_call') {
-          this.logger.info(`[${name}] tool_call: ${(data as { title?: string }).title || 'unknown'} ${JSON.stringify(notification)}`);
+          self.logger.info(`[${moduleName}] tool_call: ${(data as { title?: string }).title || 'unknown'} ${JSON.stringify(notification)}`);
           const tc = data as { title?: string; status?: string; name?: string; toolName?: string; toolCallId?: string; input?: Record<string, unknown>; arguments?: Record<string, unknown>; params?: Record<string, unknown>; toolCall?: Record<string, unknown> };
           const toolName = tc.title || tc.toolName || tc.name || 'unknown';
           const toolStatus = tc.status || 'running';
-          // 记录 toolCallId → 真实工具名（tool_call_update 的 title 会被 agent 覆写）
-          if (tc.toolCallId && tc.title) this.toolNameById.set(tc.toolCallId, tc.title);
-          // 尝试多个可能的参数字段
+          if (tc.toolCallId && tc.title) self.toolNameById.set(tc.toolCallId, tc.title);
           const toolInput = tc.input || tc.arguments || tc.params || tc.toolCall;
           const detail = toolInput ? JSON.stringify(toolInput).slice(0, 200) : undefined;
-          self.callbacks.onToolCall?.(name, toolName, toolStatus, detail);
+          self.callbacks.onToolCall?.(moduleName, toolName, toolStatus, detail);
           if (tc.status === 'error') {
-            self.callbacks.onStreamError(name, `Tool call failed: ${toolName}`);
+            self.callbacks.onStreamError(moduleName, `Tool call failed: ${toolName}`);
           }
         } else if (update === 'tool_call_update') {
           const tc = data as { title?: string; status?: string; toolCallId?: string; toolName?: string; name?: string; rawInput?: Record<string, unknown> };
-          // tool_call_update 的 title 可能是脏数据（搜索结果等），优先用 toolCallId 查真实工具名
-          const realName = (tc.toolCallId && this.toolNameById.get(tc.toolCallId)) || tc.toolName || tc.title || tc.name || 'unknown';
+          const realName = (tc.toolCallId && self.toolNameById.get(tc.toolCallId)) || tc.toolName || tc.title || tc.name || 'unknown';
           if (tc.status) {
-            self.callbacks.onToolCall?.(name, realName, tc.status);
+            self.callbacks.onToolCall?.(moduleName, realName, tc.status);
           }
         }
 
         if (self._onSessionUpdate) {
-          self._onSessionUpdate(name, sessionId, notification);
+          self._onSessionUpdate(moduleName, sessionId, notification);
         }
       };
 
-      // 构建 MCP 服务器
-      const mcpServers = buildMcpServers({
-        moduleName,
-        basePath: this.basePath,
-        backendPort: this.mcpBackendPort,
-        graphFile: this.mcpGraphFile,
+      // 构建 MCP 服务器工厂
+      const buildMcpServersFn = (_cwd: string): McpServerStdio[] => {
+        return buildMcpServers({
+          moduleName,
+          basePath: this.basePath,
+          backendPort: this.mcpBackendPort,
+          graphFile: this.mcpGraphFile,
+        });
+      };
+
+      // 启动 Agent
+      const agent = await Agent.start({
+        name: moduleName,
+        config: agentConfig,
+        cwd,
+        launcher: this.launcher,
+        logger: this.logger,
+        subModuleDirs,
+        buildMcpServers: buildMcpServersFn,
+        onNotification,
+        sessionResume: {
+          savedSessionId: this._loadSessionId(moduleName) || '',
+          save: (id: string) => this._saveSessionId(moduleName, id),
+        },
       });
 
-      let sessionId: string;
+      // 应用 session 配置（mode / model）
+      const savedModes = await this._applySessionConfig(moduleName, agent);
 
-      // 尝试恢复上次会话
-      const savedSessionId = this._loadSessionId(moduleName);
-      this.logger.info(`[${moduleName}] savedSessionId=${savedSessionId || '(none)'} hasResume=${hasResume}`);
-      let sessionResult: any = null; // newSession 或 resumeSession 的响应
-
-      if (hasResume && savedSessionId) {
-        try {
-          this.logger.info(`[${moduleName}] attempting session/resume id=${savedSessionId}`);
-          sessionResult = await launched.connection.resumeSession!({
-            sessionId: savedSessionId,
-            cwd: launched.cwd,
-            mcpServers,
-          });
-          sessionId = savedSessionId;
-          this.logger.info(`[${moduleName}] resumed session ${sessionId}`);
-        } catch (err) {
-          this.logger.warn(`[${moduleName}] resume failed, creating new session: ${(err as Error).message}`);
-          sessionResult = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
-          sessionId = sessionResult.sessionId;
-        }
-      } else {
-        if (savedSessionId && !hasResume) {
-          this.logger.info(`[${moduleName}] agent doesn't support resume, creating new session`);
-        }
-        sessionResult = await launched.connection.newSession({ cwd: launched.cwd, mcpServers });
-        sessionId = sessionResult.sessionId;
-      }
-
-      // 持久化 sessionId
-      this._saveSessionId(moduleName, sessionId);
-
-      // 设置 mode / model（提取为独立方法供 clearContext 复用）
-      const savedModes = await this._applySessionConfig(moduleName, agentConfig, launched.connection, sessionId, sessionResult);
-
-      // 保存 mode 配置到 entry 供查询
-      const savedCurrentMode = (sessionResult?.configOptions as any[])
+      // 提取当前 mode
+      const savedCurrentMode = (agent.sessionResult?.configOptions as any[])
         ?.find((o: any) => o.id === 'mode' || o.category === 'mode')
         ?.currentValue;
 
       this.sessionPrompted.delete(moduleName);
 
       const entry: AgentEntry = {
-        name: moduleName,
-        config: agentConfig,
-        launched,
-        sessionId,
+        agent,
         modulePath: cwd,
-        capabilities: launched.agentCapabilities,
         modeOptions: savedModes,
         currentMode: savedCurrentMode,
       };
       this.agents.set(moduleName, entry);
 
-      this.logger.info(`startAgent [${moduleName}] ready, sessionId=${sessionId}`);
+      this.logger.info(`startAgent [${moduleName}] ready, sessionId=${agent.sessionId}`);
       return entry;
     } catch (err) {
-      if (launched) {
-        try { launched.process.kill(); } catch { /* 忽略 */ }
-      }
       this.logger.error(`startAgent [${moduleName}] failed: ${(err as Error).message}`);
       throw err;
     }
@@ -608,18 +556,6 @@ export class ModuleAgentSubsystem {
         fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
       }
     } catch { /* ignore */ }
-  }
-
-  /** 从工具参数中提取路径字段 */
-  private _extractPaths(rawInput: Record<string, unknown>): string[] {
-    const keys = ['filePath', 'filepath', 'path', 'directory', 'parentDir',
-      'sourcePath', 'targetPath', 'file', 'dir', 'folder'];
-    const paths: string[] = [];
-    for (const key of keys) {
-      const v = rawInput[key];
-      if (typeof v === 'string' && v.length > 0) paths.push(v);
-    }
-    return paths;
   }
 
   private _deleteSessionId(moduleName: string): void {
@@ -690,11 +626,11 @@ export class ModuleAgentSubsystem {
   /** 应用 session 配置：mode + model，返回 modeOptions */
   private async _applySessionConfig(
     moduleName: string,
-    agentConfig: AgentConfig,
-    connection: { setSessionConfigOption(params: { sessionId: string; configId: string; value: string }): Promise<any> },
-    sessionId: string,
-    sessionResult: any,
+    agent: Agent,
   ): Promise<{ value: string; name: string }[]> {
+    const sessionResult = agent.sessionResult;
+    const agentConfig = agent.config;
+
     // mode
     try {
       const configOptions = sessionResult?.configOptions as any[];
@@ -712,7 +648,7 @@ export class ModuleAgentSubsystem {
                 o.value.includes('ask') || o.value.includes('permission') || o.name.toLowerCase().includes('ask'));
           const target = preferred || modeOpt.options?.find((o: any) => o.value !== modeOpt.currentValue) || modeOpt.options?.[0];
           if (target && target.value !== modeOpt.currentValue) {
-            await connection.setSessionConfigOption({ sessionId, configId: 'mode', value: target.value });
+            await agent.setConfigOption('mode', target.value);
             this.logger.info(`[${moduleName}] setSessionConfigOption mode=${target.value}`);
           } else {
             this.logger.info(`[${moduleName}] mode already=${modeOpt.currentValue}, keeping`);
@@ -723,7 +659,7 @@ export class ModuleAgentSubsystem {
         const blindModes = [agentConfig.defaultMode, 'ask', 'ask-mode', 'permission', 'safe'].filter(Boolean) as string[];
         for (const tryMode of blindModes) {
           try {
-            await connection.setSessionConfigOption({ sessionId, configId: 'mode', value: tryMode });
+            await agent.setConfigOption('mode', tryMode);
             this.logger.info(`[${moduleName}] setSessionConfigOption mode=${tryMode}`);
             break;
           } catch { /* try next */ }
@@ -736,7 +672,7 @@ export class ModuleAgentSubsystem {
     // model
     if (agentConfig.model) {
       try {
-        await connection.setSessionConfigOption({ sessionId, configId: 'model', value: agentConfig.model });
+        await agent.setConfigOption('model', agentConfig.model);
         this.logger.info(`[${moduleName}] setSessionConfigOption model=${agentConfig.model}`);
       } catch (err) {
         this.logger.info(`[${moduleName}] setSessionConfigOption(model): ${(err as Error).message}`);

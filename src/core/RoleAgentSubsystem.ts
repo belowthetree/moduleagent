@@ -148,10 +148,7 @@ export class RoleAgentSubsystem {
       this.callbacks.onStatusChange('streaming');
       this.logger.info(`role:send [${roleName}] len=${text.length} blocks=${blocks.length}`);
 
-      await entry.launched.connection.prompt({
-        sessionId: entry.sessionId,
-        prompt: blocks,
-      });
+      await entry.agent.send(blocks);
 
       this.callbacks.onStreamComplete(roleName);
       this.callbacks.onStatusChange('idle');
@@ -177,7 +174,7 @@ export class RoleAgentSubsystem {
     if (!entry) return;
 
     try {
-      await entry.launched.connection.cancel({ sessionId: entry.sessionId });
+      await entry.agent.cancel();
       this.logger.info(`role:cancel [${roleName}]`);
     } catch {
       // 忽略

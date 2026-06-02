@@ -242,8 +242,8 @@ export class WorkflowSubsystem {
       const blocks = this._buildStepPrompt(wf, step, inputContext);
       this.callbacks.onStatusChange('streaming');
 
-      await entry.launched.connection.prompt({
-        sessionId: entry.sessionId,
+      await entry.agent.connection.prompt({
+        sessionId: entry.agent.sessionId,
         prompt: blocks,
       });
 
@@ -357,8 +357,8 @@ export class WorkflowSubsystem {
         { type: 'text', text: acceptancePrompt },
       ];
 
-      await entry.launched.connection.prompt({
-        sessionId: entry.sessionId,
+      await entry.agent.connection.prompt({
+        sessionId: entry.agent.sessionId,
         prompt: blocks,
       });
 
@@ -394,7 +394,7 @@ export class WorkflowSubsystem {
       for (const [key, entry] of this.manager.agents) {
         if (key.startsWith(`${workflowName}:`)) {
           try {
-            await entry.launched.connection.cancel({ sessionId: entry.sessionId });
+            await entry.agent.cancel();
           } catch { /* ignore */ }
         }
       }

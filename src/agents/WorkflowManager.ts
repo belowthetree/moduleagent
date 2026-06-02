@@ -3,7 +3,8 @@
 // 管理工作流步骤 Agent 的启动/停止，构建工作流 MCP 服务器与 ACP 会话
 // ---------------------------------------------------------------------------
 
-import { AgentLauncher, type LaunchedAgent, type AgentConfig } from './AgentLauncher.js';
+import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
+import { Agent } from './Agent.js';
 import path from 'path';
 import fs from 'fs';
 import type { SessionNotification, McpServerStdio } from '@agentclientprotocol/sdk';
@@ -15,10 +16,7 @@ import { defaultLogger } from '../core/Logger.js';
 // ---------------------------------------------------------------------------
 
 export interface WorkflowStepAgentEntry {
-  name: string;
-  config: AgentConfig;
-  launched: LaunchedAgent;
-  sessionId: string;
+  agent: Agent;
   workspacePath: string;
 }
 
@@ -80,39 +78,44 @@ export class WorkflowManager {
     const existing = this.agents.get(key);
     if (existing) return existing;
 
-    let launched: LaunchedAgent | null = null;
-
     try {
       this.logger.info(
         `startStepAgent [${key}] cmd=${agentConfig.command} args=[${(agentConfig.args || []).join(',')}] cwd=${workspacePath}`,
       );
-      launched = await this.launcher.launch(agentConfig, `workflow:${key}`, workspacePath, this.logger);
 
-      launched.onSessionUpdate = (_name, sessionId, notification) => {
-        if (this.callbacks?.onSessionUpdate) {
-          this.callbacks.onSessionUpdate(key, sessionId, notification);
+      // Build onNotification callback
+      const self = this;
+      const onNotification = (sessionId: string, notification: SessionNotification): void => {
+        if (self.callbacks?.onSessionUpdate) {
+          self.callbacks.onSessionUpdate(key, sessionId, notification);
         }
       };
 
-      const mcpServers = this._buildStepMcpServers(workspacePath);
-      const result = await launched.connection.newSession({ cwd: workspacePath, mcpServers });
-      const sessionId = result.sessionId;
+      // Build MCP servers factory
+      const buildMcpServersFn = (_cwd: string): McpServerStdio[] => {
+        return this._buildStepMcpServers(workspacePath);
+      };
+
+      // Start agent via unified Agent class
+      const agent = await Agent.start({
+        name: `workflow:${key}`,
+        config: agentConfig,
+        cwd: workspacePath,
+        launcher: this.launcher,
+        logger: this.logger,
+        buildMcpServers: buildMcpServersFn,
+        onNotification,
+      });
 
       const entry: WorkflowStepAgentEntry = {
-        name: key,
-        config: agentConfig,
-        launched,
-        sessionId,
+        agent,
         workspacePath,
       };
       this.agents.set(key, entry);
 
-      this.logger.info(`startStepAgent [${key}] started, sessionId=${sessionId}`);
+      this.logger.info(`startStepAgent [${key}] started, sessionId=${agent.sessionId}`);
       return entry;
     } catch (err) {
-      if (launched) {
-        try { launched.process.kill(); } catch { /* ignore */ }
-      }
       this.logger.error(`startStepAgent [${key}] failed: ${(err as Error).message}`);
       throw err;
     }
@@ -126,7 +129,7 @@ export class WorkflowManager {
     const key = WorkflowManager.agentKey(workflowName, stepName);
     const entry = this.agents.get(key);
     if (entry) {
-      try { entry.launched.process.kill(); } catch { /* ignore */ }
+      entry.agent.stop();
       this.agents.delete(key);
       this.logger.info(`Step agent stopped: ${key}`);
     }
@@ -134,7 +137,7 @@ export class WorkflowManager {
 
   async stopAll(): Promise<void> {
     for (const [, entry] of this.agents) {
-      try { entry.launched.process.kill(); } catch { /* ignore */ }
+      entry.agent.stop();
     }
     this.agents.clear();
   }

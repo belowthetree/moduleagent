@@ -272,6 +272,7 @@ export class TuiBridge implements IAgentBridge {
       },
       onModuleStatusChange: (moduleName, status) => {
         self.moduleStatuses.set(moduleName, status);
+        tuiState.setModuleStatusVersion(tuiState.moduleStatusVersion() + 1);
       },
     };
 

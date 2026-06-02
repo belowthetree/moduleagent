@@ -4,14 +4,12 @@
 // ---------------------------------------------------------------------------
 
 import http from 'node:http';
-import type { ClientSideConnection, ContentBlock } from '@agentclientprotocol/sdk';
+import type { ContentBlock } from '@agentclientprotocol/sdk';
 import { defaultLogger } from '../core/Logger.js';
+import type { Agent } from './Agent.js';
 
 export interface McpBackendCallbacks {
-  getAgentEntry(moduleName: string): {
-    launched: { connection: ClientSideConnection; onSessionUpdate: ((...args: any[]) => void) | null };
-    sessionId: string;
-  } | undefined;
+  getAgentEntry(moduleName: string): Agent | undefined;
   startAgent(moduleName: string): Promise<boolean>;
   sendCrossContext?(
     source: string,
@@ -180,7 +178,7 @@ export class McpBackendServer {
         try {
           this.callbacks.setAgentStatus?.(targetModule, 'streaming');
           const promptBlocks = this.callbacks.buildPromptBlocks(targetModule, promptText);
-          const result = await entry.launched.connection.prompt({
+          const result = await entry.connection.prompt({
             sessionId: entry.sessionId,
             prompt: promptBlocks,
           });

@@ -3,10 +3,11 @@
 // 负责角色 Agent 的启动/停止，管理工作空间、MCP 服务器和 ACP 会话
 // ---------------------------------------------------------------------------
 
-import { AgentLauncher, type LaunchedAgent, type AgentConfig } from './AgentLauncher.js';
+import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
+import { Agent } from './Agent.js';
 import path from 'path';
 import fs from 'fs';
-import type { SessionNotification, McpServerStdio, ContentBlock } from '@agentclientprotocol/sdk';
+import type { SessionNotification, McpServerStdio } from '@agentclientprotocol/sdk';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
 import type { RoleConfig } from '../config/defaults.js';
@@ -17,10 +18,7 @@ import { prepareRoleWorkspace } from './RoleWorkspace.js';
 // ---------------------------------------------------------------------------
 
 export interface RoleAgentEntry {
-  name: string;
-  config: AgentConfig;
-  launched: LaunchedAgent;
-  sessionId: string;
+  agent: Agent;
   workspacePath: string;
   roleConfig: RoleConfig;
 }
@@ -95,7 +93,7 @@ export class RoleAgentManager {
   async stopRoleAgent(roleName: string): Promise<void> {
     const entry = this.agents.get(roleName);
     if (entry) {
-      try { entry.launched.process.kill(); } catch { /* 忽略 */ }
+      entry.agent.stop();
       this.agents.delete(roleName);
       this.logger.info(`Role agent stopped: ${roleName}`);
     }
@@ -103,7 +101,7 @@ export class RoleAgentManager {
 
   async stopAll(): Promise<void> {
     for (const [, entry] of this.agents) {
-      try { entry.launched.process.kill(); } catch { /* 忽略 */ }
+      entry.agent.stop();
     }
     this.agents.clear();
     this.pendingStarts.clear();
@@ -127,7 +125,6 @@ export class RoleAgentManager {
 
   private async _startRoleAgentInternal(role: RoleConfig): Promise<RoleAgentEntry> {
     const roleName = role.name;
-    let launched: LaunchedAgent | null = null;
 
     try {
       // 1. Resolve agent config
@@ -144,43 +141,45 @@ export class RoleAgentManager {
         workspaceRoot: this.workspaceRoot,
       });
 
-      // 3. Launch agent subprocess (no subModuleDirs for role agents)
       this.logger.info(
         `startRoleAgent [${roleName}] cmd=${agentConfig.command} args=[${(agentConfig.args || []).join(',')}] cwd=${workspacePath}`,
       );
-      launched = await this.launcher.launch(agentConfig, `workrole:${roleName}`, workspacePath, this.logger);
 
-      // 4. Wire session-update callback
-      launched.onSessionUpdate = (name, sessionId, notification) => {
-        if (this.callbacks?.onSessionUpdate) {
-          this.callbacks.onSessionUpdate(roleName, sessionId, notification);
+      // 3. Build onNotification callback
+      const self = this;
+      const onNotification = (sessionId: string, notification: SessionNotification): void => {
+        if (self.callbacks?.onSessionUpdate) {
+          self.callbacks.onSessionUpdate(roleName, sessionId, notification);
         }
       };
 
-      // 5. Build role-specific MCP servers
-      const mcpServers = this._buildRoleMcpServers(workspacePath);
+      // 4. Build MCP servers factory
+      const buildMcpServersFn = (_cwd: string): McpServerStdio[] => {
+        return this._buildRoleMcpServers(workspacePath);
+      };
 
-      // 6. Create ACP session
-      const result = await launched.connection.newSession({ cwd: workspacePath, mcpServers });
-      const sessionId = result.sessionId;
-
-      // 7. Build and store entry
-      const entry: RoleAgentEntry = {
-        name: roleName,
+      // 5. Start agent via unified Agent class
+      const agent = await Agent.start({
+        name: `workrole:${roleName}`,
         config: agentConfig,
-        launched,
-        sessionId,
+        cwd: workspacePath,
+        launcher: this.launcher,
+        logger: this.logger,
+        buildMcpServers: buildMcpServersFn,
+        onNotification,
+      });
+
+      // 6. Build and store entry
+      const entry: RoleAgentEntry = {
+        agent,
         workspacePath,
         roleConfig: role,
       };
       this.agents.set(roleName, entry);
 
-      this.logger.info(`startRoleAgent [${roleName}] started, sessionId=${sessionId}`);
+      this.logger.info(`startRoleAgent [${roleName}] started, sessionId=${agent.sessionId}`);
       return entry;
     } catch (err) {
-      if (launched) {
-        try { launched.process.kill(); } catch { /* ignore */ }
-      }
       this.logger.error(`startRoleAgent [${roleName}] failed: ${(err as Error).message}`);
       throw err;
     }

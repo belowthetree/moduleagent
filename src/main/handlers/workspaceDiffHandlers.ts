@@ -21,7 +21,7 @@ export function registerWorkspaceDiffHandlers(ctx: HandlerContext): void {
     const projectRoot = ctx.core.getProjectRoot();
     if (!projectRoot) return { error: 'no project root' };
 
-    const workspaceCwd = entry.launched.cwd;
+    const workspaceCwd = entry.agent.cwd;
     const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
     if (!workspaceCwd.startsWith(workspaceBase)) return { error: 'module has no workspace isolation' };
 

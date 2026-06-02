@@ -56,6 +56,8 @@ export interface ReactiveTuiState {
   setShowQuickPanel: (v: boolean) => void;
   quickPanelEntries: () => QuickPanelEntry[];
   setQuickPanelEntries: (v: QuickPanelEntry[]) => void;
+  moduleStatusVersion: () => number;
+  setModuleStatusVersion: (v: number) => void;
   quickPanelIndex: () => number;
   setQuickPanelIndex: (v: number) => void;
 }
@@ -86,6 +88,7 @@ export function createTuiState(): ReactiveTuiState {
   const [showQuickPanel, setShowQuickPanel] = createSignal(false);
   const [quickPanelEntries, setQuickPanelEntries] = createSignal<QuickPanelEntry[]>([]);
   const [quickPanelIndex, setQuickPanelIndex] = createSignal(0);
+  const [moduleStatusVersion, setModuleStatusVersion] = createSignal(0);
 
   return {
     screen,
@@ -138,6 +141,8 @@ export function createTuiState(): ReactiveTuiState {
     setQuickPanelEntries,
     quickPanelIndex,
     setQuickPanelIndex,
+    moduleStatusVersion,
+    setModuleStatusVersion,
   };
 }
 

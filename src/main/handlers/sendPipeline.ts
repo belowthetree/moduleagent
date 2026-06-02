@@ -11,7 +11,8 @@
 import { IpcChannel } from '../../protocol/IpcChannels.js';
 import type { ChatMsg } from '../../types/shared.js';
 import type { HandlerContext } from './HandlerContext.js';
-import type { AgentConfig } from '../../agents/AgentLauncher.js';
+import type { Agent } from '../../agents/Agent.js';
+import type { ContentBlock } from '@agentclientprotocol/sdk';
 
 // ── 参数接口 ──────────────────────────────────────────────────────────────
 
@@ -27,16 +28,12 @@ export interface SendParams {
   msgIdPrefix: string;
   /** 锁映射 — sendLock 或 roleSendLock */
   lockMap: Map<string, Promise<void>>;
-  /** 异步解析/启动 agent，返回可用的 entry */
-  resolveAgent: () => Promise<{
-    launched: { connection: { prompt(opts: { sessionId: string; prompt: unknown[] }): Promise<{ stopReason?: string }> }; cwd: string };
-    sessionId: string;
-    config: AgentConfig;
-  }>;
+  /** 异步解析/启动 agent，返回 Agent 实例 */
+  resolveAgent: () => Promise<Agent>;
   /** 构建发送给 agent 的 prompt blocks */
-  buildPrompt: () => { type: 'text'; text: string }[];
+  buildPrompt: () => ContentBlock[];
   /** 后处理钩子 — agent:send 用于触发总结 + 工作区 diff；role:send 传 undefined */
-  postProcess?: (msgs: ChatMsg[], entry: { config: AgentConfig; launched: { cwd: string } }) => void;
+  postProcess?: (msgs: ChatMsg[], agent: Agent) => void;
 }
 
 // ── 管道执行 ──────────────────────────────────────────────────────────────
@@ -62,7 +59,7 @@ export async function executeSendPipeline(
 
   try {
     // ── 1. 解析/启动 agent ──
-    const entry = await params.resolveAgent();
+    const agent = await params.resolveAgent();
 
     // ── 2. 标记流式状态 → IPC 通知渲染进程 ──
     ctx.agentStatus.set(params.domainName, 'streaming');
@@ -76,7 +73,7 @@ export async function executeSendPipeline(
 
     // ── 5. 调用 agent ──
     ctx.logger.info(`send [${params.domainName}] len=${params.userText.length} blocks=${promptBlocks.length}`);
-    const result = await entry.launched.connection.prompt({ sessionId: entry.sessionId, prompt: promptBlocks });
+    const result = await agent.connection.prompt({ sessionId: agent.sessionId, prompt: promptBlocks });
 
     // ── 6. 结束流积累，获取累积内容 ──
     const acc = ctx.stateManager?.finishStream(params.contextKey);
@@ -87,7 +84,7 @@ export async function executeSendPipeline(
       id: params.msgIdPrefix + Date.now().toString(36),
       role: 'user', content: params.userText, thinking: '',
       time: timeStr, status: 'sent', moduleName: params.contextKey,
-      sessionId: entry.sessionId as string | undefined,
+      sessionId: agent.sessionId as string | undefined,
     };
     const agentMsg: ChatMsg = {
       id: params.msgIdPrefix + (Date.now() + 1).toString(36),
@@ -100,7 +97,7 @@ export async function executeSendPipeline(
     await ctx.stateManager?.saveContext(params.contextKey, existingMsgs);
 
     // ── 8. 后处理（总结 + 工作区 diff — 仅 agent:send） ──
-    if (params.postProcess) params.postProcess(existingMsgs, entry);
+    if (params.postProcess) params.postProcess(existingMsgs, agent);
 
     // ── 9. 恢复 idle 状态 → IPC 通知 ──
     ctx.agentStatus.set(params.domainName, 'idle');

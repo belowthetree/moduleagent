@@ -81,7 +81,7 @@ export function registerRoleHandlers(ctx: HandlerContext): void {
       const role = workspaceConfig.roles?.find(r => r.name === roleName);
       if (!role) return { error: `role not found: ${roleName}` };
       const entry = await ctx.core.roles.startRole(role);
-      return { sessionId: entry.sessionId };
+      return { sessionId: entry.agent.sessionId };
     } catch (err) {
       ctx.logger.error(`role:start failed [${roleName}]: ${(err as Error).message}`);
       return { error: (err as Error).message };
@@ -112,8 +112,8 @@ export function registerRoleHandlers(ctx: HandlerContext): void {
 
       const promptBlocks = ctx.core.roles!.buildPromptBlocks(roleName, text);
       ctx.logger.info(`role:send [${roleName}] len=${text.length}`);
-      const result = await entry.launched.connection.prompt({
-        sessionId: entry.sessionId,
+      const result = await entry.agent.connection.prompt({
+        sessionId: entry.agent.sessionId,
         prompt: promptBlocks,
       });
 
@@ -166,7 +166,7 @@ export function registerRoleHandlers(ctx: HandlerContext): void {
   ipcMain.handle(IpcChannel.Role.Cancel, async (_event, roleName: string) => {
     const entry = ctx.core.roles?.getAgent(roleName);
     if (entry) {
-      try { await entry.launched.connection.cancel({ sessionId: entry.sessionId }); } catch { /* 忽略 */ }
+      try { await entry.agent.cancel(); } catch { /* 忽略 */ }
     }
     const ctxKey = `workrole:${roleName}`;
     const acc = ctx.stateManager?.cancelStream(ctxKey);

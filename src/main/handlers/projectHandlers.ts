@@ -80,7 +80,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
       ctx.mcpBackend = new McpBackendServer({
         getAgentEntry(name) {
           const e = ctx.core.modules.getAgent(name);
-          return e ? { launched: e.launched, sessionId: e.sessionId } : undefined;
+          return e ? e.agent : undefined;
         },
         startAgent(name) {
           return ctx.core.modules.startAgent(name)
