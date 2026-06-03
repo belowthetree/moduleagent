@@ -280,6 +280,23 @@ export const useAgentStore = defineStore('agent', () => {
   function ensureStreamListener(): void {
     if (streamCleanup) return
     streamCleanup = window.moduleAgent.onAgentStream((data) => {
+      // 系统消息（permission 拒绝、队列通知等）→ 追加为独立消息
+      if (data.update === 'system_message') {
+        const msgs = getMsgs(data.moduleName)
+        msgs.push({
+          id: (data.data as any)?.id || `sys-${Date.now()}`,
+          role: 'system',
+          content: data.reply || '',
+          thinking: '',
+          tools: '',
+          time: (data.data as any)?.time || now(),
+          status: 'completed',
+          moduleName: data.moduleName,
+          agentCmd: '',
+        })
+        return
+      }
+
       const msgs = contextMap.value.get(data.moduleName)
       if (!msgs || msgs.length === 0) return
       const last = msgs[msgs.length - 1]

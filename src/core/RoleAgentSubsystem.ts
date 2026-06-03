@@ -186,10 +186,10 @@ export class RoleAgentSubsystem {
       this.callbacks.onStatusChange('streaming');
       this.logger.info(`role:send [${roleName}] len=${text.length} blocks=${blocks.length}`);
 
-      const promptResult = await entry.agent.connection.prompt({
-        sessionId: entry.agent.sessionId,
-        prompt: blocks,
-      });
+      // 使用 agent.send() 而非 connection.prompt() 直调：
+      // send() 内部 _processMessage → _transition(Idle) → _drainQueue()
+      // 确保权限拒绝排队的系统消息能被发送给 agent
+      await entry.agent.send(blocks);
 
       // ── 结束流累积 ──
       const acc = this._stateManager?.finishStream(ctxKey);
@@ -232,7 +232,6 @@ export class RoleAgentSubsystem {
           thinking: acc?.thinking || '',
           tools: acc?.tools || '',
           timeline: acc?.timeline || [],
-          stopReason: (promptResult as { stopReason?: string }).stopReason,
         },
       };
     } catch (err) {
@@ -247,6 +246,7 @@ export class RoleAgentSubsystem {
         role: 'system',
         content: `Error: ${message}`,
         time: new Date().toLocaleTimeString(),
+        moduleName: `workrole:${roleName}`,
       });
       return { error: message };
     } finally {

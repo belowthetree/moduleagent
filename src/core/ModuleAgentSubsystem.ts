@@ -214,10 +214,10 @@ export class ModuleAgentSubsystem {
       });
 
       this.logger.info(`sendMessage [${finalTarget}]: ${finalText.length} chars, ${blocks.length} blocks`);
-      const promptResult = await entry.agent.connection.prompt({
-        sessionId: entry.agent.sessionId,
-        prompt: blocks,
-      });
+      // 使用 agent.send() 而非 connection.prompt() 直调：
+      // send() 内部 _processMessage → _transition(Idle) → _drainQueue()
+      // 确保权限拒绝排队的系统消息能被发送给 agent
+      await entry.agent.send(blocks);
 
       // ── 结束流累积 ──
       const acc = this._stateManager?.finishStream(finalTarget);
@@ -263,7 +263,6 @@ export class ModuleAgentSubsystem {
           thinking: acc?.thinking || '',
           tools: acc?.tools || '',
           timeline: acc?.timeline || [],
-          stopReason: (promptResult as { stopReason?: string }).stopReason,
         },
       };
     } catch (err) {
@@ -278,6 +277,7 @@ export class ModuleAgentSubsystem {
         role: 'system',
         content: `Error: ${message}`,
         time: new Date().toLocaleTimeString(),
+        moduleName: finalTarget,
       });
       return { error: message };
     } finally {
@@ -302,7 +302,7 @@ export class ModuleAgentSubsystem {
     }
   }
 
-  /** 清空当前模块的上下文（创建新会话，不杀进程；失败时回退到杀进程） */
+  /** 清空当前模块的上下文（创建新会话 + 删除持久化消息） */
   async clearContext(moduleName?: string): Promise<void> {
     const name = moduleName || this.currentModule;
     const entry = this.agents.get(name);
@@ -335,6 +335,8 @@ export class ModuleAgentSubsystem {
       // agent 未运行：只清理 sessionId 文件，防止下次启动时 resume
       this._deleteSessionId(name);
     }
+    // 删除持久化的对话上下文文件（否则重启后 loadContext 又读回来）
+    await this._stateManager?.clearContext(name);
     this.sessionPrompted.delete(name);
     this.lastSent.delete(name);
     this.toolNameById.clear();
@@ -652,6 +654,7 @@ export class ModuleAgentSubsystem {
             role: 'system',
             content: `Agent 正在工作中，您的输入已加入队列（第 ${qlen} 位）。`,
             time: new Date().toLocaleTimeString(),
+            moduleName,
           });
         },
         onSystemMessage: (text: string, qlen: number) => {
@@ -661,6 +664,7 @@ export class ModuleAgentSubsystem {
             role: 'system',
             content: text,
             time: new Date().toLocaleTimeString(),
+            moduleName,
           });
           self.logger.info(
             `[${moduleName}] system message queued (queue=${qlen}): ${text.slice(0, 80)}`,

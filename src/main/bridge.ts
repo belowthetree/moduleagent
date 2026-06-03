@@ -238,7 +238,15 @@ export class ElectronBridge implements IAgentBridge {
         // Status is now managed by core's per-module tracking
       },
       onMessage(message) {
-        // Core manages status internally
+        // 系统消息（如 permission 拒绝、队列通知）推送到渲染进程
+        if (self.mainWindow && !self.mainWindow.isDestroyed() && message.moduleName) {
+          self.mainWindow.webContents.send(IpcChannel.Push.AgentStream, {
+            moduleName: message.moduleName,
+            update: 'system_message',
+            data: { role: message.role, content: message.content, time: message.time, id: message.id },
+            reply: message.content,
+          });
+        }
       },
       onModuleStatusChange(moduleName, status) {
         if (self.mainWindow && !self.mainWindow.isDestroyed()) {

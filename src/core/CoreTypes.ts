@@ -10,6 +10,8 @@ export interface CoreMessage {
   role: 'user' | 'agent' | 'system';
   content: string;
   time: string;
+  /** 关联的模块名（系统消息时用于路由到正确的模块上下文） */
+  moduleName?: string;
 }
 
 export interface AgentInfo {

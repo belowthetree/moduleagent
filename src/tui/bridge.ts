@@ -412,13 +412,16 @@ export class TuiBridge implements IAgentBridge {
   }
 
   async clearAllContexts(): Promise<void> {
-    const agents = this.core.getModuleNames();
-    for (const name of agents) {
-      await this.core.clearContext(name);
-      if (this.persistence) await this.persistence.remove(name);
+    // 委托 Core 清理所有持久化上下文（AgentStateManager + sessionId）
+    await this.core.modules.clearAllContexts();
+    // 清理 TUI 持久化
+    if (this.persistence) {
+      const sessions = await this.persistence.list();
+      for (const s of sessions) await this.persistence.remove(s);
     }
     this.store.clear();
     this.store.syncTo(tuiState);
+    defaultLogger.info('TuiBridge: all contexts cleared');
   }
 
   // -----------------------------------------------------------------------
