@@ -12,6 +12,51 @@ import { defaultLogger } from "../../core/Logger.js";
 const STATUS_ICON: Record<string, string> = { added: "+", modified: "~", deleted: "-" };
 const STATUS_COLOR: Record<string, string> = { added: "#5CFF5C", modified: "#5BADFF", deleted: "#FF5555" };
 
+// ── 左右对比 diff 对齐 ──
+
+type DiffLine = { text: string; type: "same" | "added" | "removed" };
+
+function alignDiffLines(oldLines: string[], newLines: string[]): { left: DiffLine[]; right: DiffLine[] } {
+  // 限制行数避免 O(n²) 太慢
+  const MAX = 200;
+  const o = oldLines.slice(0, MAX);
+  const n = newLines.slice(0, MAX);
+  const m = o.length;
+  const k = n.length;
+
+  // LCS DP
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(k + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= k; j++) {
+      dp[i]![j] = o[i - 1] === n[j - 1]
+        ? dp[i - 1]![j - 1]! + 1
+        : Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!);
+    }
+  }
+
+  // 回溯
+  const left: DiffLine[] = [];
+  const right: DiffLine[] = [];
+  let i = m, j = k;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && o[i - 1] === n[j - 1]) {
+      left.unshift({ text: o[i - 1]!, type: "same" });
+      right.unshift({ text: n[j - 1]!, type: "same" });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i]![j - 1]! >= dp[i - 1]![j]!)) {
+      left.unshift({ text: "", type: "same" }); // 占位
+      right.unshift({ text: n[j - 1]!, type: "added" });
+      j--;
+    } else {
+      left.unshift({ text: o[i - 1]!, type: "removed" });
+      right.unshift({ text: "", type: "same" }); // 占位
+      i--;
+    }
+  }
+
+  return { left, right };
+}
+
 // ── 树节点 ──
 interface TreeNode {
   name: string; path: string; status?: string;
@@ -61,7 +106,7 @@ export default function DiffPanel() {
 
   const [sel, setSel] = createSignal<string | null>(null);
   const [viewing, setViewing] = createSignal(false);
-  const [hunks, setHunks] = createSignal("");
+  const [splitData, setSplitData] = createSignal<{ oldCode: string; newCode: string; language: string } | null>(null);
 
   function selectedIndex(): number {
     const s = sel();
@@ -97,7 +142,7 @@ export default function DiffPanel() {
       const f = getSelectedFile();
       if (f) {
         setViewing(true);
-        loadHunks(f.relativePath);
+        loadSplitView(f.relativePath);
         renderer?.requestRender();
       }
     };
@@ -106,14 +151,14 @@ export default function DiffPanel() {
     });
   });
 
-  function loadHunks(filePath: string) {
+  function loadSplitView(filePath: string) {
     const svc = service();
-    setHunks(svc?.getWorkspaceDiffFile?.(moduleName(), filePath) ?? "(no diff data)");
+    setSplitData(svc?.getWorkspaceDiffSplit?.(moduleName(), filePath) ?? null);
   }
 
   function backToTree() {
     setViewing(false);
-    setHunks("");
+    setSplitData(null);
   }
 
   useKeyboard((key: KeyEvent) => {
@@ -134,14 +179,14 @@ export default function DiffPanel() {
       if (key.name === "up") {
         const nextIdx = idx > 0 ? idx - 1 : fn.length - 1;
         const nextPath = fn[nextIdx]?.node.path;
-        if (nextPath) { setSel(() => nextPath); loadHunks(nextPath); }
+        if (nextPath) { setSel(() => nextPath); loadSplitView(nextPath); }
         key.preventDefault();
         return;
       }
       if (key.name === "down") {
         const nextIdx = idx < fn.length - 1 ? idx + 1 : 0;
         const nextPath = fn[nextIdx]?.node.path;
-        if (nextPath) { setSel(() => nextPath); loadHunks(nextPath); }
+        if (nextPath) { setSel(() => nextPath); loadSplitView(nextPath); }
         key.preventDefault();
         return;
       }
@@ -198,7 +243,7 @@ export default function DiffPanel() {
       const f = getSelectedFile();
       if (f) {
         setViewing(true);
-        loadHunks(f.relativePath);
+        loadSplitView(f.relativePath);
         renderer?.requestRender();
       }
       key.preventDefault();
@@ -271,22 +316,59 @@ export default function DiffPanel() {
             <text fg="#5BADFF">{getSelectedFile()?.relativePath || ""}</text>
             <text fg="#888888">{selectedIndex() + 1}/{fileNodes().length}  [←/Tab] back  [a]ccept  [d]iscard</text>
           </box>
-          <scrollbox flexGrow={1} stickyScroll={false}>
-            {(() => {
-              const lines = hunks().split("\n");
-              const maxLines = termHeight() - 5;
-              return lines.slice(0, maxLines).map((line) => {
-                let fg = "#CCCCCC";
-                if (line.startsWith("diff --git")) fg = "#FFD700";
-                else if (line.startsWith("new file mode") || line.startsWith("deleted file mode")) fg = "#888888";
-                else if (line.startsWith("---") || line.startsWith("+++")) fg = "#5BADFF";
-                else if (line.startsWith("@@")) fg = "#5BADFF";
-                else if (line.startsWith("+")) fg = "#5CFF5C";
-                else if (line.startsWith("-")) fg = "#FF5555";
-                return <box height={1} padding={0}><text fg={fg}>{line}</text></box>;
-              });
-            })()}
-          </scrollbox>
+          <Show when={splitData()} fallback={
+            <scrollbox flexGrow={1}><text fg="#888888">  (loading diff data...)</text></scrollbox>
+          }>
+            {() => {
+              const data = splitData()!;
+              const { left, right } = alignDiffLines(data.oldCode.split("\n"), data.newCode.split("\n"));
+              const halfW = Math.floor(termWidth() / 2) - 1;
+              return (
+                <box flexDirection="row" flexGrow={1}>
+                  {/* 左：源文件（old） */}
+                  <box flexDirection="column" flexGrow={1} flexShrink={1} width={halfW}>
+                    <text fg="#555555" dim>─── a/{getSelectedFile()?.relativePath || "source"}</text>
+                    <scrollbox flexGrow={1}>
+                      <box flexDirection="column">
+                        {left.map((dl, i) => {
+                          const bg = dl.type === "removed" ? "#330000" : "transparent";
+                          const fg = dl.type === "removed" ? "#FF7777" : dl.type === "same" && !dl.text ? "#222222" : "#CCCCCC";
+                          const prefix = dl.type === "removed" ? "-" : " ";
+                          return (
+                            <box height={1} padding={0} backgroundColor={bg}>
+                              <text fg="#888888" width={5}>{String(i + 1).padStart(4)} </text>
+                              <text fg={fg}>{prefix}{dl.text}</text>
+                            </box>
+                          );
+                        })}
+                      </box>
+                    </scrollbox>
+                  </box>
+                  {/* 分隔线 */}
+                  <text fg="#333333" width={1}>│</text>
+                  {/* 右：工作区文件（new） */}
+                  <box flexDirection="column" flexGrow={1} flexShrink={1} width={halfW}>
+                    <text fg="#555555" dim>+++ b/{getSelectedFile()?.relativePath || "workspace"}</text>
+                    <scrollbox flexGrow={1}>
+                      <box flexDirection="column">
+                        {right.map((dl, i) => {
+                          const bg = dl.type === "added" ? "#003300" : "transparent";
+                          const fg = dl.type === "added" ? "#77FF77" : dl.type === "same" && !dl.text ? "#222222" : "#CCCCCC";
+                          const prefix = dl.type === "added" ? "+" : " ";
+                          return (
+                            <box height={1} padding={0} backgroundColor={bg}>
+                              <text fg="#888888" width={5}>{String(i + 1).padStart(4)} </text>
+                              <text fg={fg}>{prefix}{dl.text}</text>
+                            </box>
+                          );
+                        })}
+                      </box>
+                    </scrollbox>
+                  </box>
+                </box>
+              );
+            }}
+          </Show>
           <text fg="#888888" height={1}>
             [a]ccept  [d]iscard  [↑↓] prev/next  [←/Tab] back
           </text>

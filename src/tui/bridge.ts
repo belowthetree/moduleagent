@@ -879,9 +879,45 @@ export class TuiBridge implements IAgentBridge {
   getWorkspaceDiffFile(moduleName: string, filePath: string): string | null {
     const cached = this.diffCache.get(moduleName);
     if (!cached) return null;
-    const file = cached.files.find(f => f.relativePath === filePath);
+    const file = cached.files.find((f: { relativePath: string }) => f.relativePath === filePath);
     if (!file) return null;
     return WorkspaceDiff.unifiedDiff(file.workspacePath, file.sourcePath);
+  }
+
+  /** 返回源文件和工作区文件的原始内容，供左右对比视图使用。 */
+  getWorkspaceDiffSplit(moduleName: string, filePath: string): { oldCode: string; newCode: string; language: string } | null {
+    const cached = this.diffCache.get(moduleName);
+    if (!cached) { defaultLogger.info(`getWorkspaceDiffSplit: no cache for ${moduleName}`); return null; }
+    const file = cached.files.find((f: { relativePath: string }) => f.relativePath === filePath);
+    if (!file) { defaultLogger.info(`getWorkspaceDiffSplit: file ${filePath} not in cache`); return null; }
+
+    defaultLogger.info(`getWorkspaceDiffSplit: src=${file.sourcePath} ws=${file.workspacePath}`);
+
+    let oldCode = '';
+    let newCode = '';
+    try {
+      if (file.sourcePath && nodeFs.existsSync(file.sourcePath)) {
+        oldCode = nodeFs.readFileSync(file.sourcePath, 'utf-8');
+        defaultLogger.info(`getWorkspaceDiffSplit: oldCode read ${oldCode.length} chars`);
+      } else {
+        defaultLogger.info(`getWorkspaceDiffSplit: sourcePath missing or not exists: ${file.sourcePath}`);
+      }
+    } catch (err) {
+      defaultLogger.info(`getWorkspaceDiffSplit: error reading source: ${(err as Error).message}`);
+    }
+    try {
+      if (file.workspacePath && nodeFs.existsSync(file.workspacePath)) {
+        newCode = nodeFs.readFileSync(file.workspacePath, 'utf-8');
+        defaultLogger.info(`getWorkspaceDiffSplit: newCode read ${newCode.length} chars`);
+      } else {
+        defaultLogger.info(`getWorkspaceDiffSplit: workspacePath missing or not exists: ${file.workspacePath}`);
+      }
+    } catch (err) {
+      defaultLogger.info(`getWorkspaceDiffSplit: error reading workspace: ${(err as Error).message}`);
+    }
+
+    const language = detectLanguage(filePath);
+    return { oldCode, newCode, language };
   }
 
   async applyWorkspaceDiff(moduleName: string, files?: string[]): Promise<{ applied: number; errors: string[] }> {
@@ -920,4 +956,22 @@ export class TuiBridge implements IAgentBridge {
     this._lastDiffHash = '';
     setImmediate(() => this._refreshDiff());
   }
+}
+
+// ── 语言检测 ──
+
+const LANGUAGE_MAP: Record<string, string> = {
+  '.ts': 'typescript', '.tsx': 'typescript', '.js': 'javascript', '.jsx': 'javascript',
+  '.json': 'json', '.md': 'markdown', '.txt': 'plaintext',
+  '.css': 'css', '.scss': 'scss', '.html': 'html', '.xml': 'xml',
+  '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'toml',
+  '.py': 'python', '.rb': 'ruby', '.go': 'go', '.rs': 'rust',
+  '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.h': 'c',
+  '.sh': 'bash', '.bat': 'batch', '.ps1': 'powershell',
+  '.sql': 'sql', '.graphql': 'graphql', '.prisma': 'prisma',
+};
+
+function detectLanguage(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  return LANGUAGE_MAP[ext] || 'plaintext';
 }
