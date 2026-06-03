@@ -29,6 +29,11 @@ export default function StatusBar() {
     if (counts.roles > 0) left += ` R:${counts.roles}`;
     if (counts.workflows > 0) left += ` W:${counts.workflows}`;
 
+    // diff 进度
+    if (tuiState.diffLoading()) {
+      left += ` | ⏳ diff`;
+    }
+
     if (!cwd) return left;
 
     // 右侧：cwd 路径，截断以适应宽度

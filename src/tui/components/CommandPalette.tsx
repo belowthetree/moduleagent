@@ -30,6 +30,7 @@ const COMMANDS: CommandItem[] = [
   { name: "/clear", description: "清空当前 agent 上下文" },
   { name: "/clearAll", description: "清理所有 agent 上下文及历史记录" },
   { name: "/diff", description: "工作区变更查看/写回/丢弃" },
+  { name: "/diffpanel", description: "打开工作区变更面板" },
   { name: "/help", description: "显示帮助" },
   { name: "/quit", description: "退出 TUI" },
 ];

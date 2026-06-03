@@ -241,13 +241,6 @@ export class RoleAgentSubsystem {
       this._stateManager?.stopStream(ctxKey);
       this.callbacks.onStreamError(roleName, message);
       this.callbacks.onStatusChange('error');
-      this.callbacks.onMessage({
-        id: `err-${Date.now()}`,
-        role: 'system',
-        content: `Error: ${message}`,
-        time: new Date().toLocaleTimeString(),
-        moduleName: `workrole:${roleName}`,
-      });
       return { error: message };
     } finally {
       resolveLock();
@@ -259,12 +252,8 @@ export class RoleAgentSubsystem {
     const entry = this.manager.getAgent(roleName);
     if (!entry) return;
 
-    const result = await entry.agent.cancel();
-    if (result === 'stopped') {
-      this.logger.info(`role:cancel [${roleName}] → force stopped`);
-    } else {
-      this.logger.info(`role:cancel [${roleName}] → cancelled`);
-    }
+    await entry.agent.cancel();
+    this.logger.info(`role:cancel [${roleName}] → stopped`);
   }
 
   // -----------------------------------------------------------------------

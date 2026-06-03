@@ -46,6 +46,8 @@ export interface ReactiveTuiState {
   setDiffPrompt: (v: DiffSummary | null) => void;
   showDiffPanel: () => boolean;
   setShowDiffPanel: (v: boolean) => void;
+  diffLoading: () => boolean;
+  setDiffLoading: (v: boolean) => void;
   showExperiencePanel: () => boolean;
   setShowExperiencePanel: (v: boolean) => void;
   experienceEntries: () => ExperienceEntry[];
@@ -82,6 +84,7 @@ export function createTuiState(): ReactiveTuiState {
   const [agentCwd, setAgentCwd] = createSignal('');
   const [diffPrompt, setDiffPrompt] = createSignal<DiffSummary | null>(null);
   const [showDiffPanel, setShowDiffPanel] = createSignal(false);
+  const [diffLoading, setDiffLoading] = createSignal(false);
   const [showExperiencePanel, setShowExperiencePanel] = createSignal(false);
   const [experienceEntries, setExperienceEntries] = createSignal<ExperienceEntry[]>([]);
   const [experienceModuleIndex, setExperienceModuleIndex] = createSignal(0);
@@ -129,6 +132,8 @@ export function createTuiState(): ReactiveTuiState {
     setDiffPrompt,
     showDiffPanel,
     setShowDiffPanel,
+    diffLoading,
+    setDiffLoading,
     showExperiencePanel,
     setShowExperiencePanel,
     experienceEntries,

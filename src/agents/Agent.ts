@@ -312,32 +312,17 @@ export class Agent {
    * - `'cancelled'`：agent 回到 idle，可继续发送；
    * - `'stopped'`：进程已终止，需重新启动。
    */
+  /**
+   * 取消当前流式响应。
+   *
+   * session/cancel 是 ACP 基线通知（fire-and-forget），但部分 agent 不响应。
+   * capabilities 中无字段可判断 cancel 支持与否，故统一使用 stop() 杀进程。
+   * Agent 停止后下次 sendMessage 会自动重启，会话通过 sessionResume 恢复。
+   */
   async cancel(): Promise<'cancelled' | 'stopped'> {
-    // 检查 agent 是否有实质性的可选 session 能力（{ close, list, resume, fork, load }）
-    // 仅有空 {} 或仅含 _meta 的视为非规范 agent，直接 force stop
-    const caps = this._capabilities as Record<string, unknown> | undefined;
-    const sessionCaps = caps?.sessionCapabilities as Record<string, unknown> | undefined;
-    const optionalKeys = ['close', 'list', 'resume', 'fork', 'load', 'additionalDirectories'];
-    const hasOptionalCap = sessionCaps && optionalKeys.some(k => k in sessionCaps);
-
-    if (hasOptionalCap) {
-      // 具有可选 session 能力的 agent 通常完整实现了 ACP 规范
-      try {
-        await this._launched.connection.cancel({ sessionId: this._sessionId });
-        this._logger.info(`Agent [${this.name}] cancelled via session/cancel`);
-        this._transition(AgentState.Idle);
-        return 'cancelled';
-      } catch (err) {
-        this._logger.warn(`Agent [${this.name}] cancel failed: ${(err as Error).message}, falling back to stop`);
-        this.stop();
-        return 'stopped';
-      }
-    } else {
-      // 空 sessionCapabilities 或完全缺失 → 非规范 agent，直接杀进程
-      this._logger.info(`Agent [${this.name}] no optional session caps — using force stop`);
-      this.stop();
-      return 'stopped';
-    }
+    this._logger.info(`Agent [${this.name}] stopping process (cancel not supported reliably via ACP)`);
+    this.stop();
+    return 'stopped';
   }
 
   /** 停止 agent 子进程，清空队列并拒绝所有等待消息 */

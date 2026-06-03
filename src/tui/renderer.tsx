@@ -48,8 +48,10 @@ export async function startTui(projectRoot: string) {
       {
         name: 'toggle-diff',
         run() {
-          if (tuiState.diffPrompt()) {
-            tuiState.setShowDiffPanel(!tuiState.showDiffPanel());
+          const opening = !tuiState.showDiffPanel();
+          tuiState.setShowDiffPanel(opening);
+          if (opening) {
+            (globalThis as any).__tuiAgentService?._refreshDiff?.();
           }
         },
       },
@@ -120,6 +122,14 @@ export async function startTui(projectRoot: string) {
       if (tuiState.agentStatus() === 'streaming') {
         tuiState.setAgentStatus('idle');
         (globalThis as any).__tuiCancelStream?.();
+      }
+    }
+    if (key.name === 'g' && key.ctrl) {
+      // Ctrl+G: 切换 diff 面板，打开时刷新 diff
+      const opening = !tuiState.showDiffPanel();
+      tuiState.setShowDiffPanel(opening);
+      if (opening) {
+        (globalThis as any).__tuiAgentService?._refreshDiff?.();
       }
     }
     if (key.name === 'd' && key.ctrl) {

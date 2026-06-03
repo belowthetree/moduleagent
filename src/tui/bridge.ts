@@ -11,6 +11,7 @@
 
 import path from 'path';
 import fs from 'fs-extra';
+import nodeFs from 'fs';
 import { ModuleAgentCore } from '../core/ModuleAgentCore.js';
 import { defaultLogger } from '../core/Logger.js';
 import { ExperienceSummarizer } from '../core/ExperienceSummarizer.js';
@@ -106,12 +107,15 @@ export class TuiBridge implements IAgentBridge {
   private _buildCallbacks(self: TuiBridge): CoreCallbacks {
     return {
       onStreamChunk: (moduleName, text, type) => {
+        // 只追加当前模块的流式输出，避免跨模块通信时子模块输出污染当前视图
+        if (moduleName !== self.core.getCurrentAgent()) return;
         const msgType: MessageType = type === 'message' ? 'agent_reply' : 'agent_thought';
         const msgId = type === 'message' ? self.store.replyId : self.store.thoughtId;
         self.store.appendChunk(msgId, text, msgType);
         self.store.syncTo(tuiState);
       },
       onStreamComplete: (moduleName) => {
+        if (moduleName !== self.core.getCurrentAgent()) return;
         self.store.finalizeStream();
         self.store.syncTo(tuiState);
 
@@ -119,19 +123,22 @@ export class TuiBridge implements IAgentBridge {
         tuiState.setCollapsedThoughts(collapsed);
 
         self.core.modules.setAgentStatus(moduleName, 'idle');
-        self.setStatus('idle');
+        self._updateGlobalStatus();
         tuiState.setAgentCwd(self.getAgentCwd());
       },
       onStreamError: (moduleName, error) => {
-        self.setStatus('error');
         self.core.modules.setAgentStatus(moduleName, 'error');
-        self.store.addErrorMsg(error);
-        self.store.syncTo(tuiState);
+        self._updateGlobalStatus();
+        if (moduleName === self.core.getCurrentAgent()) {
+          self.store.addErrorMsg(error);
+          self.store.syncTo(tuiState);
+        }
       },
-      onStatusChange: (status: CoreStatus) => {
-        self.setStatus(status);
+      onStatusChange: (_status: CoreStatus) => {
+        self._updateGlobalStatus();
       },
       onMessage: (message: CoreMessage) => {
+        if (message.moduleName && message.moduleName !== self.core.getCurrentAgent()) return;
         self.store.messages.push({
           ...message,
           msgType: message.role === 'system' ? 'system' : 'agent_reply',
@@ -139,6 +146,9 @@ export class TuiBridge implements IAgentBridge {
         self.store.syncTo(tuiState);
       },
       onToolCall: (moduleName, toolName, toolStatus, toolDetail) => {
+        // 非当前模块的 tool call 不操作 store（避免跨模块通信污染视图）
+        if (moduleName !== self.core.getCurrentAgent()) return;
+
         const isNewTool = toolStatus === 'running' || toolStatus === 'pending';
         if (isNewTool) {
           self.store.finalizeStream();
@@ -222,9 +232,10 @@ export class TuiBridge implements IAgentBridge {
             });
           }
         }
-        if (moduleName === self.core.getCurrentAgent()) self.store.syncTo(tuiState);
+        self.store.syncTo(tuiState);
       },
       onCrossModuleMessage: (source, target, direction, phase, content) => {
+        if (source !== self.core.getCurrentAgent()) return;
         const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
         const statusIcon = phase === 'request' ? '…' : '✓';
         const toolName = direction === 'sent' ? `→ ${target}` : `← ${target}`;
@@ -235,10 +246,11 @@ export class TuiBridge implements IAgentBridge {
           time: new Date().toLocaleTimeString(),
         };
         self.store.messages.push({ ...toolMsg });
-        if (self.core.getCurrentAgent() === source) self.store.syncTo(tuiState);
+        self.store.syncTo(tuiState);
       },
       onModuleStatusChange: (_moduleName, _status) => {
         tuiState.setModuleStatusVersion(tuiState.moduleStatusVersion() + 1);
+        self._updateGlobalStatus();
       },
     };
   }
@@ -246,6 +258,7 @@ export class TuiBridge implements IAgentBridge {
   // ── 子系统会话更新 helper ──
 
   private _onSubsystemChunk(prefix: string, agentName: string, notification: { update: unknown }): void {
+    if (agentName !== this.core.getCurrentAgent()) return;
     const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
     const data = notification.update as Record<string, unknown>;
     if (update) defaultLogger.info(`[ACP:${prefix}] ${agentName} ← ${update}`);
@@ -338,11 +351,15 @@ export class TuiBridge implements IAgentBridge {
       this._triggerWorkspaceDiff(name);
     }
 
+    // 启动工作区文件监听（变更自动触发 diff）
+    this._startWatchingDiff();
+
     return result;
   }
 
   async dispose(): Promise<void> {
     defaultLogger.info('TuiBridge: disposing');
+    this._stopWatchingDiff();
     await this.core.dispose();
     this.status = 'disconnected';
     this.loadedModules.clear();
@@ -384,7 +401,7 @@ export class TuiBridge implements IAgentBridge {
     } catch (err) {
       this.store.addErrorMsg((err as Error).message);
       this.store.syncTo(tuiState);
-      this.setStatus('error');
+      this._updateGlobalStatus();
       return { error: (err as Error).message };
     }
     return { result: { reply: '' } };
@@ -396,7 +413,7 @@ export class TuiBridge implements IAgentBridge {
 
   async cancel(): Promise<void> {
     await this.core.cancel();
-    this.setStatus('idle');
+    this._updateGlobalStatus();
   }
 
   async clearContext(moduleName?: string): Promise<void> {
@@ -472,6 +489,9 @@ export class TuiBridge implements IAgentBridge {
     } catch (err) {
       defaultLogger.warn(`TuiBridge: failed to start agent [${name}]: ${(err as Error).message}`);
     }
+
+    // 切换到新模块后重新挂载文件监听
+    this._startWatchingDiff();
   }
 
   // -----------------------------------------------------------------------
@@ -632,6 +652,16 @@ export class TuiBridge implements IAgentBridge {
   // 内部
   // -----------------------------------------------------------------------
 
+  /** 从所有模块状态聚合全局状态：任意模块 streaming → streaming；任意 error → error；否则 idle */
+  private _updateGlobalStatus(): void {
+    const statuses = this.core.modules.listAgentStatuses();
+    const hasStreaming = statuses.some(s => s.status === 'streaming');
+    const hasError = statuses.some(s => s.status === 'error');
+    const global: AgentStatus = hasStreaming ? 'streaming' : hasError ? 'error' : 'idle';
+    this.status = global;
+    tuiState.setAgentStatus(global);
+  }
+
   private setStatus(status: AgentStatus): void {
     this.status = status;
     tuiState.setAgentStatus(status);
@@ -687,6 +717,66 @@ export class TuiBridge implements IAgentBridge {
   // 工作区 Diff（兼容旧 API）
   // -----------------------------------------------------------------------
 
+  // ── 文件变更监听 ──
+  private _diffWatcher: nodeFs.FSWatcher | null = null;
+  private _diffDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * 启动当前模块工作区的文件变更监听。
+   * 每次变更 debounce 2 秒后自动触发 diff 刷新。
+   * 切换模块时自动重新挂载到新模块的工作区。
+   */
+  _startWatchingDiff(): void {
+    this._stopWatchingDiff();
+    const current = this.core.getCurrentAgent();
+    const workspaceCwd = this.core.getAgentCwd(current) || this.core.getWorkspaceCwd(current);
+    if (!workspaceCwd || !nodeFs.existsSync(workspaceCwd)) return;
+
+    try {
+      this._diffWatcher = nodeFs.watch(workspaceCwd, { recursive: true }, () => {
+        if (this._diffDebounceTimer) clearTimeout(this._diffDebounceTimer);
+        this._diffDebounceTimer = setTimeout(() => {
+          this._triggerWorkspaceDiff(current);
+        }, 2000);
+      });
+      defaultLogger.info(`Diff watcher started: ${workspaceCwd}`);
+    } catch (err) {
+      defaultLogger.warn(`Failed to start diff watcher: ${(err as Error).message}`);
+    }
+  }
+
+  /** 停止文件变更监听 */
+  _stopWatchingDiff(): void {
+    if (this._diffDebounceTimer) {
+      clearTimeout(this._diffDebounceTimer);
+      this._diffDebounceTimer = null;
+    }
+    if (this._diffWatcher) {
+      this._diffWatcher.close();
+      this._diffWatcher = null;
+      defaultLogger.info('Diff watcher stopped');
+    }
+  }
+
+  /** 关闭 diff 面板 */
+  _closeDiff(): void {
+    tuiState.setShowDiffPanel(false);
+  }
+
+  /** 刷新当前模块的 diff（异步，不阻塞 UI） */
+  _refreshDiff(): void {
+    const current = this.core.getCurrentAgent();
+    if (!current) return;
+    tuiState.setDiffLoading(true);
+    setImmediate(() => {
+      try {
+        this._triggerWorkspaceDiff(current);
+      } finally {
+        tuiState.setDiffLoading(false);
+      }
+    });
+  }
+
   _triggerWorkspaceDiff(moduleName: string): void {
     const projectRoot = this.core.getProjectRoot();
     const workspaceCwd = this.core.getAgentCwd(moduleName) || this.core.getWorkspaceCwd(moduleName);
@@ -695,24 +785,27 @@ export class TuiBridge implements IAgentBridge {
     const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
     if (!workspaceCwd.startsWith(workspaceBase + path.sep)) return;
 
-    const relPath = path.relative(workspaceBase, workspaceCwd);
-    const sourceDir = relPath ? path.join(projectRoot, relPath) : projectRoot;
+    // 通过 graph node 获取真实的源码路径（workspace 目录名已 sanitize，不能反推）
+    const graph = this.core.getGraph();
+    const node = graph?.nodes.get(moduleName);
+    const config = this.core.modules.getConfig();
+    const sourceDir = node && config?.projectPath
+      ? (node.relativePath === '.' ? config.projectPath : path.join(config.projectPath, node.relativePath))
+      : projectRoot;
 
     if (!fs.existsSync(workspaceCwd)) return;
     if (!fs.existsSync(path.join(workspaceCwd, '.git'))) return;
 
     const excludePaths: string[] = [];
-    const graph = this.core.getGraph();
-    if (graph) {
-      const node = graph.nodes.get(moduleName);
-      if (node) {
-        const prefix = relPath ? relPath.replace(/\\/g, '/') + '/' : '';
-        for (const childName of node.children) {
-          const child = graph.nodes.get(childName);
-          if (child && child.relativePath !== '.') {
-            const childRel = child.relativePath.replace(/\\/g, '/');
-            excludePaths.push(prefix && childRel.startsWith(prefix) ? childRel.slice(prefix.length) : childRel);
-          }
+    if (graph && node) {
+      const parentRelPath = node.relativePath === '.' ? '' : node.relativePath.replace(/\\/g, '/') + '/';
+      for (const childName of node.children) {
+        const child = graph.nodes.get(childName);
+        if (child && child.relativePath !== '.') {
+          const childRel = child.relativePath.replace(/\\/g, '/');
+          excludePaths.push(parentRelPath && childRel.startsWith(parentRelPath)
+            ? childRel.slice(parentRelPath.length)
+            : childRel);
         }
       }
     }

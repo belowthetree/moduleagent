@@ -34,12 +34,8 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
   ipcMain.handle(IpcChannel.Agent.Cancel, async (_event, moduleName: string) => {
     const entry = ctx.core.modules.getAgent(moduleName);
     if (entry) {
-      const result = await entry.agent.cancel();
-      if (result === 'stopped') {
-        ctx.core.modules.deleteAgentStatus(moduleName);
-      } else {
-        ctx.core.modules.setAgentStatus(moduleName, 'idle');
-      }
+      await entry.agent.cancel();
+      ctx.core.modules.deleteAgentStatus(moduleName);
     }
     const acc = ctx.core.modules.cancelStream(moduleName);
     return { accumulated: acc };

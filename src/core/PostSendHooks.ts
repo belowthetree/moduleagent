@@ -80,14 +80,14 @@ export function createPostSendHook(opts: PostSendHookOptions) {
 
     // ── 2. Workspace diff（后台异步） ──
     const workspaceCwd = entry.agent.cwd;
-    if (!workspaceCwd) return;
+    const sourceDir = entry.sourcePath;
+    if (!workspaceCwd || !sourceDir) return;
 
+    // 只处理有工作区隔离的模块
     const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
     if (!workspaceCwd.startsWith(workspaceBase)) return;
 
-    const relPath = path.relative(workspaceBase, workspaceCwd);
-    const sourceDir = relPath ? path.join(projectRoot, relPath) : projectRoot;
-
+    // 异步执行 diff，不阻塞 sendMessage 返回
     setImmediate(() => {
       try {
         opts.logger.info(`PostSend: analyzing workspace diff for [${moduleName}]`);

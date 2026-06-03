@@ -158,6 +158,7 @@ export class ModuleAgentCore {
         this.callbacks.onCrossModuleMessage?.(source, target, direction, phase, content);
       },
       setAgentStatus: (moduleName, status) => {
+        this.modules.setAgentStatus(moduleName, status);
         this.callbacks.onModuleStatusChange?.(moduleName, status);
       },
     };

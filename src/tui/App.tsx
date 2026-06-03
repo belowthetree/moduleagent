@@ -161,7 +161,7 @@ export default function App() {
             tuiState.setShowCommands(false);
           }}
         />
-      ) : tuiState.showDiffPanel() && tuiState.diffPrompt() ? (
+      ) : tuiState.showDiffPanel() ? (
         <DiffPanel />
       ) : (
         <>

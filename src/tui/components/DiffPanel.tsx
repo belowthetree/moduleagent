@@ -30,6 +30,7 @@ export default function DiffPanel() {
   const [diffHunks, setDiffHunks] = createSignal<string>("");
 
   const diff = () => tuiState.diffPrompt();
+  const loading = () => tuiState.diffLoading();
   const files = () => diff()?.files ?? [];
   const moduleName = () => diff()?.moduleName ?? "";
 
@@ -98,7 +99,7 @@ export default function DiffPanel() {
 
     // 列表视图
     if (key.name === "escape" || key.name === "q") {
-      tuiState.setShowDiffPanel(false);
+      (globalThis as any).__tuiAgentService?._closeDiff?.();
       key.preventDefault();
       return;
     }
@@ -145,6 +146,26 @@ export default function DiffPanel() {
       key.preventDefault();
     }
   });
+
+  // 加载中
+  if (loading()) {
+    return (
+      <box flexDirection="column" width="100%" height="100%" alignItems="center" justifyContent="center">
+        <text fg="#FFD700">⏳ 正在分析工作区变更...</text>
+      </box>
+    );
+  }
+
+  // 无 diff 数据
+  if (files().length === 0) {
+    return (
+      <box flexDirection="column" width="100%" height="100%" alignItems="center" justifyContent="center">
+        <text fg="#888888">无工作区变更</text>
+        <text height={1}> </text>
+        <text fg="#555555" dim>按 q 关闭</text>
+      </box>
+    );
+  }
 
   // 详情视图
   if (viewingFile()) {

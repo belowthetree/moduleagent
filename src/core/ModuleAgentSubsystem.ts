@@ -21,6 +21,7 @@ import {
   workspacePathForModule,
   getSubModuleDirs,
   prepareModuleWorkspace,
+  codeSourcePathForModule,
 } from '../agents/WorkspaceIsolator.js';
 import {
   loadSystemPrompts,
@@ -39,6 +40,8 @@ import type { ChatMsg } from '../types/shared.js';
 export interface AgentEntry {
   agent: Agent;
   modulePath: string;
+  /** 模块的源码目录（用于 workspace diff 对比） */
+  sourcePath?: string;
   modeOptions?: { value: string; name: string }[];
   currentMode?: string;
 }
@@ -272,13 +275,6 @@ export class ModuleAgentSubsystem {
       this.callbacks.onStreamError(finalTarget, message);
       this.setAgentStatus(finalTarget, 'error');
       this.setStatus('error');
-      this.callbacks.onMessage({
-        id: `err-${Date.now()}`,
-        role: 'system',
-        content: `Error: ${message}`,
-        time: new Date().toLocaleTimeString(),
-        moduleName: finalTarget,
-      });
       return { error: message };
     } finally {
       resolveLock();
@@ -290,16 +286,11 @@ export class ModuleAgentSubsystem {
     const entry = this.agents.get(this.currentModule);
     if (!entry) return;
 
-    const result = await entry.agent.cancel();
-    if (result === 'stopped') {
-      // 进程已被终止，从映射中移除，下次发送时自动重启
-      this.agents.delete(this.currentModule);
-      this.deleteAgentStatus(this.currentModule);
-      this.logger.info(`cancel [${this.currentModule}] → force stopped, removed from agents`);
-    } else {
-      this.setAgentStatus(this.currentModule, 'idle');
-      this.logger.info(`cancel [${this.currentModule}] → cancelled`);
-    }
+    await entry.agent.cancel();
+    // stop() 已终止进程，从映射移除，下次 send 自动重启
+    this.agents.delete(this.currentModule);
+    this.deleteAgentStatus(this.currentModule);
+    this.logger.info(`cancel [${this.currentModule}] → stopped`);
   }
 
   /** 清空当前模块的上下文（创建新会话 + 删除持久化消息） */
@@ -699,6 +690,9 @@ export class ModuleAgentSubsystem {
       const entry: AgentEntry = {
         agent,
         modulePath: cwd,
+        sourcePath: node && this.config?.projectPath
+          ? codeSourcePathForModule(node, this.config.projectPath)
+          : cwd,
         modeOptions: savedModes,
         currentMode: savedCurrentMode,
       };

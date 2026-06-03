@@ -59,16 +59,15 @@ function buildEntries(): QuickPanelEntry[] {
     },
   });
 
-  if (tuiState.diffPrompt()) {
-    result.push({
-      label: '差异对比',
-      keys: 'Ctrl+X  D',
-      description: '查看工作区文件变更',
-      action: () => {
-        tuiState.setShowDiffPanel(!tuiState.showDiffPanel());
-      },
-    });
-  }
+  result.push({
+    label: '差异对比',
+    keys: 'Ctrl+G',
+    description: '查看工作区文件变更',
+    action: () => {
+      tuiState.setShowDiffPanel(true);
+      (globalThis as any).__tuiAgentService?._refreshDiff?.();
+    },
+  });
 
   return result;
 }
