@@ -3,10 +3,11 @@
 // 树状展示文件变更，Enter 查看详情，Tab 切换预览
 // ---------------------------------------------------------------------------
 
-import { createMemo, createSignal, onMount } from "solid-js";
+import { createMemo, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { useKeyboard, useRenderer } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
 import { tuiState } from "../state.js";
+import { defaultLogger } from "../../core/Logger.js";
 
 const STATUS_ICON: Record<string, string> = { added: "+", modified: "~", deleted: "-" };
 const STATUS_COLOR: Record<string, string> = { added: "#5CFF5C", modified: "#5BADFF", deleted: "#FF5555" };
@@ -86,6 +87,23 @@ export default function DiffPanel() {
   onMount(() => {
     const fn = fileNodes();
     if (fn.length > 0) setSel(() => fn[0]!.node.path);
+
+    // ── 注册全局 Tab 处理器，供 renderer.tsx 的原始 keypress 处理器调用 ──
+    // <input> 在内部消耗 Tab 进行焦点管理，导致 useKeyboard 永远收不到 Tab。
+    // 但 renderer.keyInput.on('keypress') 在 input 处理之前触发，可以截获 Tab。
+    // 因此注册一个全局函数，由 renderer.tsx 在收到 Tab 时调用。
+    (globalThis as any).__tuiEnterDiffDetail = () => {
+      if (!tuiState.showDiffPanel() || viewing()) return;
+      const f = getSelectedFile();
+      if (f) {
+        setViewing(true);
+        loadHunks(f.relativePath);
+        renderer?.requestRender();
+      }
+    };
+    onCleanup(() => {
+      delete (globalThis as any).__tuiEnterDiffDetail;
+    });
   });
 
   function loadHunks(filePath: string) {
@@ -100,6 +118,7 @@ export default function DiffPanel() {
 
   useKeyboard((key: KeyEvent) => {
     if (!tuiState.showDiffPanel()) return;
+    defaultLogger.info(`DiffPanel received key: ${key.name} (viewing=${viewing()})`);
 
     const fn = fileNodes();
     let idx = selectedIndex();
@@ -175,11 +194,12 @@ export default function DiffPanel() {
       key.preventDefault();
       return;
     }
-    if (key.name === "enter" || key.name === "return") {
+    if (key.name === "enter" || key.name === "return" || key.name === "tab") {
       const f = getSelectedFile();
       if (f) {
         setViewing(true);
         loadHunks(f.relativePath);
+        renderer?.requestRender();
       }
       key.preventDefault();
       return;
@@ -209,71 +229,69 @@ export default function DiffPanel() {
     return <box flexDirection="column" width="100%" height="100%" alignItems="center" justifyContent="center"><text fg="#888888">无工作区变更</text><text height={1}> </text><text fg="#555555" dim>按 q 关闭</text></box>;
   }
 
-  // ── 详情视图（全屏 diff） ──
-  if (viewing()) {
-    const f = getSelectedFile();
-    const fn = fileNodes();
-    const idx = selectedIndex();
-
-    return (
-      <box flexDirection="column" width="100%" height="100%" padding={0}>
-        <input width={0} height={0} visible={false} value="" keyBindings={[]} />
-        <box flexDirection="row" justifyContent="space-between" padding={0} height={1}>
-          <text fg="#5BADFF">{f?.relativePath || ""}</text>
-          <text fg="#888888">{idx + 1}/{fn.length}  [←/Tab] back  [a]ccept  [d]iscard</text>
-        </box>
-        <scrollbox flexGrow={1} stickyScroll={false}>
-          {(() => {
-            const lines = hunks().split("\n");
-            const maxLines = termHeight() - 5;
-            return lines.slice(0, maxLines).map((line) => {
-              let fg = "#CCCCCC";
-              if (line.startsWith("+") && !line.startsWith("+++")) fg = "#5CFF5C";
-              else if (line.startsWith("-") && !line.startsWith("---")) fg = "#FF5555";
-              else if (line.startsWith("@@")) fg = "#5BADFF";
-              return <box height={1} padding={0}><text fg={fg}>{line}</text></box>;
-            });
-          })()}
-        </scrollbox>
-        <text fg="#888888" height={1}>
-          [a]ccept  [d]iscard  [↑↓] prev/next  [←/Tab] back
-        </text>
-      </box>
-    );
-  }
-
-  // ── 树视图 ──
-  const fnCnt = fileNodes().length;
-
+  // ── Show 模式：与 ExperiencePanel 相同，when=false 时完全不渲染详情视图 ──
   return (
-    <box flexDirection="column" width="100%" height="100%" padding={0}>
-      {/* 隐藏 input：OpenTUI 键盘事件路由需要聚焦的 input，否则方向键不会派发到 useKeyboard */}
-      <input width={0} height={0} visible={false} value="" keyBindings={[]} />
-      <box flexDirection="row" justifyContent="space-between" padding={0} height={1}>
-        <text fg="#FFD700">Diff ── {moduleName()}</text>
-        <text fg="#888888">{fnCnt} files  [q] quit</text>
-      </box>
-      <scrollbox flexGrow={1} stickyScroll={false}>
-        {(() => {
-          const currentSel = sel();
-          const fl = flatNodes();
-          return fl.map(({ node, isFile }) => {
-            const selected = node.path === currentSel;
-            const prefix = '  '.repeat(node.depth) + (isFile ? '  ' : node.expanded ? '▾ ' : '▸ ');
-            const icon = node.status ? `${STATUS_ICON[node.status]} ` : '';
-            return (
-              <box flexDirection="row" height={1} padding={0} backgroundColor={selected ? "#44475a" : "transparent"}>
-                <text fg={isFile ? (STATUS_COLOR[node.status || 'modified'] || "#CCCCCC") : "#888888"}>
-                  {selected ? '> ' : '  '}{prefix}{icon}{node.name}
-                </text>
-              </box>
-            );
-          });
-        })()}
-      </scrollbox>
-      <text fg="#888888" height={1}>
-        [↑↓] nav  [Space] fold  [A]ll accept  [D]iscard all  [q] quit
-      </text>
-    </box>
+    <Show
+      when={viewing()}
+      fallback={
+        <box flexDirection="column" width="100%" height="100%" padding={0}>
+          <input width={0} height={0} visible={false} value="" keyBindings={[]} focused />
+          <box flexDirection="row" justifyContent="space-between" padding={0} height={1}>
+            <text fg="#FFD700">Diff ── {moduleName()}</text>
+            <text fg="#888888">{fileNodes().length} files  [q] quit</text>
+          </box>
+          <scrollbox flexGrow={1} stickyScroll={false}>
+            {(() => {
+              const currentSel = sel();
+              const fl = flatNodes();
+              return fl.map(({ node, isFile }) => {
+                const selected = node.path === currentSel;
+                const prefix = '  '.repeat(node.depth) + (isFile ? '  ' : node.expanded ? '▾ ' : '▸ ');
+                const icon = node.status ? `${STATUS_ICON[node.status]} ` : '';
+                return (
+                  <box flexDirection="row" height={1} padding={0} backgroundColor={selected ? "#44475a" : "transparent"}>
+                    <text fg={isFile ? (STATUS_COLOR[node.status || 'modified'] || "#CCCCCC") : "#888888"}>
+                      {selected ? '> ' : '  '}{prefix}{icon}{node.name}
+                    </text>
+                  </box>
+                );
+              });
+            })()}
+          </scrollbox>
+          <text fg="#888888" height={1}>
+            [↑↓] nav  [Tab/Enter] detail  [Space] fold  [A]ll accept  [D]iscard all  [q] quit
+          </text>
+        </box>
+      }
+    >
+      {() => (
+        <box flexDirection="column" width="100%" height="100%" padding={0}>
+          <input width={0} height={0} visible={false} value="" keyBindings={[]} focused />
+          <box flexDirection="row" justifyContent="space-between" padding={0} height={1}>
+            <text fg="#5BADFF">{getSelectedFile()?.relativePath || ""}</text>
+            <text fg="#888888">{selectedIndex() + 1}/{fileNodes().length}  [←/Tab] back  [a]ccept  [d]iscard</text>
+          </box>
+          <scrollbox flexGrow={1} stickyScroll={false}>
+            {(() => {
+              const lines = hunks().split("\n");
+              const maxLines = termHeight() - 5;
+              return lines.slice(0, maxLines).map((line) => {
+                let fg = "#CCCCCC";
+                if (line.startsWith("diff --git")) fg = "#FFD700";
+                else if (line.startsWith("new file mode") || line.startsWith("deleted file mode")) fg = "#888888";
+                else if (line.startsWith("---") || line.startsWith("+++")) fg = "#5BADFF";
+                else if (line.startsWith("@@")) fg = "#5BADFF";
+                else if (line.startsWith("+")) fg = "#5CFF5C";
+                else if (line.startsWith("-")) fg = "#FF5555";
+                return <box height={1} padding={0}><text fg={fg}>{line}</text></box>;
+              });
+            })()}
+          </scrollbox>
+          <text fg="#888888" height={1}>
+            [a]ccept  [d]iscard  [↑↓] prev/next  [←/Tab] back
+          </text>
+        </box>
+      )}
+    </Show>
   );
 }

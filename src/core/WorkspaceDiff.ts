@@ -162,15 +162,17 @@ export function unifiedDiff(workspaceFile: string, sourceFile: string): string {
 
   if (!srcExists) {
     // 新增文件 — 全部为 +
+    const base = path.basename(workspaceFile);
     const lines = fs.readFileSync(workspaceFile, 'utf-8').split('\n');
-    const header = `--- /dev/null\n+++ b/${path.basename(workspaceFile)}\n`;
+    const header = `diff --git a/${base} b/${base}\nnew file mode 100644\n--- /dev/null\n+++ b/${base}\n`;
     return header + lines.map(l => `+${l}`).join('\n');
   }
 
   if (!wsExists) {
     // 删除文件 — 全部为 -
+    const base = path.basename(sourceFile);
     const lines = fs.readFileSync(sourceFile, 'utf-8').split('\n');
-    const header = `--- a/${path.basename(sourceFile)}\n+++ /dev/null\n`;
+    const header = `diff --git a/${base} b/${base}\ndeleted file mode 100644\n--- a/${base}\n+++ /dev/null\n`;
     return header + lines.map(l => `-${l}`).join('\n');
   }
 
@@ -180,12 +182,16 @@ export function unifiedDiff(workspaceFile: string, sourceFile: string): string {
   const wsLines = fs.readFileSync(workspaceFile, 'utf-8').split('\n');
   const srcLines = fs.readFileSync(sourceFile, 'utf-8').split('\n');
 
-  const header = `--- a/${path.basename(sourceFile)}\n+++ b/${path.basename(workspaceFile)}\n`;
+  const srcBase = path.basename(sourceFile);
+  const wsBase = path.basename(workspaceFile);
+  const header = `diff --git a/${srcBase} b/${wsBase}\n--- a/${srcBase}\n+++ b/${wsBase}\n`;
   return header + computeLineDiff(wsLines, srcLines);
 }
 
 /**
- * 判断文件是否为文本文件（基于常见扩展名 + 无 null 字节检测）。
+ * 判断文件是否为文本文件。
+ * 1. 先按扩展名白名单快速判定
+ * 2. 对无扩展名或未知扩展名的文件，读取前 8KB 检测 null 字节（二进制特征）
  */
 function isTextFile(filePath: string): boolean {
   const textExtensions = new Set([
@@ -196,7 +202,35 @@ function isTextFile(filePath: string): boolean {
     '.svg', '.graphql', '.gql', '.prisma', '.sql',
   ]);
   const ext = path.extname(filePath).toLowerCase();
-  return textExtensions.has(ext);
+  if (textExtensions.has(ext)) return true;
+
+  // 已知二进制扩展名 — 快速排除
+  const binaryExtensions = new Set([
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp',
+    '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar',
+    '.exe', '.dll', '.so', '.dylib', '.wasm',
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.mp3', '.mp4', '.avi', '.mov', '.wav', '.flac',
+    '.ttf', '.otf', '.woff', '.woff2', '.eot',
+    '.o', '.obj', '.class', '.pyc', '.pyo',
+    '.db', '.sqlite', '.sqlite3',
+  ]);
+  if (binaryExtensions.has(ext)) return false;
+
+  // 对无扩展名或未知扩展名的文件，读取前 8KB 进行 null 字节检测
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(8192);
+    const bytesRead = fs.readSync(fd, buf, 0, 8192, 0);
+    fs.closeSync(fd);
+    // 如果包含 null 字节，判定为二进制
+    for (let i = 0; i < bytesRead; i++) {
+      if (buf[i] === 0) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -262,7 +296,8 @@ export function analyze(workspaceDir: string, sourceDir: string, excludeRelPaths
     // 跳过非文本文件（二进制等），避免 diff 噪音
     const fileForExt = wsAbs || srcAbs!;
     if (!isTextFile(fileForExt)) {
-      // 二进制文件只报告状态，不提供行级 diff
+      defaultLogger.info(`WorkspaceDiff.analyze: skip binary file ${relPath}`);
+      continue;
     }
 
     let sizeDiff: number | undefined;

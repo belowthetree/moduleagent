@@ -124,6 +124,11 @@ export async function startTui(projectRoot: string) {
         (globalThis as any).__tuiCancelStream?.();
       }
     }
+    if (key.name === 'tab' && tuiState.showDiffPanel()) {
+      // Tab 在 diff 面板树视图→详情视图（<input> 会吃掉 Tab，走 raw handler）
+      (globalThis as any).__tuiEnterDiffDetail?.();
+      return;
+    }
     if (key.name === 'g' && key.ctrl) {
       // Ctrl+G: 切换 diff 面板，打开时刷新 diff
       const opening = !tuiState.showDiffPanel();

@@ -126,6 +126,7 @@ export default function InputBox(props: {
       _skipCursorFix = true;
       tuiState.setHistoryIndex(idx);
       tuiState.setInputValue(history[idx] || '');
+      (inputEl as { gotoLineEnd?: () => void })?.gotoLineEnd?.();
       renderer.requestRender();
       key.preventDefault();
       return;
@@ -146,22 +147,8 @@ export default function InputBox(props: {
         tuiState.setHistoryIndex(idx);
         tuiState.setInputValue(history[idx] || '');
       }
+      (inputEl as { gotoLineEnd?: () => void })?.gotoLineEnd?.();
       renderer.requestRender();
-      key.preventDefault();
-      return;
-    }
-
-    // 退格：在光标位置删除
-    if (key.name === "backspace") {
-      const val = tuiState.inputValue();
-      const el = inputEl as { cursorOffset?: number; gotoLineEnd?: () => void } | null;
-      const pos = el?.cursorOffset ?? val.length;
-      if (pos > 0 && val.length > 0) {
-        _skipCursorFix = true;
-        tuiState.setInputValue(val.slice(0, pos - 1) + val.slice(pos));
-        if (el) el.cursorOffset = pos - 1;
-        renderer.requestRender();
-      }
       key.preventDefault();
       return;
     }
@@ -181,17 +168,13 @@ export default function InputBox(props: {
       return;
     }
 
-    // 空格 / 可打印字符：在光标位置插入
-    if (key.name === "space" || (key.name.length === 1 && !key.ctrl)) {
-      const ch = key.name === "space" ? ' ' : key.name;
-      const val = tuiState.inputValue();
-      const el = inputEl as { cursorOffset?: number; gotoLineEnd?: () => void } | null;
-      const pos = el?.cursorOffset ?? val.length;
-      _skipCursorFix = true;
-      tuiState.setInputValue(val.slice(0, pos) + ch + val.slice(pos));
-      if (el) el.cursorOffset = pos + 1;
-      renderer.requestRender();
-      key.preventDefault();
+    // 字符键 / 退格 / 空格 — 全部交给 <input> 组件原生处理（onChange 会更新状态）。
+    // 手动 cursorOffset 管理对 CJK 字符宽度计算不正确，让 OpenTUI 内部负责。
+    if (
+      key.name.length === 1 ||
+      key.name === "space" ||
+      key.name === "backspace"
+    ) {
       return;
     }
   });
@@ -222,6 +205,7 @@ export default function InputBox(props: {
           opacity={isStreaming() ? 0.7 : 1}
           onChange={(value: string) => {
             defaultLogger.info(`[InputBox] onChange: "${value}"`);
+            _skipCursorFix = true; // 输入组件自行管理光标，不要让 effect 跳到末尾
             tuiState.setInputValue(value);
             if (!value.startsWith("/")) {
               tuiState.setShowCommands(false);
