@@ -59,12 +59,14 @@ export function registerWorkspaceDiffHandlers(ctx: HandlerContext): void {
     return result;
   });
 
-  ipcMain.handle(IpcChannel.WorkspaceDiff.Discard, async (_event, moduleName: string) => {
+  ipcMain.handle(IpcChannel.WorkspaceDiff.Discard, async (_event, moduleName: string, files?: string[]) => {
     const cached = ctx.diffCache.get(moduleName);
     if (cached) {
-      await WorkspaceDiff.discardWorkspace(cached.workspaceDir);
-      ctx.diffCache.delete(moduleName);
-      ctx.logger.info(`WorkspaceDiff: discarded workspace for [${moduleName}]`);
+      await WorkspaceDiff.discardFiles(cached.workspaceDir, cached.sourceDir, files, cached.files);
+      const newSummary = WorkspaceDiff.analyze(cached.workspaceDir, cached.sourceDir);
+      newSummary.moduleName = moduleName;
+      ctx.diffCache.set(moduleName, newSummary);
+      ctx.logger.info(`WorkspaceDiff: discarded ${files?.length ?? 'all'} files for [${moduleName}]`);
     }
     return { success: true };
   });

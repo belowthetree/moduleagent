@@ -6,6 +6,7 @@
 import { useKeyboard, useRenderer, useSelectionHandler } from '@opentui/solid';
 import type { Selection, KeyEvent } from '@opentui/core';
 import { tuiState } from './state.js';
+import { defaultLogger } from '../core/Logger.js';
 import type { ChatMessage } from './types.js';
 import StatusBar from './components/StatusBar.js';
 import InputBox from './components/InputBox.js';
@@ -96,9 +97,14 @@ export default function App() {
       tuiState.setShowDiffPanel(true);
       key.preventDefault();
     } else if (key.name === 'n') {
+      defaultLogger.info(`[App] N key pressed, discarding all for [${moduleName}]`);
       service?.discardWorkspaceDiff?.(moduleName).then(() => {
         tuiState.setDiffPrompt(null);
-      }).catch(() => {});
+        defaultLogger.info(`[App] discard done, prompt cleared`);
+      }).catch((err: Error) => {
+        tuiState.setDiffPrompt(null);
+        defaultLogger.info(`[App] discard failed: ${err.message}`);
+      });
       key.preventDefault();
     }
   });

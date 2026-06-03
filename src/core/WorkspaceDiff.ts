@@ -354,6 +354,65 @@ export async function apply(
 }
 
 /**
+ * 从源码覆盖工作区中选定的文件（丢弃变更）。
+ * files 为要覆盖的相对路径列表；不传则覆盖所有变更文件。
+ */
+export async function discardFiles(
+  workspaceDir: string,
+  sourceDir: string,
+  filePaths: string[] | undefined,
+  diffFiles: DiffFile[],
+): Promise<{ reverted: number; errors: string[] }> {
+  const errors: string[] = [];
+  let reverted = 0;
+
+  // 确保 .git 锚点存在（之前可能被 rm -rf 删除）
+  const gitDir = path.join(workspaceDir, '.git');
+  if (fs.existsSync(workspaceDir) && !fs.existsSync(gitDir)) {
+    try {
+      fs.mkdirSync(path.join(gitDir, 'refs', 'heads'), { recursive: true });
+      fs.mkdirSync(path.join(gitDir, 'objects'), { recursive: true });
+      fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
+    } catch { /* ignore */ }
+  }
+
+  const targetFiles = filePaths
+    ? diffFiles.filter(f => filePaths.some(p => f.relativePath === p || f.relativePath.startsWith(p + '/')))
+    : diffFiles;
+
+  for (const file of targetFiles) {
+    try {
+      if (file.status === 'added') {
+        // 新增文件：源码中不存在，直接删除工作区文件
+        if (fs.existsSync(file.workspacePath)) {
+          await fse.remove(file.workspacePath);
+          reverted++;
+        }
+      } else if (file.status === 'deleted') {
+        // 工作区缺失但源码存在 → 从源码拷回
+        if (fs.existsSync(file.sourcePath)) {
+          const destPath = file.workspacePath || path.join(workspaceDir, file.relativePath);
+          await fse.ensureDir(path.dirname(destPath));
+          await fse.copy(file.sourcePath, destPath);
+          reverted++;
+        }
+      } else {
+        // 修改文件：从源码覆盖工作区
+        if (fs.existsSync(file.sourcePath)) {
+          await fse.ensureDir(path.dirname(file.workspacePath));
+          await fse.copy(file.sourcePath, file.workspacePath, { overwrite: true });
+          reverted++;
+        }
+      }
+    } catch (err) {
+      errors.push(`${file.relativePath}: ${(err as Error).message}`);
+    }
+  }
+
+  return { reverted, errors };
+}
+
+/**
  * 删除工作区目录（丢弃所有变更）。
  */
 export async function discardWorkspace(workspaceDir: string): Promise<void> {

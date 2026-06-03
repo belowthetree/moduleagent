@@ -49,7 +49,7 @@ export default function DiffBar() {
         <box flexDirection="row" padding={0}>
           <text fg="#5CFF5C"> [Y] 接受全部</text>
           <text fg="#5BADFF">    [R] 查看变更</text>
-          <text fg="#FF5555">    [N] 丢弃</text>
+          <text fg="#FF5555">    [N] 丢弃全部</text>
         </box>
       </box>
       <text fg="#FFD700" height={1}>{rule()}</text>

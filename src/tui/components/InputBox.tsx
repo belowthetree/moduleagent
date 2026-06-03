@@ -72,6 +72,7 @@ export default function InputBox(props: {
   useKeyboard((key) => {
     if (tuiState.screen() !== 'chat') return;
     if (tuiState.showQuickPanel()) return;
+    if (tuiState.showDiffPanel() || tuiState.showExperiencePanel()) return;
     // 不再阻止 streaming 时的键盘输入 — 消息会自动排队
 
     // Ctrl+C：流式输出中取消当前请求（在组件层处理，确保聚焦时也能触发）

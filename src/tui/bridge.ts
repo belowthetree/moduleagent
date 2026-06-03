@@ -839,10 +839,6 @@ export class TuiBridge implements IAgentBridge {
       defaultLogger.info(`Diff skip [${moduleName}] — workspace dir missing`);
       return;
     }
-    if (!fs.existsSync(path.join(workspaceCwd, '.git'))) {
-      defaultLogger.info(`Diff skip [${moduleName}] — no .git anchor`);
-      return;
-    }
 
     const excludePaths: string[] = [];
     if (graph && node) {
@@ -906,13 +902,21 @@ export class TuiBridge implements IAgentBridge {
     return result;
   }
 
-  async discardWorkspaceDiff(moduleName: string): Promise<void> {
+  /** 丢弃指定文件的变更（从源码覆盖），不传 files 则丢弃全部 */
+  async discardWorkspaceDiff(moduleName: string, files?: string[]): Promise<void> {
     const cached = this.diffCache.get(moduleName);
     if (!cached) return;
-    await WorkspaceDiff.discardWorkspace(cached.workspaceDir);
-    this.diffCache.delete(moduleName);
-    tuiState.setDiffPrompt(null);
-    // 强制刷新 mtime 基准 + 重跑 diff，确认无残留变更
+    await WorkspaceDiff.discardFiles(cached.workspaceDir, cached.sourceDir, files, cached.files);
+    // 刷新缓存
+    const newSummary = WorkspaceDiff.analyze(cached.workspaceDir, cached.sourceDir, []);
+    newSummary.moduleName = moduleName;
+    if (newSummary.files.length > 0) {
+      this.diffCache.set(moduleName, newSummary);
+      tuiState.setDiffPrompt(newSummary);
+    } else {
+      this.diffCache.delete(moduleName);
+      tuiState.setDiffPrompt(null);
+    }
     this._lastDiffHash = '';
     setImmediate(() => this._refreshDiff());
   }
