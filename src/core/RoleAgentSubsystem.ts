@@ -259,11 +259,11 @@ export class RoleAgentSubsystem {
     const entry = this.manager.getAgent(roleName);
     if (!entry) return;
 
-    try {
-      await entry.agent.cancel();
-      this.logger.info(`role:cancel [${roleName}]`);
-    } catch {
-      // 忽略
+    const result = await entry.agent.cancel();
+    if (result === 'stopped') {
+      this.logger.info(`role:cancel [${roleName}] → force stopped`);
+    } else {
+      this.logger.info(`role:cancel [${roleName}] → cancelled`);
     }
   }
 

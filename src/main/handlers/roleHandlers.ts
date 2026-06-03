@@ -96,7 +96,7 @@ export function registerRoleHandlers(ctx: HandlerContext): void {
   ipcMain.handle(IpcChannel.Role.Cancel, async (_event, roleName: string) => {
     const entry = ctx.core.roles?.getAgent(roleName);
     if (entry) {
-      try { await entry.agent.cancel(); } catch { /* 忽略 */ }
+      await entry.agent.cancel();
     }
     const ctxKey = `workrole:${roleName}`;
     const acc = ctx.core.modules.cancelStream(ctxKey);

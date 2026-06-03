@@ -393,9 +393,7 @@ export class WorkflowSubsystem {
     if (this.currentWorkflow === workflowName) {
       for (const [key, entry] of this.manager.agents) {
         if (key.startsWith(`${workflowName}:`)) {
-          try {
-            await entry.agent.cancel();
-          } catch { /* ignore */ }
+          await entry.agent.cancel();
         }
       }
     }

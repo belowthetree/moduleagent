@@ -290,9 +290,16 @@ export class ModuleAgentSubsystem {
     const entry = this.agents.get(this.currentModule);
     if (!entry) return;
 
-    await entry.agent.cancel();
-    this.setAgentStatus(this.currentModule, 'idle');
-    this.logger.info(`cancel [${this.currentModule}]`);
+    const result = await entry.agent.cancel();
+    if (result === 'stopped') {
+      // 进程已被终止，从映射中移除，下次发送时自动重启
+      this.agents.delete(this.currentModule);
+      this.deleteAgentStatus(this.currentModule);
+      this.logger.info(`cancel [${this.currentModule}] → force stopped, removed from agents`);
+    } else {
+      this.setAgentStatus(this.currentModule, 'idle');
+      this.logger.info(`cancel [${this.currentModule}] → cancelled`);
+    }
   }
 
   /** 清空当前模块的上下文（创建新会话，不杀进程；失败时回退到杀进程） */

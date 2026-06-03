@@ -299,15 +299,40 @@ export class Agent {
     return this._processMessage(blocks);
   }
 
-  /** 取消当前流式响应 */
-  async cancel(): Promise<void> {
-    try {
-      await this._launched.connection.cancel({ sessionId: this._sessionId });
-      this._logger.info(`Agent [${this.name}] cancelled`);
-      // cancel 后 agent 回到 idle，触发队列消费
-      this._transition(AgentState.Idle);
-    } catch {
-      // 忽略
+  /**
+   * 取消当前流式响应。
+   *
+   * 根据 session capabilities 选择取消策略：
+   * - 若 agent 声明了 sessionCapabilities（符合 ACP 规范的 agent），
+   *   使用 `session/cancel` 通知优雅取消，返回 `'cancelled'`；
+   * - 若 agent 未声明 sessionCapabilities（旧版 / 非规范 agent），
+   *   或 cancel 通知失败，回退为 force stop（杀进程），返回 `'stopped'`。
+   *
+   * 调用者可根据返回值决定后续处理：
+   * - `'cancelled'`：agent 回到 idle，可继续发送；
+   * - `'stopped'`：进程已终止，需重新启动。
+   */
+  async cancel(): Promise<'cancelled' | 'stopped'> {
+    const caps = this._capabilities as Record<string, unknown> | undefined;
+    const hasSessionCaps = caps && typeof caps.sessionCapabilities === 'object' && caps.sessionCapabilities !== null;
+
+    if (hasSessionCaps) {
+      // 符合 ACP 规范：使用 session/cancel 通知
+      try {
+        await this._launched.connection.cancel({ sessionId: this._sessionId });
+        this._logger.info(`Agent [${this.name}] cancelled via session/cancel`);
+        this._transition(AgentState.Idle);
+        return 'cancelled';
+      } catch (err) {
+        this._logger.warn(`Agent [${this.name}] cancel failed: ${(err as Error).message}, falling back to stop`);
+        this.stop();
+        return 'stopped';
+      }
+    } else {
+      // 旧版 / 非规范 agent：直接杀进程
+      this._logger.info(`Agent [${this.name}] no sessionCapabilities — using force stop`);
+      this.stop();
+      return 'stopped';
     }
   }
 

@@ -193,7 +193,7 @@ export class ElectronBridge implements IAgentBridge {
   async cancelAgent(moduleName: string): Promise<void> {
     const entry = this.core.modules.getAgent(moduleName);
     if (entry) {
-      try { await entry.agent.cancel(); } catch { /* ignore */ }
+      await entry.agent.cancel();
     }
   }
 

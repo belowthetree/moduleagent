@@ -1,6 +1,12 @@
 // ---------------------------------------------------------------------------
 // tui/bridge.ts — TuiBridge：TUI 模式 Core 桥接层
-// 将 CoreCallbacks 翻译为 SolidJS 信号，管理模块/角色/工作流子系统的生命周期
+//
+// 职责（精简后）：
+//   1. 持有 ModuleAgentCore + TuiSessionStore
+//   2. 将 CoreCallbacks 翻译为 store 操作 + tuiState signals
+//   3. 用户操作委托给 Core，展示数据从 Core 查询
+//
+// 消息存储/持久化由 Core 层 AgentStateManager 负责，TUI 只做格式转换和展示。
 // ---------------------------------------------------------------------------
 
 import path from 'path';
@@ -12,10 +18,11 @@ import { ConfigLoader } from '../config/ConfigLoader.js';
 import type { AgentStatus, ChatMessage, MessageType } from './types.js';
 import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult, IAgentBridge } from '../core/CoreTypes.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
-import type { ChatMsg, RoleConfigData } from '../types/shared.js';
+import type { RoleConfigData } from '../types/shared.js';
 import type { RoleConfig } from '../config/defaults.js';
 import { tuiState } from './state.js';
 import { TuiPersistence, InputHistoryPersistence } from './persistence.js';
+import { TuiSessionStore } from './TuiSessionStore.js';
 import { getProjectConfigDir, ensureConfigFiles } from '../core/ConfigPaths.js';
 import { createPostSendHook } from '../core/PostSendHooks.js';
 import * as WorkspaceDiff from '../core/WorkspaceDiff.js';
@@ -34,251 +41,26 @@ function findRepoRoot(): string {
 
 export class TuiBridge implements IAgentBridge {
   core: ModuleAgentCore;
+  private store = new TuiSessionStore();
   private status: AgentStatus = 'idle';
   private loadedModules = new Set<string>();
   private summarizer: ExperienceSummarizer;
   private configDir: string;
   private summarizationEnabled = false;
 
-  // 多模块/角色/工作流状态跟踪
-  private moduleStatuses = new Map<string, AgentStatus>();
-  private roleStatuses = new Map<string, AgentStatus>();
+  // 工作区 Diff 缓存（PostSendHooks 填充，workspace diff 方法消费）
+  private diffCache = new Map<string, DiffSummary>();
 
-  // 每个模块独立的消息存储
-  private moduleMessages = new Map<string, ChatMessage[]>();
-
-  // 每个模块的流式消息 ID 跟踪
-  private moduleStreamState = new Map<string, { replyId: string | null; thoughtId: string | null }>();
-
-  // 持久化
+  // 持久化（TUI 特有——后续可统一到 core）
   private persistence: TuiPersistence | null = null;
   private historyStore: InputHistoryPersistence | null = null;
 
-  // 工作区 Diff
-  private diffCache = new Map<string, DiffSummary>();
-
-  // 便捷：当前模块的消息列表
-  private get currentMsgs(): ChatMessage[] {
-    const name = this.core.getCurrentAgent() || 'main';
-    if (!this.moduleMessages.has(name)) this.moduleMessages.set(name, []);
-    return this.moduleMessages.get(name)!;
-  }
-
-  // 便捷：当前模块的流式 ID
-  private get currentReplyMsgId(): string | null {
-    return this.moduleStreamState.get(this.core.getCurrentAgent())?.replyId ?? null;
-  }
-  private set currentReplyMsgId(id: string | null) {
-    const name = this.core.getCurrentAgent();
-    const s = this.moduleStreamState.get(name) || { replyId: null, thoughtId: null };
-    s.replyId = id;
-    this.moduleStreamState.set(name, s);
-  }
-  private get currentThoughtMsgId(): string | null {
-    const name = this.core.getCurrentAgent();
-    const state = this.moduleStreamState.get(name);
-    const id = state?.thoughtId ?? null;
-    if (id === null) {
-      defaultLogger.info(`[TUI] currentThoughtMsgId=NULL agent=${name} hasState=${!!state} stateKeys=[${[...this.moduleStreamState.keys()].join(',')}]`);
-    }
-    return id;
-  }
-  private set currentThoughtMsgId(id: string | null) {
-    const name = this.core.getCurrentAgent();
-    defaultLogger.info(`[TUI] currentThoughtMsgId SET name=${name} id=${id}`);
-    const s = this.moduleStreamState.get(name) || { replyId: null, thoughtId: null };
-    s.thoughtId = id;
-    this.moduleStreamState.set(name, s);
-  }
-
-  /** 将当前模块的消息同步到 tuiState（触发 UI 更新） */
-  private syncMessages(): void {
-    tuiState.setMessages([...this.currentMsgs]);
-  }
-
   constructor() {
     this.summarizer = new ExperienceSummarizer(defaultLogger);
-    // configDir 在 init() 中按 projectRoot 重新设置
     this.configDir = '';
 
     const self = this;
-    const callbacks: CoreCallbacks = {
-      onStreamChunk: (moduleName, text, type) => {
-        if (type === 'message') {
-          self.appendToStreamMsg(self.currentReplyMsgId, text, 'agent_reply', moduleName);
-        } else if (type === 'thought') {
-          self.appendToStreamMsg(self.currentThoughtMsgId, text, 'agent_thought', moduleName);
-        }
-      },
-      onStreamComplete: (moduleName) => {
-        self.finalizeStreamMsg(self.currentReplyMsgId);
-        self.finalizeStreamMsg(self.currentThoughtMsgId);
-
-        if (self.currentThoughtMsgId) {
-          const set = new Set(tuiState.collapsedThoughts());
-          set.add(self.currentThoughtMsgId);
-          tuiState.setCollapsedThoughts(set);
-        }
-
-        // 不清空 ID：system message 的 queue drain 完成后 agent 可能还在推送残余 chunk，
-        // 清空会导致后续 chunk 逐个创建新消息块。下一次 sendMessage 会覆写为新 ID。
-        self.core.modules.setAgentStatus(moduleName, 'idle');
-        self.setStatus('idle');
-
-        // 更新 cwd（agent 启动后 workspace 路径才确定）
-        tuiState.setAgentCwd(self.getAgentCwd());
-      },
-      onStreamError: (moduleName, error) => {
-        self.setStatus('error');
-        self.core.modules.setAgentStatus(moduleName, 'error');
-        self.currentMsgs.push({
-          id: `err-${Date.now()}`, role: 'system', msgType: 'system',
-          content: `Error: ${error}`, time: new Date().toLocaleTimeString(),
-        });
-        self.syncMessages();
-      },
-      onStatusChange: (status: CoreStatus) => {
-        self.setStatus(status);
-      },
-      onMessage: (message: CoreMessage) => {
-        self.currentMsgs.push({
-          ...message,
-          msgType: message.role === 'system' ? 'system' : 'agent_reply',
-        });
-        self.syncMessages();
-      },
-      onToolCall: (moduleName, toolName, toolStatus, toolDetail) => {
-        // 仅在新工具启动时切分回复块；状态更新不切分
-        const isNewTool = toolStatus === 'running' || toolStatus === 'pending';
-        if (isNewTool) {
-          self.finalizeStreamMsg(self.currentReplyMsgId);
-          self.finalizeStreamMsg(self.currentThoughtMsgId);
-          self.currentReplyMsgId = `reply-${Date.now()}`;
-          self.currentThoughtMsgId = `thought-${Date.now()}`;
-        }
-
-        defaultLogger.info(`[TUI] onToolCall: module=${moduleName} tool=${toolName} status=${toolStatus} detail=${toolDetail || '(none)'}`);
-
-        // 过滤明显异常的工具名（来自 tool_call_update 的脏数据）
-        if (toolName.startsWith('private ') || toolName.includes('(') || toolName.length > 60) {
-          defaultLogger.warn(`[TUI] onToolCall: skipping malformed tool name: ${toolName}`);
-          return;
-        }
-
-        // 确保目标模块有消息列表
-        if (!self.moduleMessages.has(moduleName)) self.moduleMessages.set(moduleName, []);
-
-        const statusIcon = toolStatus === 'completed' ? '✓' : toolStatus === 'error' ? '✗' : '…';
-        // 清理工具名：module-agent_module_query → module_query
-        const displayName = toolName.includes('_') ? toolName.replace(/^[^_]+_/, '') : toolName;
-
-        // 解析工具参数，提取最重要的一两个字段
-        let extra = '';
-        try {
-          if (toolDetail) {
-            const detail = JSON.parse(toolDetail) as Record<string, unknown>;
-            // 跨模块通信
-            if (detail.targetModule) {
-              extra = `→ ${detail.targetModule}`;
-              const task = detail.task || detail.query;
-              if (typeof task === 'string') extra += `: ${task.slice(0, 60)}`;
-            } else if (detail.requestingModule) {
-              extra = `← ${detail.requestingModule}`;
-              const task = detail.task || detail.query;
-              if (typeof task === 'string') extra += `: ${task.slice(0, 60)}`;
-            } else {
-              // 普通工具：提取文件路径或关键参数
-              const path = detail.path || detail.filePath || detail.file || detail.directory;
-              if (typeof path === 'string') {
-                extra = path.length > 50 ? '…' + path.slice(-47) : path;
-              } else {
-                // 回退：显示第一个有意义的字符串值
-                const keys = Object.keys(detail).filter(k => k !== 'title' && k !== 'status');
-                const firstVal = keys.find(k => typeof detail[k] === 'string');
-                if (firstVal) {
-                  const val = detail[firstVal] as string;
-                  extra = val.length > 50 ? val.slice(0, 47) + '…' : val;
-                }
-              }
-            }
-          }
-        } catch { /* ignore */ }
-
-        const content = `${statusIcon} ${displayName} ${extra}`.trim();
-
-        // 跨模块工具（module_call / module_query）无详情时跳过，由 sendCrossContext 提供完整信息
-        const isCrossModule = displayName === 'module_call' || displayName === 'module_query';
-        if (isCrossModule && !extra) {
-          return;
-        }
-
-        // 工具消息：进行中（`…`）→ 新建，已完成/错误（✓✗）→ 更新最近一条进行中消息
-        const inFlight = statusIcon === '…';
-        const msgs = self.moduleMessages.get(moduleName) || [];
-        if (inFlight) {
-          // 新建或替换同一工具的上一条进行中消息
-          let replaced = false;
-          for (let i = msgs.length - 1; i >= 0; i--) {
-            const m = msgs[i];
-            if (m && m.msgType === 'tool_call' && m.content.startsWith('…') && m.content.includes(displayName)) {
-              m.content = content;
-              replaced = true;
-              break;
-            }
-          }
-          if (!replaced) {
-            msgs.push({
-              id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              role: 'system', msgType: 'tool_call',
-              content, time: new Date().toLocaleTimeString(),
-            });
-          }
-        } else {
-          // completed/error：更新最近一条进行中消息，保留旧消息的 extra（tool_call_update 可能无 detail）
-          let updated = false;
-          for (let i = msgs.length - 1; i >= 0; i--) {
-            const m = msgs[i];
-            if (m && m.msgType === 'tool_call' && m.content.startsWith('…') && m.content.includes(displayName)) {
-              // 如果新内容比旧内容更短（例如 tool_call_update 无 detail），保留旧 extra
-              m.content = content.length >= m.content.length ? content : m.content.replace(/^…/, statusIcon);
-              updated = true;
-              break;
-            }
-          }
-          if (!updated) {
-            msgs.push({
-              id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              role: 'system', msgType: 'tool_call',
-              content, time: new Date().toLocaleTimeString(),
-            });
-          }
-        }
-        if (moduleName === self.core.getCurrentAgent()) self.syncMessages();
-      },
-      onCrossModuleMessage: (source, target, direction, phase, content) => {
-        const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
-        const statusIcon = phase === 'request' ? '…' : '✓';
-        // sent → 目标; received ← 来源（target 始终是通信对方）
-        const toolName = direction === 'sent' ? `→ ${target}` : `← ${target}`;
-        const toolMsg: ChatMessage = {
-          id: `cross-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          role: 'system', msgType: 'tool_call',
-          content: `${statusIcon} module_call ${toolName}: ${shortContent}`,
-          time: new Date().toLocaleTimeString(),
-        };
-        // 按方向分配：McpBackend 约定 source 永远是消息归属模块
-        //   sent:    source 发给 target → 归 source
-        //   received: source 收到来自 target → 归 source
-        const ownerModule = source;
-        if (!self.moduleMessages.has(ownerModule)) self.moduleMessages.set(ownerModule, []);
-        self.moduleMessages.get(ownerModule)!.push({ ...toolMsg });
-        if (self.core.getCurrentAgent() === ownerModule) self.syncMessages();
-      },
-      onModuleStatusChange: (moduleName, status) => {
-        self.moduleStatuses.set(moduleName, status);
-        tuiState.setModuleStatusVersion(tuiState.moduleStatusVersion() + 1);
-      },
-    };
+    const callbacks: CoreCallbacks = this._buildCallbacks(self);
 
     const repoRoot = findRepoRoot();
     this.core = new ModuleAgentCore({
@@ -286,29 +68,11 @@ export class TuiBridge implements IAgentBridge {
       basePath: repoRoot,
       configDir: path.join(repoRoot, 'config'),
       logger: defaultLogger,
-      onRoleSessionUpdate: (roleName, sessionId, notification) => {
-        const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
-        const data = notification.update as Record<string, unknown>;
-        if (update) defaultLogger.info(`[ACP:role] ${roleName} ← ${update}`);
-        if (update === 'agent_message_chunk') {
-          const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.appendToStreamMsg(self.currentReplyMsgId, block.text, 'agent_reply', roleName);
-        } else if (update === 'agent_thought_chunk') {
-          const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.appendToStreamMsg(self.currentThoughtMsgId, block.text, 'agent_thought', roleName);
-        }
+      onRoleSessionUpdate: (roleName, _sid, notification) => {
+        self._onSubsystemChunk('role', roleName, notification);
       },
-      onWorkflowSessionUpdate: (agentName, sessionId, notification) => {
-        const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
-        const data = notification.update as Record<string, unknown>;
-        if (update) defaultLogger.info(`[ACP:wf] ${agentName} ← ${update}`);
-        if (update === 'agent_message_chunk') {
-          const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.appendToStreamMsg(self.currentReplyMsgId, block.text, 'agent_reply', agentName);
-        } else if (update === 'agent_thought_chunk') {
-          const block = data.content as { type?: string; text?: string } | undefined;
-          if (block?.text) self.appendToStreamMsg(self.currentThoughtMsgId, block.text, 'agent_thought', agentName);
-        }
+      onWorkflowSessionUpdate: (agentName, _sid, notification) => {
+        self._onSubsystemChunk('wf', agentName, notification);
       },
       onCrossContext: (source, target, direction, phase, content) => {
         const arrow = direction === 'sent' ? '→' : '←';
@@ -327,14 +91,177 @@ export class TuiBridge implements IAgentBridge {
         logger: defaultLogger,
         summarizer: self.summarizer,
         getSummarizationEnabled: () => self.summarizationEnabled,
-        configDir: '', // set during init()
+        configDir: '',
         getProjectRoot: () => self.core.getProjectRoot(),
         diffCache: self.diffCache,
-        onDiffReady: (moduleName, summary) => {
+        onDiffReady: (_moduleName, summary) => {
           tuiState.setDiffPrompt(summary);
         },
       }),
     });
+  }
+
+  // ── Callback 构建 ──
+
+  private _buildCallbacks(self: TuiBridge): CoreCallbacks {
+    return {
+      onStreamChunk: (moduleName, text, type) => {
+        const msgType: MessageType = type === 'message' ? 'agent_reply' : 'agent_thought';
+        const msgId = type === 'message' ? self.store.replyId : self.store.thoughtId;
+        self.store.appendChunk(msgId, text, msgType);
+        self.store.syncTo(tuiState);
+      },
+      onStreamComplete: (moduleName) => {
+        self.store.finalizeStream();
+        self.store.syncTo(tuiState);
+
+        const collapsed = self.store.getCollapsedThoughts();
+        tuiState.setCollapsedThoughts(collapsed);
+
+        self.core.modules.setAgentStatus(moduleName, 'idle');
+        self.setStatus('idle');
+        tuiState.setAgentCwd(self.getAgentCwd());
+      },
+      onStreamError: (moduleName, error) => {
+        self.setStatus('error');
+        self.core.modules.setAgentStatus(moduleName, 'error');
+        self.store.addErrorMsg(error);
+        self.store.syncTo(tuiState);
+      },
+      onStatusChange: (status: CoreStatus) => {
+        self.setStatus(status);
+      },
+      onMessage: (message: CoreMessage) => {
+        self.store.messages.push({
+          ...message,
+          msgType: message.role === 'system' ? 'system' : 'agent_reply',
+        });
+        self.store.syncTo(tuiState);
+      },
+      onToolCall: (moduleName, toolName, toolStatus, toolDetail) => {
+        const isNewTool = toolStatus === 'running' || toolStatus === 'pending';
+        if (isNewTool) {
+          self.store.finalizeStream();
+          self.store.startStream();
+          self.store.syncTo(tuiState);
+        }
+
+        if (toolName.startsWith('private ') || toolName.includes('(') || toolName.length > 60) {
+          return;
+        }
+
+        const statusIcon = toolStatus === 'completed' ? '✓' : toolStatus === 'error' ? '✗' : '…';
+        const displayName = toolName.includes('_') ? toolName.replace(/^[^_]+_/, '') : toolName;
+
+        let extra = '';
+        try {
+          if (toolDetail) {
+            const detail = JSON.parse(toolDetail) as Record<string, unknown>;
+            if (detail.targetModule) {
+              extra = `→ ${detail.targetModule}`;
+              const task = detail.task || detail.query;
+              if (typeof task === 'string') extra += `: ${task.slice(0, 60)}`;
+            } else if (detail.requestingModule) {
+              extra = `← ${detail.requestingModule}`;
+              const task = detail.task || detail.query;
+              if (typeof task === 'string') extra += `: ${task.slice(0, 60)}`;
+            } else {
+              const p = detail.path || detail.filePath || detail.file || detail.directory;
+              if (typeof p === 'string') {
+                extra = p.length > 50 ? '…' + p.slice(-47) : p;
+              } else {
+                const keys = Object.keys(detail).filter(k => k !== 'title' && k !== 'status');
+                const firstVal = keys.find(k => typeof detail[k] === 'string');
+                if (firstVal) {
+                  const val = detail[firstVal] as string;
+                  extra = val.length > 50 ? val.slice(0, 47) + '…' : val;
+                }
+              }
+            }
+          }
+        } catch { /* ignore */ }
+
+        const content = `${statusIcon} ${displayName} ${extra}`.trim();
+        const isCrossModule = displayName === 'module_call' || displayName === 'module_query';
+        if (isCrossModule && !extra) return;
+
+        const inFlight = statusIcon === '…';
+        const msgs = self.store.messages;
+        if (inFlight) {
+          let replaced = false;
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            const m = msgs[i];
+            if (m && m.msgType === 'tool_call' && m.content.startsWith('…') && m.content.includes(displayName)) {
+              m.content = content;
+              replaced = true;
+              break;
+            }
+          }
+          if (!replaced) {
+            msgs.push({
+              id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              role: 'system', msgType: 'tool_call',
+              content, time: new Date().toLocaleTimeString(),
+            });
+          }
+        } else {
+          let updated = false;
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            const m = msgs[i];
+            if (m && m.msgType === 'tool_call' && m.content.startsWith('…') && m.content.includes(displayName)) {
+              m.content = content.length >= m.content.length ? content : m.content.replace(/^…/, statusIcon);
+              updated = true;
+              break;
+            }
+          }
+          if (!updated) {
+            msgs.push({
+              id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              role: 'system', msgType: 'tool_call',
+              content, time: new Date().toLocaleTimeString(),
+            });
+          }
+        }
+        if (moduleName === self.core.getCurrentAgent()) self.store.syncTo(tuiState);
+      },
+      onCrossModuleMessage: (source, target, direction, phase, content) => {
+        const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
+        const statusIcon = phase === 'request' ? '…' : '✓';
+        const toolName = direction === 'sent' ? `→ ${target}` : `← ${target}`;
+        const toolMsg: ChatMessage = {
+          id: `cross-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          role: 'system', msgType: 'tool_call',
+          content: `${statusIcon} module_call ${toolName}: ${shortContent}`,
+          time: new Date().toLocaleTimeString(),
+        };
+        self.store.messages.push({ ...toolMsg });
+        if (self.core.getCurrentAgent() === source) self.store.syncTo(tuiState);
+      },
+      onModuleStatusChange: (_moduleName, _status) => {
+        tuiState.setModuleStatusVersion(tuiState.moduleStatusVersion() + 1);
+      },
+    };
+  }
+
+  // ── 子系统会话更新 helper ──
+
+  private _onSubsystemChunk(prefix: string, agentName: string, notification: { update: unknown }): void {
+    const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
+    const data = notification.update as Record<string, unknown>;
+    if (update) defaultLogger.info(`[ACP:${prefix}] ${agentName} ← ${update}`);
+    if (update === 'agent_message_chunk') {
+      const block = data.content as { type?: string; text?: string } | undefined;
+      if (block?.text) {
+        this.store.appendChunk(this.store.replyId, block.text, 'agent_reply');
+        this.store.syncTo(tuiState);
+      }
+    } else if (update === 'agent_thought_chunk') {
+      const block = data.content as { type?: string; text?: string } | undefined;
+      if (block?.text) {
+        this.store.appendChunk(this.store.thoughtId, block.text, 'agent_thought');
+        this.store.syncTo(tuiState);
+      }
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -342,13 +269,10 @@ export class TuiBridge implements IAgentBridge {
   // -----------------------------------------------------------------------
 
   async init(projectRoot: string): Promise<InitResult> {
-    // 设置 configDir 指向项目的 .module-agent/config/
     const basePath = findRepoRoot();
     this.configDir = getProjectConfigDir(projectRoot);
-    // 从仓库 config/ 复制到项目（如不存在）
     ensureConfigFiles(path.join(basePath, 'config'), projectRoot);
 
-    // 从配置加载 summarization 开关
     try {
       const workspaceConfig = await ConfigLoader.load(projectRoot);
       const config = ConfigLoader.getDefaultConfig(workspaceConfig);
@@ -359,53 +283,44 @@ export class TuiBridge implements IAgentBridge {
 
     const result = await this.core.initAll(projectRoot, this.configDir);
 
-    // 初始化持久化
     this.persistence = new TuiPersistence(projectRoot);
     this.historyStore = new InputHistoryPersistence(projectRoot);
 
-    // 尝试加载输入历史
     const inputHistory = await this.historyStore.load();
     if (inputHistory.length > 0) {
       tuiState.setInputHistory(inputHistory);
       tuiState.setHistoryIndex(inputHistory.length);
     }
 
-    // 尝试加载上次对话
+    // 加载上次对话（从 core 查询历史并转换为 TUI 格式）
     const rootAgent = result.rootAgent;
-    if (rootAgent && this.persistence) {
-      defaultLogger.info(`TuiBridge: looking for history — rootAgent=[${rootAgent}]`);
-      let history = await this.persistence.load(rootAgent);
-      defaultLogger.info(`TuiBridge: rootAgent history: ${history.length} msgs`);
-      // 如果 rootAgent 无历史，尝试加载第一个已保存的模块
-      if (history.length === 0) {
-        const sessions = await this.persistence.list();
-        defaultLogger.info(`TuiBridge: available sessions: [${sessions.join(', ')}]`);
-        if (sessions.length > 0) {
-          history = await this.persistence.load(sessions[0]!);
-          this.moduleMessages.set(sessions[0]!, history);
-          defaultLogger.info(`TuiBridge: first session [${sessions[0]}] has ${history.length} msgs`);
-          if (history.length > 0) {
-            defaultLogger.info(`TuiBridge: no history for [${rootAgent}], loaded [${sessions[0]}]`);
-          }
-        }
-      }
-      if (history.length > 0) {
-        this.moduleMessages.set(rootAgent, history);
-        this.syncMessages();
-        const collapsed = new Set<string>();
-        for (const m of history) {
-          if (m.msgType === 'agent_thought' && m.content) {
-            collapsed.add(m.id);
-          }
-        }
+    if (rootAgent) {
+      await this.store.loadHistory(this.core, rootAgent);
+      if (this.store.messages.length > 0) {
+        this.store.syncTo(tuiState);
+        const collapsed = this.store.getCollapsedThoughts();
         tuiState.setCollapsedThoughts(collapsed);
-        defaultLogger.info(`TuiBridge: restored ${history.length} messages for [${rootAgent}]`);
+        defaultLogger.info(`TuiBridge: restored ${this.store.messages.length} messages for [${rootAgent}]`);
+      } else {
+        // rootAgent 无历史，尝试从持久化加载
+        if (this.persistence) {
+          const history = await this.persistence.load(rootAgent);
+          if (history.length > 0) {
+            // 从持久化加载的消息直接替换 store（core 无历史时的 fallback）
+            this.store.setMessages(history);
+            this.store.syncTo(tuiState);
+            const collapsed = new Set<string>();
+            for (const m of history) {
+              if (m.msgType === 'agent_thought' && m.content) collapsed.add(m.id);
+            }
+            tuiState.setCollapsedThoughts(collapsed);
+          }
+        }
       }
     }
 
     this.setStatus('idle');
 
-    // 自动启动根模块 agent
     const currentAgent = this.core.getCurrentAgent();
     if (currentAgent) {
       try {
@@ -417,7 +332,7 @@ export class TuiBridge implements IAgentBridge {
       }
     }
 
-    // 初始检查所有模块的工作区变更（用 graph 而非 getModuleNames——后者只含已启动的 agent）
+    // 初始检查所有模块的工作区变更
     const allNames = this.listAgents();
     for (const name of allNames) {
       this._triggerWorkspaceDiff(name);
@@ -441,18 +356,12 @@ export class TuiBridge implements IAgentBridge {
     try {
       const targetType = tuiState.currentTarget();
 
-      // 用户消息
-      this.currentMsgs.push({
-        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        role: 'user', msgType: 'user', content: text,
-        time: new Date().toLocaleTimeString(),
-      });
-      this.syncMessages();
+      // 用户消息写入 store
+      this.store.addUserMsg(text);
+      this.store.syncTo(tuiState);
 
-      // 设置流式消息 ID（消息块在首次收到数据时按到达顺序创建）
-      const now = Date.now();
-      this.currentReplyMsgId = `reply-${now}`;
-      this.currentThoughtMsgId = `thought-${now}`;
+      // 开始流式会话
+      this.store.startStream();
 
       // 路由到正确的子系统
       if (targetType === 'role') {
@@ -460,7 +369,6 @@ export class TuiBridge implements IAgentBridge {
         if (!this.core.roles) throw new Error('Role subsystem not initialized');
         await this.core.roles.sendMessage(roleName, text);
       } else if (targetType === 'workflow') {
-        // 工作流模式下，消息发送给当前工作流步骤 agent
         const wfName = this.core.getCurrentAgent();
         if (!this.core.workflows) throw new Error('Workflow subsystem not initialized');
         await this.core.workflows.executeWorkflow(wfName, text);
@@ -472,16 +380,10 @@ export class TuiBridge implements IAgentBridge {
         await this.core.sendMessage(text);
       }
 
-      // Summarizer + workspace diff 现在由 PostSendHooks 自动处理
-
-      // 自动保存对话（debounced）
       this.autoSave();
     } catch (err) {
-      this.currentMsgs.push({
-        id: `err-${Date.now()}`, role: 'system', msgType: 'system',
-        content: `Send failed: ${(err as Error).message}`, time: new Date().toLocaleTimeString(),
-      });
-      this.syncMessages();
+      this.store.addErrorMsg((err as Error).message);
+      this.store.syncTo(tuiState);
       this.setStatus('error');
       return { error: (err as Error).message };
     }
@@ -501,70 +403,26 @@ export class TuiBridge implements IAgentBridge {
     await this.core.clearContext(moduleName);
     const name = moduleName || this.core.getCurrentAgent();
     if (name) {
-      this.moduleMessages.set(name, []);
-      this.syncMessages();
-      // 同时清除持久化的对话文件和 session 文件
+      this.store.clear();
+      this.store.syncTo(tuiState);
       if (this.persistence) {
         await this.persistence.remove(name);
-        defaultLogger.info(`TuiBridge: cleared persisted session [${name}]`);
-      }
-      // 删除 sessionId 记录（与 ModuleAgentSubsystem._sanitizeFileName 对齐）
-      try {
-        const safeName = name.replace(/[<>:"/\\|?*]/g, '_');
-        const sessionsDir = path.join(this.core.getProjectRoot(), '.module-agent', 'sessions');
-        const sessionFile = path.join(sessionsDir, `${safeName}.json`);
-        if (fs.existsSync(sessionFile)) {
-          fs.unlinkSync(sessionFile);
-          defaultLogger.info(`TuiBridge: removed sessionId file [${name}]`);
-        }
-      } catch (err) {
-        defaultLogger.warn(`TuiBridge: failed to remove sessionId: ${(err as Error).message}`);
       }
     }
   }
 
-  /** 清理所有 agent 的上下文 + 持久化文件 + session 记录 */
   async clearAllContexts(): Promise<void> {
     const agents = this.core.getModuleNames();
-    defaultLogger.info(`TuiBridge: clearing all contexts for ${agents.length} agents`);
     for (const name of agents) {
-      await this.core.clearContext(name); // 内部已处理 newSession + sessionId 文件
-      this.moduleMessages.set(name, []);
-      if (this.persistence) {
-        await this.persistence.remove(name);
-      }
+      await this.core.clearContext(name);
+      if (this.persistence) await this.persistence.remove(name);
     }
-    // 清理不在 agent 列表中的残留持久化会话（含 sessionId 文件）
-    if (this.persistence) {
-      const allSessions = await this.persistence.list();
-      for (const sess of allSessions) {
-        if (!agents.includes(sess)) {
-          await this.persistence.remove(sess);
-        }
-      }
-    }
-    // 清理 sessions 目录中不在 agent 列表里的残留 sessionId 文件
-    try {
-      const sessionsDir = path.join(this.core.getProjectRoot(), '.module-agent', 'sessions');
-      if (fs.existsSync(sessionsDir)) {
-        const files = fs.readdirSync(sessionsDir);
-        const agentSessions = new Set(agents.map(n => n.replace(/[<>:"/\\|?*]/g, '_') + '.json'));
-        for (const file of files) {
-          if (file.endsWith('.json') && !agentSessions.has(file)) {
-            fs.unlinkSync(path.join(sessionsDir, file));
-          }
-        }
-      }
-    } catch (err) {
-      defaultLogger.warn(`TuiBridge: failed to clean sessions dir: ${(err as Error).message}`);
-    }
-    this.moduleMessages.clear();
-    this.syncMessages();
-    defaultLogger.info('TuiBridge: all contexts cleared');
+    this.store.clear();
+    this.store.syncTo(tuiState);
   }
 
   // -----------------------------------------------------------------------
-  // 查询（用于 commands.ts）
+  // 查询
   // -----------------------------------------------------------------------
 
   getGraph(): ModuleGraphType | null {
@@ -599,24 +457,12 @@ export class TuiBridge implements IAgentBridge {
     this.loadedModules.add(name);
     tuiState.setAgentCwd(this.getAgentCwd());
 
-    // 加载该模块的历史对话
-    if (this.persistence) {
-      defaultLogger.info(`TuiBridge: loading history for switched module [${name}]`);
-      // 合并持久化历史和内存中的消息（跨模块通信可能已写入）
-      const persisted = await this.persistence.load(name);
-      const inMemory = this.moduleMessages.get(name) || [];
-      const merged = persisted.length >= inMemory.length ? persisted : inMemory;
-      this.moduleMessages.set(name, merged);
-      this.syncMessages();
-      const collapsed = new Set<string>();
-      for (const m of merged) {
-        if (m.msgType === 'agent_thought' && m.content) collapsed.add(m.id);
-      }
-      tuiState.setCollapsedThoughts(collapsed);
-      defaultLogger.info(`TuiBridge: [${name}] active msgs: ${merged.length}`);
-    }
+    // 从 core 加载历史消息
+    await this.store.loadHistory(this.core, name);
+    this.store.syncTo(tuiState);
+    const collapsed = this.store.getCollapsedThoughts();
+    tuiState.setCollapsedThoughts(collapsed);
 
-    // 立即初始化 Agent（触发 session resume）
     try {
       await this.core.modules.startAgent(name);
       defaultLogger.info(`TuiBridge: agent [${name}] started eagerly`);
@@ -629,7 +475,6 @@ export class TuiBridge implements IAgentBridge {
   // 角色 Agent 管理
   // -----------------------------------------------------------------------
 
-  /** 获取配置中定义的角色列表 */
   async getRoleConfigs(): Promise<RoleConfigData[]> {
     const projectRoot = this.core.getProjectRoot();
     if (!projectRoot) return [];
@@ -647,7 +492,6 @@ export class TuiBridge implements IAgentBridge {
     }
   }
 
-  /** 启动角色 Agent */
   async startRole(roleName: string): Promise<void> {
     if (!this.core.roles) throw new Error('Role subsystem not initialized');
     const configs = await this.getRoleConfigs();
@@ -661,47 +505,39 @@ export class TuiBridge implements IAgentBridge {
       agents: { default: { command: roleConfig.agents.default.command, args: roleConfig.agents.default.args || [] } },
     };
     await this.core.roles.startRole(rc);
-    this.roleStatuses.set(roleName, 'idle');
     tuiState.setCurrentAgent(roleName);
     tuiState.setCurrentTarget('role');
     this._updateActiveCounts();
     defaultLogger.info(`TuiBridge: started role agent [${roleName}]`);
   }
 
-  /** 向角色 Agent 发送消息 */
   async sendRoleMessage(roleName: string, text: string): Promise<void> {
     if (!this.core.roles) throw new Error('Role subsystem not initialized');
-    this.roleStatuses.set(roleName, 'streaming');
     await this.core.roles.sendMessage(roleName, text);
   }
 
-  /** 取消角色 Agent 当前操作 */
   async cancelRole(roleName: string): Promise<void> {
     if (!this.core.roles) return;
     await this.core.roles.cancel(roleName);
-    this.roleStatuses.set(roleName, 'idle');
   }
 
-  /** 停止角色 Agent */
   async stopRole(roleName: string): Promise<void> {
     if (!this.core.roles) return;
     await this.core.roles.stopRole(roleName);
-    this.roleStatuses.delete(roleName);
     this._updateActiveCounts();
   }
 
-  /** 获取运行中的角色名称列表 */
   listRunningRoles(): string[] {
-    return [...this.roleStatuses.keys()];
+    if (!this.core.roles) return [];
+    return this.core.roles.listAgents();
   }
 
-  /** 获取角色状态 */
   getRoleStatus(name: string): AgentStatus {
-    return this.roleStatuses.get(name) || 'idle';
+    return this.core.roles?.getAgent(name) ? 'idle' : 'idle';
   }
 
   // -----------------------------------------------------------------------
-  // 工作流管理（完整实现）
+  // 工作流管理
   // -----------------------------------------------------------------------
 
   listWorkflows(): string[] {
@@ -709,7 +545,6 @@ export class TuiBridge implements IAgentBridge {
     return this.core.workflows.listWorkflows();
   }
 
-  /** 加载工作流详情 */
   loadWorkflow(name: string): any {
     if (!this.core.workflows) return null;
     return this.core.workflows.loadWorkflow(name);
@@ -728,13 +563,11 @@ export class TuiBridge implements IAgentBridge {
     await this.core.workflows.cancel(name);
   }
 
-  /** 获取工作流执行状态 */
   getWorkflowStatus(name: string) {
     if (!this.core.workflows) return null;
     return this.core.workflows.getExecutionState(name);
   }
 
-  /** 获取当前工作流名称 */
   getCurrentWorkflow(): string | null {
     if (!this.core.workflows) return null;
     return this.core.workflows.getCurrentWorkflow();
@@ -744,17 +577,18 @@ export class TuiBridge implements IAgentBridge {
   // 多模块状态查询
   // -----------------------------------------------------------------------
 
-  /** 获取所有模块的状态映射（模块名 → 状态） */
   getModuleStatuses(): Map<string, AgentStatus> {
-    return new Map(this.moduleStatuses);
+    const map = new Map<string, AgentStatus>();
+    for (const { name, status } of this.core.modules.listAgentStatuses()) {
+      map.set(name, status);
+    }
+    return map;
   }
 
-  /** 已加载的模块集合（供 ModuleTree 查询） */
   get loadedModulesSet(): Set<string> {
     return this.loadedModules;
   }
 
-  /** 获取当前 Agent 的工作目录 */
   getAgentCwd(): string {
     return this.core.getAgentCwd(this.core.getCurrentAgent()) || this.core.getProjectRoot();
   }
@@ -767,47 +601,32 @@ export class TuiBridge implements IAgentBridge {
     await this.core.setAgentMode(this.core.getCurrentAgent(), modeValue);
   }
 
-  /** 全局设置默认 mode：写配置 + 应用到所有运行中的 agent */
   async setGlobalDefaultMode(modeValue: string): Promise<void> {
     const projectRoot = this.core.getProjectRoot();
-
-    // 1. 写入 .module-agent.json
     const { ConfigLoader } = await import('../config/ConfigLoader.js');
     const workspace = await ConfigLoader.load(projectRoot);
     const defaultEntry = ConfigLoader.getDefaultConfig(workspace);
-    defaultEntry.agents.default = {
-      ...defaultEntry.agents.default,
-      defaultMode: modeValue,
-    };
+    defaultEntry.agents.default = { ...defaultEntry.agents.default, defaultMode: modeValue };
     await ConfigLoader.upsertEntry(projectRoot, defaultEntry);
-    defaultLogger.info(`TuiBridge: set defaultMode=${modeValue} in config`);
-
-    // 2. 更新内存中的 config（新启动的 agent 会用到）
     this.core.setDefaultMode(modeValue);
-
-    // 3. 应用到所有运行中的 agent
     const agents = this.core.getModuleNames();
     for (const name of agents) {
-      try {
-        await this.core.setAgentMode(name, modeValue);
-      } catch (err) {
+      try { await this.core.setAgentMode(name, modeValue); } catch (err) {
         defaultLogger.warn(`TuiBridge: setAgentMode [${name}]: ${(err as Error).message}`);
       }
     }
   }
 
-  /** 设置当前交互目标类型 */
   setTargetType(type: 'module' | 'role' | 'workflow'): void {
     tuiState.setCurrentTarget(type);
   }
 
-  /** 获取当前目标类型 */
   getTargetType(): string {
     return tuiState.currentTarget();
   }
 
   // -----------------------------------------------------------------------
-  // 内部方法
+  // 内部
   // -----------------------------------------------------------------------
 
   private setStatus(status: AgentStatus): void {
@@ -815,188 +634,91 @@ export class TuiBridge implements IAgentBridge {
     tuiState.setAgentStatus(status);
   }
 
-  /** 追加文本到指定 ID 的流式消息，若消息不存在则按到达顺序创建 */
-  private appendToStreamMsg(msgId: string | null, text: string, msgType: MessageType, moduleName?: string): void {
-    const targetModule = moduleName || this.core.getCurrentAgent();
-    if (!this.moduleMessages.has(targetModule)) this.moduleMessages.set(targetModule, []);
-    const msgs = this.moduleMessages.get(targetModule)!;
-
-    // 如果没有 msgId，为该模块创建新的流式上下文
-    const id = msgId || `${msgType}-${Date.now()}`;
-
-    let idx = msgs.findIndex(m => m.id === id);
-    if (idx === -1) {
-      defaultLogger.info(`[TUI] appendToStreamMsg NEW id=${id} type=${msgType} text="${text.slice(0, 30)}"`);
-      msgs.push({ id, role: 'agent', msgType, content: text, time: '' });
-    } else {
-      defaultLogger.info(`[TUI] appendToStreamMsg APPEND id=${id} type=${msgType} text="${text.slice(0, 30)}"`);
-      msgs[idx] = { ...msgs[idx]!, content: msgs[idx]!.content + text };
-    }
-    if (targetModule === this.core.getCurrentAgent()) this.syncMessages();
-  }
-
-  /** 标记流式消息完成（设置时间戳） */
-  private finalizeStreamMsg(msgId: string | null): void {
-    if (!msgId) return;
-    const msgs = this.currentMsgs;
-    const idx = msgs.findIndex(m => m.id === msgId);
-    if (idx === -1) return;
-    msgs[idx] = { ...msgs[idx]!, time: new Date().toLocaleTimeString() };
-    this.syncMessages();
-  }
-
   // -----------------------------------------------------------------------
-  // 持久化
+  // 持久化（兼容旧 API，后续可统一到 core）
   // -----------------------------------------------------------------------
 
-  /** 保存当前对话到磁盘 */
   async saveSession(moduleName?: string): Promise<void> {
     if (!this.persistence) return;
     const name = moduleName || this.core.getCurrentAgent();
     if (!name) return;
-    const msgs = moduleName ? (this.moduleMessages.get(moduleName) || this.currentMsgs) : this.currentMsgs;
-    await this.persistence.save(name, msgs);
+    await this.persistence.save(name, this.store.messages);
     defaultLogger.info(`TuiBridge: session saved for [${name}]`);
   }
 
-  /** 加载指定模块的对话历史 */
   async loadSession(moduleName: string): Promise<ChatMessage[]> {
     if (!this.persistence) return [];
     return this.persistence.load(moduleName);
   }
 
-  /** 列出已保存的会话 */
   async listSessions(): Promise<string[]> {
     if (!this.persistence) return [];
     return this.persistence.list();
   }
 
-  /** 删除会话 */
   async removeSession(moduleName: string): Promise<void> {
     if (!this.persistence) return;
     await this.persistence.remove(moduleName);
   }
 
-  /** 在每次对话完成后自动保存 */
   public autoSave(): void {
     const name = this.core.getCurrentAgent();
-    defaultLogger.info(`TuiBridge: autoSave — [${name}] ${this.currentMsgs.length} msgs`);
-    this.saveSession(name).catch((err) => defaultLogger.warn(`TuiBridge: autoSave error: ${(err as Error).message}`));
+    defaultLogger.info(`TuiBridge: autoSave — [${name}] ${this.store.messages.length} msgs`);
+    this.saveSession(name).catch(err => defaultLogger.warn(`TuiBridge: autoSave error: ${(err as Error).message}`));
   }
 
-  /** 保存输入历史 */
   async saveInputHistory(history: string[]): Promise<void> {
     if (!this.historyStore) return;
     await this.historyStore.save(history);
   }
 
-  // -----------------------------------------------------------------------
-  // 内部方法
-  // -----------------------------------------------------------------------
-
-  /** 更新活跃子系统计数 */
   private _updateActiveCounts(): void {
     tuiState.setActiveCounts({
       modules: this.loadedModules.size,
-      roles: this.roleStatuses.size,
+      roles: this.core.roles?.listAgents().length ?? 0,
       workflows: this.core.workflows?.getCurrentWorkflow() ? 1 : 0,
     });
   }
 
-  /** 触发经验总结器（后台执行） */
-  private _triggerSummarizer(targetName: string, projectRoot: string): void {
-    defaultLogger.info(`Triggering summarizer for [${targetName}]`);
-    const msgs = tuiState.messages();
-    const chatMsgs: ChatMsg[] = msgs.map(m => ({
-      id: m.id,
-      role: (m.role === 'agent' ? 'agent' : m.role === 'user' ? 'user' : 'system') as ChatMsg['role'],
-      content: m.content || '',
-      thinking: m.msgType === 'agent_thought' ? (m.content || '') : '',
-      tools: '',
-      time: m.time || '',
-      status: 'completed',
-      moduleName: targetName || '',
-      agentCmd: '',
-    }));
-    this.summarizer.summarize({
-      moduleName: targetName,
-      chatMsgs,
-      projectRoot,
-      configDir: this.configDir,
-      agentConfig: { command: 'opencode', args: ['acp'] },
-      agentCwd: this.core.getAgentCwd(targetName) || undefined,
-    }).catch(err => {
-      defaultLogger.warn(`Summarizer error [${targetName}]: ${(err as Error).message}`);
-    });
-  }
-
   // -----------------------------------------------------------------------
-  // 工作区 Diff
+  // 工作区 Diff（兼容旧 API）
   // -----------------------------------------------------------------------
 
   _triggerWorkspaceDiff(moduleName: string): void {
     const projectRoot = this.core.getProjectRoot();
     const workspaceCwd = this.core.getAgentCwd(moduleName) || this.core.getWorkspaceCwd(moduleName);
-    defaultLogger.info(`TuiBridge: _triggerWorkspaceDiff [${moduleName}] root=${projectRoot} cwd=${workspaceCwd}`);
-    if (!workspaceCwd) { defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — no cwd`); return; }
-    if (!projectRoot) { defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — no projectRoot`); return; }
+    if (!workspaceCwd || !projectRoot) return;
 
-    // 只处理 .module-agent/workspace/ 下的子模块（根模块 module/ 是源码本身，无需 diff）
     const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
-    if (!workspaceCwd.startsWith(workspaceBase + path.sep)) {
-      defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — cwd not in workspace: ${workspaceCwd}`);
-      return;
-    }
+    if (!workspaceCwd.startsWith(workspaceBase + path.sep)) return;
 
     const relPath = path.relative(workspaceBase, workspaceCwd);
     const sourceDir = relPath ? path.join(projectRoot, relPath) : projectRoot;
 
-    // 跳过未初始化/空工作区
-    if (!fs.existsSync(workspaceCwd)) {
-      defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — workspace dir missing`);
-      return;
-    }
-    const gitAnchor = path.join(workspaceCwd, '.git');
-    if (!fs.existsSync(gitAnchor)) {
-      defaultLogger.info(`TuiBridge: diff skip [${moduleName}] — workspace not initialized (no .git)`);
-      return;
-    }
+    if (!fs.existsSync(workspaceCwd)) return;
+    if (!fs.existsSync(path.join(workspaceCwd, '.git'))) return;
 
-    // 收集子模块的排除路径（子模块目录在 workspace 拷贝时被排除，diff 时应跳过）
     const excludePaths: string[] = [];
     const graph = this.core.getGraph();
     if (graph) {
       const node = graph.nodes.get(moduleName);
       if (node) {
-        // relPath 是当前模块相对 workspaceBase 的路径（如 "packages/agent"）
-        // child.relativePath 是相对项目根的路径（如 "packages/agent/src"）
-        // 需减去 relPath 前缀，得到相对 sourceDir 的路径（如 "src"）
         const prefix = relPath ? relPath.replace(/\\/g, '/') + '/' : '';
         for (const childName of node.children) {
           const child = graph.nodes.get(childName);
           if (child && child.relativePath !== '.') {
             const childRel = child.relativePath.replace(/\\/g, '/');
-            if (prefix && childRel.startsWith(prefix)) {
-              excludePaths.push(childRel.slice(prefix.length));
-            } else {
-              excludePaths.push(childRel);
-            }
+            excludePaths.push(prefix && childRel.startsWith(prefix) ? childRel.slice(prefix.length) : childRel);
           }
         }
       }
     }
 
     try {
-      defaultLogger.info(`TuiBridge: diff ${workspaceCwd} vs ${sourceDir}`);
       const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir, excludePaths);
       summary.moduleName = moduleName;
       this.diffCache.set(moduleName, summary);
-      defaultLogger.info(`TuiBridge: diff [${moduleName}] files=${summary.files.length} +${summary.addedCount} ~${summary.modifiedCount} -${summary.deletedCount}`);
-
-      if (summary.files.length > 0) {
-        tuiState.setDiffPrompt(summary);
-        defaultLogger.info(`TuiBridge: diff prompt set for [${moduleName}]`);
-      }
+      if (summary.files.length > 0) tuiState.setDiffPrompt(summary);
     } catch (err) {
       defaultLogger.error(`TuiBridge: diff error [${moduleName}]: ${(err as Error).message}`);
     }
@@ -1019,7 +741,6 @@ export class TuiBridge implements IAgentBridge {
     const cached = this.diffCache.get(moduleName);
     if (!cached) return { applied: 0, errors: ['no diff cache'] };
     const result = await WorkspaceDiff.apply(cached.workspaceDir, cached.sourceDir, files, cached.files);
-    // 刷新缓存（传空 excludePaths——原分析已过滤）
     const newSummary = WorkspaceDiff.analyze(cached.workspaceDir, cached.sourceDir, []);
     newSummary.moduleName = moduleName;
     if (newSummary.files.length > 0) {
