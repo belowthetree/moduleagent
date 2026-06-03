@@ -333,6 +333,7 @@ export class ModuleAgentSubsystem {
       }
     } else {
       // agent 未运行：只清理 sessionId 文件，防止下次启动时 resume
+      this.logger.info(`clearContext: agent not running, clearing sessionId + context for [${name}]`);
       this._deleteSessionId(name);
     }
     // 删除持久化的对话上下文文件（否则重启后 loadContext 又读回来）
@@ -340,6 +341,7 @@ export class ModuleAgentSubsystem {
     this.sessionPrompted.delete(name);
     this.lastSent.delete(name);
     this.toolNameById.clear();
+    this.logger.info(`clearContext: done for [${name}]`);
   }
 
   async setCurrentAgent(name: string): Promise<void> {
@@ -537,12 +539,20 @@ export class ModuleAgentSubsystem {
     await this._stateManager?.saveContext(moduleName, msgs);
   }
 
+  /** 清空模块上下文（委托给 clearContext 完成完整清理） */
   async clearModuleContext(moduleName: string): Promise<void> {
-    await this._stateManager?.clearContext(moduleName);
+    this.logger.info(`clearModuleContext [${moduleName}] → delegating to clearContext`);
+    await this.clearContext(moduleName);
   }
 
   async clearAllContexts(): Promise<void> {
+    // 逐个清理运行中的 agent（newSession + 删文件 + 清理状态）
+    for (const name of this.agents.keys()) {
+      await this.clearContext(name);
+    }
+    // 清理残留的持久化文件（已停止的 agent）
     await this._stateManager?.clearAllContexts();
+    this.logger.info('clearAllContexts: all agents + files cleared');
   }
 
   // -----------------------------------------------------------------------
