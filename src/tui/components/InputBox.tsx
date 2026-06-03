@@ -39,22 +39,23 @@ export default function InputBox(props: {
   });
 
   // ── CJK 光标修正 ──
-  // 每次 inputValue 变化后，将光标强制设置到文字末尾的正确视觉列位置。
-  // gotoLineEnd() 内部使用 OpenTUI 的 wcwidth（由 OPENTUI_FORCE_WCWIDTH 控制），
-  // 但为保证万无一失，我们用 cjkDisplayWidth 计算视觉列并显式设置。
-  // 上次已处理的值 — 避免重复设置光标
+  // 仅在非键盘输入时（程序化设置值如加载历史、发送后清空）将光标移至末尾。
+  let _skipCursorFix = false;
   let lastCursorVal = '';
 
   createEffect(() => {
     const val = tuiState.inputValue();
     const el = inputEl as { gotoLineEnd?: () => void; cursorOffset?: number } | null;
 
-    // 延迟到下一微任务，确保 OpenTUI 已完成 setText() 内部处理
     queueMicrotask(() => {
       if (!el?.gotoLineEnd) return;
-      // 值未变则跳过
       if (val === lastCursorVal) return;
       lastCursorVal = val;
+
+      if (_skipCursorFix) {
+        _skipCursorFix = false;
+        return;
+      }
 
       try {
         if (val.length === 0) {
@@ -63,7 +64,7 @@ export default function InputBox(props: {
           el.gotoLineEnd();
         }
       } catch {
-        // OpenTUI 内部状态不一致时忽略（如流式响应刚结束的瞬态）
+        // OpenTUI 内部状态不一致时忽略
       }
     });
   });
@@ -107,6 +108,7 @@ export default function InputBox(props: {
         // 触发后台持久化
         (globalThis as any).__tuiSaveHistory?.(history);
       }
+      _skipCursorFix = true;
       tuiState.setInputValue("");
       tuiState.setShowCommands(false);
       key.preventDefault();
@@ -120,6 +122,7 @@ export default function InputBox(props: {
       let idx = tuiState.historyIndex();
       if (idx === -1 || idx >= history.length) idx = history.length;
       idx = Math.max(0, idx - 1);
+      _skipCursorFix = true;
       tuiState.setHistoryIndex(idx);
       tuiState.setInputValue(history[idx] || '');
       renderer.requestRender();
@@ -134,6 +137,7 @@ export default function InputBox(props: {
       let idx = tuiState.historyIndex();
       if (idx === -1) { key.preventDefault(); return; }
       idx = idx + 1;
+      _skipCursorFix = true;
       if (idx >= history.length) {
         tuiState.setHistoryIndex(-1);
         tuiState.setInputValue('');
@@ -146,11 +150,15 @@ export default function InputBox(props: {
       return;
     }
 
-    // 退格：手动更新 inputValue，因为 OpenTUI 的 onChange 可能不会触发
+    // 退格：在光标位置删除
     if (key.name === "backspace") {
       const val = tuiState.inputValue();
-      if (val.length > 0) {
-        tuiState.setInputValue(val.slice(0, -1));
+      const el = inputEl as { cursorOffset?: number; gotoLineEnd?: () => void } | null;
+      const pos = el?.cursorOffset ?? val.length;
+      if (pos > 0 && val.length > 0) {
+        _skipCursorFix = true;
+        tuiState.setInputValue(val.slice(0, pos - 1) + val.slice(pos));
+        if (el) el.cursorOffset = pos - 1;
         renderer.requestRender();
       }
       key.preventDefault();
@@ -159,6 +167,7 @@ export default function InputBox(props: {
 
     // Escape：关闭命令面板并清空输入
     if (key.name === "escape") {
+      _skipCursorFix = true;
       tuiState.setShowCommands(false);
       tuiState.setInputValue("");
       key.preventDefault();
@@ -171,18 +180,15 @@ export default function InputBox(props: {
       return;
     }
 
-    // 空格：手动追加（OpenTUI 中 key.name 为 "space"，不匹配普通字符判断）
-    if (key.name === "space") {
-      tuiState.setInputValue(tuiState.inputValue() + ' ');
-      renderer.requestRender();
-      key.preventDefault();
-      return;
-    }
-
-    // 可打印字符：手动追加到 inputValue，因 OpenTUI 的 onChange 从不触发
-    if (key.name.length === 1 && !key.ctrl) {
+    // 空格 / 可打印字符：在光标位置插入
+    if (key.name === "space" || (key.name.length === 1 && !key.ctrl)) {
+      const ch = key.name === "space" ? ' ' : key.name;
       const val = tuiState.inputValue();
-      tuiState.setInputValue(val + key.name);
+      const el = inputEl as { cursorOffset?: number; gotoLineEnd?: () => void } | null;
+      const pos = el?.cursorOffset ?? val.length;
+      _skipCursorFix = true;
+      tuiState.setInputValue(val.slice(0, pos) + ch + val.slice(pos));
+      if (el) el.cursorOffset = pos + 1;
       renderer.requestRender();
       key.preventDefault();
       return;

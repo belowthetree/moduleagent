@@ -489,9 +489,6 @@ export class TuiBridge implements IAgentBridge {
     } catch (err) {
       defaultLogger.warn(`TuiBridge: failed to start agent [${name}]: ${(err as Error).message}`);
     }
-
-    // 切换到新模块后重新挂载文件监听
-    this._startWatchingDiff();
   }
 
   // -----------------------------------------------------------------------
@@ -718,44 +715,79 @@ export class TuiBridge implements IAgentBridge {
   // -----------------------------------------------------------------------
 
   // ── 文件变更监听 ──
-  private _diffWatcher: nodeFs.FSWatcher | null = null;
-  private _diffDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _diffPollTimer: ReturnType<typeof setInterval> | null = null;
+  private _lastDiffHash = '';
+
+  /** 计算工作区文件的最新 mtime（快速判断变更，比全量 hash 更轻量） */
+  private _workspaceLatestMtime(cwd: string): number {
+    let latest = 0;
+    try {
+      this._scanMtime(cwd, cwd, (mtime) => { if (mtime > latest) latest = mtime; });
+    } catch { /* ignore */ }
+    return latest;
+  }
+
+  private _scanMtime(dir: string, base: string, cb: (mtime: number) => void): void {
+    const entries = nodeFs.readdirSync(dir, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.name === '.git' || e.name === 'node_modules') continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        this._scanMtime(full, base, cb);
+      } else {
+        try { cb(nodeFs.statSync(full).mtimeMs); } catch { /* ignore */ }
+      }
+    }
+  }
 
   /**
-   * 启动当前模块工作区的文件变更监听。
-   * 每次变更 debounce 2 秒后自动触发 diff 刷新。
+   * 启动当前模块工作区的文件变更监听（轮询，2 秒间隔）。
    * 切换模块时自动重新挂载到新模块的工作区。
    */
   _startWatchingDiff(): void {
     this._stopWatchingDiff();
-    const current = this.core.getCurrentAgent();
-    const workspaceCwd = this.core.getAgentCwd(current) || this.core.getWorkspaceCwd(current);
-    if (!workspaceCwd || !nodeFs.existsSync(workspaceCwd)) return;
-
-    try {
-      this._diffWatcher = nodeFs.watch(workspaceCwd, { recursive: true }, () => {
-        if (this._diffDebounceTimer) clearTimeout(this._diffDebounceTimer);
-        this._diffDebounceTimer = setTimeout(() => {
-          this._triggerWorkspaceDiff(current);
-        }, 2000);
-      });
-      defaultLogger.info(`Diff watcher started: ${workspaceCwd}`);
-    } catch (err) {
-      defaultLogger.warn(`Failed to start diff watcher: ${(err as Error).message}`);
+    const projectRoot = this.core.getProjectRoot();
+    const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
+    if (!nodeFs.existsSync(workspaceBase)) {
+      defaultLogger.info(`Diff poll skipped — workspace dir not found: ${workspaceBase}`);
+      return;
     }
+
+    this._lastDiffHash = String(this._workspaceLatestMtime(workspaceBase));
+    defaultLogger.info(`Diff poll started: ${workspaceBase}`);
+
+    this._diffPollTimer = setInterval(() => {
+      if (!nodeFs.existsSync(workspaceBase)) return;
+      const mtime = this._workspaceLatestMtime(workspaceBase);
+      if (String(mtime) !== this._lastDiffHash) {
+        this._lastDiffHash = String(mtime);
+        defaultLogger.info('Diff poll: changes detected in workspace');
+        // 对所有子模块触发 diff，同时收集是否有任何变更
+        const graph = this.core.getGraph();
+        let anyChanges = false;
+        if (graph) {
+          for (const [name] of graph.nodes) {
+            this._triggerWorkspaceDiff(name);
+            const cached = this.diffCache.get(name);
+            if (cached && cached.files.length > 0) anyChanges = true;
+          }
+        }
+        // 没有任何模块有变更 → 清除提示
+        if (!anyChanges) {
+          tuiState.setDiffPrompt(null);
+        }
+      }
+    }, 2000);
   }
 
   /** 停止文件变更监听 */
   _stopWatchingDiff(): void {
-    if (this._diffDebounceTimer) {
-      clearTimeout(this._diffDebounceTimer);
-      this._diffDebounceTimer = null;
+    if (this._diffPollTimer) {
+      clearInterval(this._diffPollTimer);
+      this._diffPollTimer = null;
+      defaultLogger.info('Diff poll stopped');
     }
-    if (this._diffWatcher) {
-      this._diffWatcher.close();
-      this._diffWatcher = null;
-      defaultLogger.info('Diff watcher stopped');
-    }
+    this._lastDiffHash = '';
   }
 
   /** 关闭 diff 面板 */
@@ -763,14 +795,17 @@ export class TuiBridge implements IAgentBridge {
     tuiState.setShowDiffPanel(false);
   }
 
-  /** 刷新当前模块的 diff（异步，不阻塞 UI） */
+  /** 刷新所有模块的 diff（异步，不阻塞 UI） */
   _refreshDiff(): void {
-    const current = this.core.getCurrentAgent();
-    if (!current) return;
     tuiState.setDiffLoading(true);
     setImmediate(() => {
       try {
-        this._triggerWorkspaceDiff(current);
+        const graph = this.core.getGraph();
+        if (graph) {
+          for (const [name] of graph.nodes) {
+            this._triggerWorkspaceDiff(name);
+          }
+        }
       } finally {
         tuiState.setDiffLoading(false);
       }
@@ -780,12 +815,19 @@ export class TuiBridge implements IAgentBridge {
   _triggerWorkspaceDiff(moduleName: string): void {
     const projectRoot = this.core.getProjectRoot();
     const workspaceCwd = this.core.getAgentCwd(moduleName) || this.core.getWorkspaceCwd(moduleName);
-    if (!workspaceCwd || !projectRoot) return;
+    if (!workspaceCwd || !projectRoot) {
+      defaultLogger.info(`Diff skip [${moduleName}] — no cwd or projectRoot`);
+      return;
+    }
 
+    // 只处理子模块的工作区隔离目录：.module-agent/workspace/<sanitized_name>
     const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
-    if (!workspaceCwd.startsWith(workspaceBase + path.sep)) return;
+    if (!workspaceCwd.startsWith(workspaceBase + path.sep)) {
+      defaultLogger.info(`Diff skip [${moduleName}] — cwd not in workspace: ${workspaceCwd}`);
+      return;
+    }
 
-    // 通过 graph node 获取真实的源码路径（workspace 目录名已 sanitize，不能反推）
+    // 通过 graph node 获取真实的源码路径
     const graph = this.core.getGraph();
     const node = graph?.nodes.get(moduleName);
     const config = this.core.modules.getConfig();
@@ -793,8 +835,14 @@ export class TuiBridge implements IAgentBridge {
       ? (node.relativePath === '.' ? config.projectPath : path.join(config.projectPath, node.relativePath))
       : projectRoot;
 
-    if (!fs.existsSync(workspaceCwd)) return;
-    if (!fs.existsSync(path.join(workspaceCwd, '.git'))) return;
+    if (!fs.existsSync(workspaceCwd)) {
+      defaultLogger.info(`Diff skip [${moduleName}] — workspace dir missing`);
+      return;
+    }
+    if (!fs.existsSync(path.join(workspaceCwd, '.git'))) {
+      defaultLogger.info(`Diff skip [${moduleName}] — no .git anchor`);
+      return;
+    }
 
     const excludePaths: string[] = [];
     if (graph && node) {
@@ -811,10 +859,17 @@ export class TuiBridge implements IAgentBridge {
     }
 
     try {
+      defaultLogger.info(`Diff [${moduleName}]: ${workspaceCwd} vs ${sourceDir} (exclude ${excludePaths.length} paths)`);
       const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir, excludePaths);
       summary.moduleName = moduleName;
       this.diffCache.set(moduleName, summary);
-      if (summary.files.length > 0) tuiState.setDiffPrompt(summary);
+      defaultLogger.info(`Diff [${moduleName}]: ${summary.files.length} files (+${summary.addedCount} ~${summary.modifiedCount} -${summary.deletedCount})`);
+      if (summary.files.length > 0) {
+        tuiState.setDiffPrompt(summary);
+        defaultLogger.info(`Diff [${moduleName}]: prompt set`);
+      } else {
+        defaultLogger.info(`Diff [${moduleName}]: no changes, prompt not set`);
+      }
     } catch (err) {
       defaultLogger.error(`TuiBridge: diff error [${moduleName}]: ${(err as Error).message}`);
     }
@@ -846,6 +901,8 @@ export class TuiBridge implements IAgentBridge {
       this.diffCache.delete(moduleName);
       tuiState.setDiffPrompt(null);
     }
+    // 重置 mtime 基准防止旧值残留
+    this._lastDiffHash = '';
     return result;
   }
 
@@ -855,5 +912,8 @@ export class TuiBridge implements IAgentBridge {
     await WorkspaceDiff.discardWorkspace(cached.workspaceDir);
     this.diffCache.delete(moduleName);
     tuiState.setDiffPrompt(null);
+    // 强制刷新 mtime 基准 + 重跑 diff，确认无残留变更
+    this._lastDiffHash = '';
+    setImmediate(() => this._refreshDiff());
   }
 }
