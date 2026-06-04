@@ -3,7 +3,7 @@
 // 弹出式斜杠命令选择面板，支持模糊搜索和键盘导航
 // ---------------------------------------------------------------------------
 
-import { createSignal, createMemo, Show } from "solid-js";
+import { createSignal, createMemo, Show, For } from "solid-js";
 import { useKeyboard } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
 import { tuiState } from "../state.js";
@@ -58,7 +58,7 @@ const SUB_COMMANDS: Record<string, CommandItem[]> = {
 
 export default function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = createSignal(0);
-  let scrollEl: { scrollTo?: (y: number) => void } | null = null;
+  let scrollEl: { scrollTop?: number } | null = null;
 
   const filterText = createMemo(() => {
     const value = tuiState.inputValue();
@@ -113,14 +113,14 @@ export default function CommandPalette() {
     if (key.name === "up") {
       setSelectedIndex((prev) => {
         const next = prev > 0 ? prev - 1 : max;
-        scrollEl?.scrollTo?.(Math.max(0, next - 2));
+        if (scrollEl) scrollEl.scrollTop = Math.max(0, next - 2);
         return next;
       });
       key.preventDefault();
     } else if (key.name === "down") {
       setSelectedIndex((prev) => {
         const next = prev < max ? prev + 1 : 0;
-        scrollEl?.scrollTo?.(Math.max(0, next - 2));
+        if (scrollEl) scrollEl.scrollTop = Math.max(0, next - 2);
         return next;
       });
       key.preventDefault();
@@ -147,36 +147,6 @@ export default function CommandPalette() {
     }
   });
 
-  // 将 visible + cmds + selectedIndex 合并为一个 memo，确保任一变化都重建列表
-  const renderedList = createMemo(() => {
-    if (!tuiState.showCommands()) return null;
-    const cmds = filteredCommands();
-    if (cmds.length === 0) {
-      return (
-        <box height={1} padding={0}>
-          <text fg="#888888">  无匹配命令</text>
-        </box>
-      );
-    }
-    const sel = selectedIndex();
-    return (
-      <scrollbox ref={(el: any) => { scrollEl = el; }} flexGrow={1} stickyScroll={false}>
-        {cmds.map((cmd, i) => (
-          <box
-            flexDirection="row"
-            height={1}
-            padding={0}
-            backgroundColor={i === sel ? "#44475a" : "transparent"}
-          >
-            <text fg={i === sel ? "#ffffff" : "#f8f8f2"}>
-              {" "}{cmd.name}{"  "}{cmd.description}
-            </text>
-          </box>
-        ))}
-      </scrollbox>
-    );
-  });
-
   return (
     <Show when={tuiState.showCommands()}>
       <box
@@ -189,7 +159,28 @@ export default function CommandPalette() {
         borderStyle="single"
         padding={0}
       >
-        {renderedList()}
+        <Show when={filteredCommands().length > 0} fallback={
+          <box height={1} padding={0}>
+            <text fg="#888888">  无匹配命令</text>
+          </box>
+        }>
+          <scrollbox ref={(el: any) => { scrollEl = el; }} flexGrow={1} stickyScroll={false}>
+            <For each={filteredCommands()}>
+              {(cmd, i) => (
+                <box
+                  flexDirection="row"
+                  height={1}
+                  padding={0}
+                  backgroundColor={i() === selectedIndex() ? "#44475a" : "transparent"}
+                >
+                  <text fg={i() === selectedIndex() ? "#ffffff" : "#f8f8f2"}>
+                    {" "}{cmd.name}{"  "}{cmd.description}
+                  </text>
+                </box>
+              )}
+            </For>
+          </scrollbox>
+        </Show>
       </box>
     </Show>
   );

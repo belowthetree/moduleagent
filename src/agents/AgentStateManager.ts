@@ -7,6 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import type { ChatMsg, TimelineEvent } from '../types/shared.js';
+import { defaultLogger } from '../core/Logger.js';
 
 // ── Types ──
 
@@ -177,11 +178,11 @@ export class AgentStateManager {
     try {
       await this.initContextDir();
       const json = JSON.stringify(msgs);
-      const tmpPath = path.join(this.contextBaseDir, `${moduleName}.json.tmp`);
       const finalPath = path.join(this.contextBaseDir, `${moduleName}.json`);
-      await fs.writeFile(tmpPath, json, 'utf-8');
-      await fs.rename(tmpPath, finalPath);
-    } catch {
+      // 直接写最终路径，避免 Windows 上 rename 覆盖已有文件时失败导致数据丢失
+      await fs.writeFile(finalPath, json, 'utf-8');
+    } catch (err) {
+      defaultLogger.warn(`[AgentStateManager] saveContext failed for [${moduleName}]: ${(err as Error).message}`);
     }
   }
 
@@ -189,8 +190,15 @@ export class AgentStateManager {
     try {
       const filePath = path.join(this.contextBaseDir, `${moduleName}.json`);
       const raw = await fs.readFile(filePath, 'utf-8');
-      return JSON.parse(raw) as ChatMsg[];
-    } catch {
+      const result = JSON.parse(raw) as ChatMsg[];
+      if (result.length > 0) {
+        defaultLogger.info(`[AgentStateManager] loaded ${result.length} msgs for [${moduleName}]`);
+      }
+      return result;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        defaultLogger.warn(`[AgentStateManager] loadContext failed for [${moduleName}]: ${(err as Error).message}`);
+      }
       return [];
     }
   }
@@ -199,7 +207,10 @@ export class AgentStateManager {
     try {
       const filePath = path.join(this.contextBaseDir, `${moduleName}.json`);
       await fs.unlink(filePath);
-    } catch {
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        defaultLogger.warn(`[AgentStateManager] clearContext failed for [${moduleName}]: ${(err as Error).message}`);
+      }
     }
   }
 
@@ -208,7 +219,8 @@ export class AgentStateManager {
       const entries = await fs.readdir(this.contextBaseDir);
       const jsonFiles = entries.filter(e => e.endsWith('.json'));
       await Promise.all(jsonFiles.map(f => fs.unlink(path.join(this.contextBaseDir, f)).catch(() => {})));
-    } catch {
+    } catch (err) {
+      defaultLogger.warn(`[AgentStateManager] clearAllContexts failed: ${(err as Error).message}`);
     }
   }
 }

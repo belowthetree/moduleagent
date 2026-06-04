@@ -70,6 +70,7 @@ export default function InputBox(props: {
   });
 
   useKeyboard((key) => {
+    defaultLogger.info(`[InputBox] key: ${key.name}`);
     if (tuiState.screen() !== 'chat') return;
     if (tuiState.showQuickPanel()) return;
     if (tuiState.showDiffPanel() || tuiState.showExperiencePanel()) return;
@@ -203,8 +204,8 @@ export default function InputBox(props: {
           value={tuiState.inputValue()}
           focused={true}
           opacity={isStreaming() ? 0.7 : 1}
-          onChange={(value: string) => {
-            defaultLogger.info(`[InputBox] onChange: "${value}"`);
+          onInput={(value: string) => {
+            defaultLogger.info(`[InputBox] onInput: "${value}"`);
             _skipCursorFix = true; // 输入组件自行管理光标，不要让 effect 跳到末尾
             tuiState.setInputValue(value);
             if (!value.startsWith("/")) {
