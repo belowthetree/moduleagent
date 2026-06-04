@@ -309,7 +309,8 @@ export class ModuleAgentSubsystem {
           graphFile: this.mcpGraphFile,
         });
         const newSessionId = await entry.agent.clearContext(mcpServers);
-        this._saveSessionId(name, newSessionId);
+        // 删除 sessionId 文件，让下一次 startAgent 真正从零开始
+        this._deleteSessionId(name);
         this.logger.info(`clearContext: new session for [${name}], sessionId=${newSessionId}`);
 
         // 恢复 mode/model 配置

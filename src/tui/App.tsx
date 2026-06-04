@@ -79,11 +79,11 @@ export default function App() {
     }
   });
 
-  // Diff 快捷键（全局）— Y/R/N 操作
+  // Diff 快捷键（全局）— Y/R/N 操作（仅在输入框为空时生效）
   useKeyboard((key: KeyEvent) => {
-    // diffPrompt 激活时的 Y/R/N 操作
     const diff = tuiState.diffPrompt();
-    if (!diff || tuiState.showDiffPanel() || screen() !== 'chat') return;
+    // 输入框有文字时跳过，避免干扰正常打字
+    if (!diff || tuiState.showDiffPanel() || screen() !== 'chat' || tuiState.inputValue().length > 0) return;
 
     const service = (globalThis as any).__tuiAgentService;
     const moduleName = diff.moduleName;

@@ -339,7 +339,8 @@ export function executeCommand(input: string): void {
           addSystemMsg(`未找到 "${arg}" 的对话记录。`);
           return;
         }
-        tuiState.setMessages(msgs);
+        // 同步到 store 和 tuiState（避免后续 Core 事件覆盖）
+        service.setStoreMessages?.(msgs);
         addSystemMsg(`已加载 "${arg}" 的对话 (${msgs.length} 条消息)。`);
       }).catch((err: Error) => addSystemMsg(`加载失败: ${err.message}`));
       break;

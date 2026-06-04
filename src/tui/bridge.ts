@@ -305,30 +305,30 @@ export class TuiBridge implements IAgentBridge {
       tuiState.setHistoryIndex(inputHistory.length);
     }
 
-    // 加载上次对话（从 core 查询历史并转换为 TUI 格式）
+    // 加载上次对话 — 从 Core 查询 + 持久化补充
     const rootAgent = result.rootAgent;
     if (rootAgent) {
       await this.store.loadHistory(this.core, rootAgent);
+      const coreCount = this.store.messages.length;
+
+      // 始终尝试从持久化加载，取消息数更多的源
+      if (this.persistence) {
+        const history = await this.persistence.load(rootAgent);
+        if (history.length > coreCount) {
+          defaultLogger.info(`TuiBridge: persistence has ${history.length} msgs vs Core ${coreCount}, using persistence`);
+          this.store.setMessages(history);
+        } else if (coreCount > 0) {
+          defaultLogger.info(`TuiBridge: Core has ${coreCount} msgs vs persistence ${history.length}, using Core`);
+        }
+      }
+
       if (this.store.messages.length > 0) {
         this.store.syncTo(tuiState);
         const collapsed = this.store.getCollapsedThoughts();
         tuiState.setCollapsedThoughts(collapsed);
         defaultLogger.info(`TuiBridge: restored ${this.store.messages.length} messages for [${rootAgent}]`);
       } else {
-        // rootAgent 无历史，尝试从持久化加载
-        if (this.persistence) {
-          const history = await this.persistence.load(rootAgent);
-          if (history.length > 0) {
-            // 从持久化加载的消息直接替换 store（core 无历史时的 fallback）
-            this.store.setMessages(history);
-            this.store.syncTo(tuiState);
-            const collapsed = new Set<string>();
-            for (const m of history) {
-              if (m.msgType === 'agent_thought' && m.content) collapsed.add(m.id);
-            }
-            tuiState.setCollapsedThoughts(collapsed);
-          }
-        }
+        defaultLogger.info(`TuiBridge: no history for [${rootAgent}]`);
       }
     }
 
@@ -679,6 +679,12 @@ export class TuiBridge implements IAgentBridge {
   async loadSession(moduleName: string): Promise<ChatMessage[]> {
     if (!this.persistence) return [];
     return this.persistence.load(moduleName);
+  }
+
+  /** 将加载的消息同步到 store（确保后续 Core 事件不覆盖） */
+  setStoreMessages(msgs: ChatMessage[]): void {
+    this.store.setMessages(msgs);
+    this.store.syncTo(tuiState);
   }
 
   async listSessions(): Promise<string[]> {
