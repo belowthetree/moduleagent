@@ -335,9 +335,9 @@ export default function DiffPanel() {
                           const fg = dl.type === "removed" ? "#FF7777" : dl.type === "same" && !dl.text ? "#222222" : "#CCCCCC";
                           const prefix = dl.type === "removed" ? "-" : " ";
                           return (
-                            <box height={1} padding={0} backgroundColor={bg}>
+                            <box flexDirection="row" height={1} padding={0} backgroundColor={bg}>
                               <text fg="#888888" width={5}>{String(i + 1).padStart(4)} </text>
-                              <text fg={fg}>{prefix}{dl.text}</text>
+                              <text fg={fg}>    {prefix}{dl.text}</text>
                             </box>
                           );
                         })}
@@ -356,9 +356,9 @@ export default function DiffPanel() {
                           const fg = dl.type === "added" ? "#77FF77" : dl.type === "same" && !dl.text ? "#222222" : "#CCCCCC";
                           const prefix = dl.type === "added" ? "+" : " ";
                           return (
-                            <box height={1} padding={0} backgroundColor={bg}>
+                            <box flexDirection="row" height={1} padding={0} backgroundColor={bg}>
                               <text fg="#888888" width={5}>{String(i + 1).padStart(4)} </text>
-                              <text fg={fg}>{prefix}{dl.text}</text>
+                              <text fg={fg}>    {prefix}{dl.text}</text>
                             </box>
                           );
                         })}
