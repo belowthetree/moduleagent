@@ -80,7 +80,7 @@ export class AgentLauncher {
           const resolved = path.resolve(p).replace(/\\/g, '/');
           const normalizedCwd = cwd.replace(/\\/g, '/');
           if (!resolved.startsWith(normalizedCwd + '/') && resolved !== normalizedCwd) {
-            const reason = `Path "${p}" is outside workspace (${normalizedCwd}). Use files within the workspace.`;
+            const reason = `Path "${p}" is outside your module workspace (${normalizedCwd}). Project source code is managed by sub-modules — use module_call to delegate. You can only read/write module descriptor files within your workspace.`;
             log.warn(`[${name}] Permission REJECTED: ${reason}`);
             // 通过专用回调通知 Agent 排队系统消息（不伪造 ACP 通知）
             options?.onPermissionRejected?.(toolCall.title || 'unknown', reason);
