@@ -23,6 +23,7 @@ export const ProjectConfigSchema = z.object({
   }),
   exclude: z.array(z.string()),
   projectPath: z.string(),
+  sessionRound: z.number().int().min(1).default(1).optional(),
   summarization: z.object({
     enabled: z.boolean(),
   }).optional(),

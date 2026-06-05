@@ -44,6 +44,8 @@ export interface AgentEntry {
   sourcePath?: string;
   modeOptions?: { value: string; name: string }[];
   currentMode?: string;
+  modelOptions?: { value: string; name: string }[];
+  currentModel?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -309,8 +311,8 @@ export class ModuleAgentSubsystem {
           graphFile: this.mcpGraphFile,
         });
         const newSessionId = await entry.agent.clearContext(mcpServers);
-        // 删除 sessionId 文件，让下一次 startAgent 真正从零开始
-        this._deleteSessionId(name);
+        // 保存新 sessionId（回合不变，下次启动可 resume 新会话）
+        this._saveSessionId(name, newSessionId);
         this.logger.info(`clearContext: new session for [${name}], sessionId=${newSessionId}`);
 
         // 恢复 mode/model 配置
@@ -321,10 +323,11 @@ export class ModuleAgentSubsystem {
         entry.agent.stop();
         this.agents.delete(name);
         this._agentStatus.delete(name);
+        // 进程已死，删 session 文件避免下次误 resume 死会话
         this._deleteSessionId(name);
       }
     } else {
-      // agent 未运行：只清理 sessionId 文件，防止下次启动时 resume
+      // agent 未运行：删 sessionId 文件防止下次启动时 resume 旧会话
       this.logger.info(`clearContext: agent not running, clearing sessionId + context for [${name}]`);
       this._deleteSessionId(name);
     }
@@ -435,6 +438,20 @@ export class ModuleAgentSubsystem {
     this.logger.info(`[${moduleName}] mode switched to ${modeValue}`);
   }
 
+  getAgentModels(moduleName: string): { value: string; name: string; current: boolean }[] {
+    const entry = this.agents.get(moduleName);
+    if (!entry?.modelOptions?.length) return [];
+    return entry.modelOptions.map(m => ({ ...m, current: m.value === entry.currentModel }));
+  }
+
+  async setAgentModel(moduleName: string, modelValue: string): Promise<void> {
+    const entry = this.agents.get(moduleName);
+    if (!entry) throw new Error(`Agent ${moduleName} not running`);
+    await entry.agent.setConfigOption('model', modelValue);
+    entry.currentModel = modelValue;
+    this.logger.info(`[${moduleName}] model switched to ${modelValue}`);
+  }
+
   // -----------------------------------------------------------------------
   // 公共辅助方法（供 McpBackend 集成）
   // -----------------------------------------------------------------------
@@ -538,11 +555,46 @@ export class ModuleAgentSubsystem {
   }
 
   async clearAllContexts(): Promise<void> {
-    // 逐个清理运行中的 agent（newSession + 删文件 + 清理状态）
-    for (const name of this.agents.keys()) {
-      await this.clearContext(name);
+    // 1. 递增回合号 → 所有 agent（运行中/已停止/子模块）下次启动全部 fresh start
+    const newRound = (this.config?.sessionRound || 1) + 1;
+    if (this.config) {
+      this.config.sessionRound = newRound;
+      try {
+        await ConfigLoader.upsertEntry(this.projectRoot, this.config, false);
+        this.logger.info(`clearAllContexts: sessionRound → ${newRound}`);
+      } catch (err) {
+        this.logger.warn(`clearAllContexts: failed to save round: ${(err as Error).message}`);
+      }
     }
-    // 清理残留的持久化文件（已停止的 agent）
+
+    // 2. 运行中的 agent：换新会话 + 存新 sessionId（带新回合号）
+    for (const name of this.agents.keys()) {
+      const entry = this.agents.get(name);
+      if (entry) {
+        try {
+          const mcpServers = buildMcpServers({
+            moduleName: name,
+            basePath: this.basePath,
+            backendPort: this.mcpBackendPort,
+            graphFile: this.mcpGraphFile,
+          });
+          const newSessionId = await entry.agent.clearContext(mcpServers);
+          this._saveSessionId(name, newSessionId);
+          await this._applySessionConfig(name, entry.agent);
+        } catch (err) {
+          this.logger.warn(`clearAllContexts: newSession failed for [${name}], killing: ${(err as Error).message}`);
+          entry.agent.stop();
+          this.agents.delete(name);
+          this._agentStatus.delete(name);
+        }
+      }
+      await this._stateManager?.clearContext(name);
+      this.sessionPrompted.delete(name);
+      this.lastSent.delete(name);
+      this.toolNameById.clear();
+    }
+
+    // 3. 清理残留的 context 文件（已停止的 agent）
     await this._stateManager?.clearAllContexts();
     this.logger.info('clearAllContexts: all agents + files cleared');
   }
@@ -686,6 +738,12 @@ export class ModuleAgentSubsystem {
         ?.find((o: any) => o.id === 'mode' || o.category === 'mode')
         ?.currentValue;
 
+      // 提取模型选项（agent 上报的可用模型列表）
+      const configOpts = (agent.sessionResult?.configOptions as any[]) || [];
+      const modelOpt = configOpts.find((o: any) => o.id === 'model' || o.category === 'model');
+      const modelOptions: { value: string; name: string }[] = modelOpt?.options?.map((o: any) => ({ value: o.value, name: o.name })) || [];
+      const currentModel: string = modelOpt?.currentValue || agentConfig.model || '';
+
       this.sessionPrompted.delete(moduleName);
 
       const entry: AgentEntry = {
@@ -696,6 +754,8 @@ export class ModuleAgentSubsystem {
           : cwd,
         modeOptions: savedModes,
         currentMode: savedCurrentMode,
+        modelOptions,
+        currentModel,
       };
       this.agents.set(moduleName, entry);
 
@@ -726,8 +786,9 @@ export class ModuleAgentSubsystem {
       const dir = this._sessionStoreDir();
       fs.ensureDirSync(dir);
       const file = path.join(dir, `${this._sanitizeFileName(moduleName)}.json`);
-      fs.writeJsonSync(file, { sessionId, savedAt: new Date().toISOString() });
-      this.logger.info(`[session] saved ${moduleName} → ${sessionId}`);
+      const round = this.config?.sessionRound || 1;
+      fs.writeJsonSync(file, { sessionId, savedAt: new Date().toISOString(), round });
+      this.logger.info(`[session] saved ${moduleName} → ${sessionId} (round=${round})`);
     } catch (err) {
       this.logger.warn(`[session] failed to save sessionId: ${(err as Error).message}`);
     }
@@ -761,7 +822,12 @@ export class ModuleAgentSubsystem {
     try {
       const file = path.join(this._sessionStoreDir(), `${this._sanitizeFileName(moduleName)}.json`);
       if (fs.existsSync(file)) {
-        const data = fs.readJsonSync(file) as { sessionId: string };
+        const data = fs.readJsonSync(file) as { sessionId: string; round?: number };
+        const currentRound = this.config?.sessionRound || 1;
+        if (data.round !== undefined && data.round !== currentRound) {
+          this.logger.info(`[session] ${moduleName} round mismatch (file=${data.round}, config=${currentRound}) → skip resume`);
+          return null;
+        }
         return data.sessionId || null;
       }
     } catch { /* ignore */ }

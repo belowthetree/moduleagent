@@ -308,6 +308,14 @@ export class ModuleAgentCore {
     await this.modules.setAgentMode(moduleName, modeValue);
   }
 
+  getAgentModels(moduleName: string): { value: string; name: string; current: boolean }[] {
+    return this.modules.getAgentModels(moduleName);
+  }
+
+  async setAgentModel(moduleName: string, modelValue: string): Promise<void> {
+    await this.modules.setAgentModel(moduleName, modelValue);
+  }
+
   setDefaultMode(modeValue: string): void {
     this.modules.setDefaultMode(modeValue);
   }

@@ -22,7 +22,7 @@ import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { RoleConfigData } from '../types/shared.js';
 import type { RoleConfig } from '../config/defaults.js';
 import { tuiState } from './state.js';
-import { TuiPersistence, InputHistoryPersistence } from './persistence.js';
+import { InputHistoryPersistence } from './persistence.js';
 import { TuiSessionStore } from './TuiSessionStore.js';
 import { getProjectConfigDir, ensureConfigFiles } from '../core/ConfigPaths.js';
 import { createPostSendHook } from '../core/PostSendHooks.js';
@@ -52,8 +52,7 @@ export class TuiBridge implements IAgentBridge {
   // 工作区 Diff 缓存（PostSendHooks 填充，workspace diff 方法消费）
   private diffCache = new Map<string, DiffSummary>();
 
-  // 持久化（TUI 特有——后续可统一到 core）
-  private persistence: TuiPersistence | null = null;
+  // 输入历史持久化
   private historyStore: InputHistoryPersistence | null = null;
 
   constructor() {
@@ -296,7 +295,6 @@ export class TuiBridge implements IAgentBridge {
 
     const result = await this.core.initAll(projectRoot, this.configDir);
 
-    this.persistence = new TuiPersistence(projectRoot);
     this.historyStore = new InputHistoryPersistence(projectRoot);
 
     const inputHistory = await this.historyStore.load();
@@ -311,15 +309,9 @@ export class TuiBridge implements IAgentBridge {
       await this.store.loadHistory(this.core, rootAgent);
       const coreCount = this.store.messages.length;
 
-      // 始终尝试从持久化加载，取消息数更多的源
-      if (this.persistence) {
-        const history = await this.persistence.load(rootAgent);
-        if (history.length > coreCount) {
-          defaultLogger.info(`TuiBridge: persistence has ${history.length} msgs vs Core ${coreCount}, using persistence`);
-          this.store.setMessages(history);
-        } else if (coreCount > 0) {
-          defaultLogger.info(`TuiBridge: Core has ${coreCount} msgs vs persistence ${history.length}, using Core`);
-        }
+      // context 已由 Core 加载，直接使用
+      if (coreCount > 0) {
+        defaultLogger.info(`TuiBridge: Core has ${coreCount} msgs, using Core context`);
       }
 
       if (this.store.messages.length > 0) {
@@ -422,9 +414,6 @@ export class TuiBridge implements IAgentBridge {
     if (name) {
       this.store.clear();
       this.store.syncTo(tuiState);
-      if (this.persistence) {
-        await this.persistence.remove(name);
-      }
     }
   }
 
@@ -433,28 +422,18 @@ export class TuiBridge implements IAgentBridge {
     const name = moduleName || this.core.getCurrentAgent();
     if (!name) return;
 
-    // 1. 存档当前 TUI 消息（带时间戳，与旧会话区分）
-    if (this.persistence && this.store.messages.length > 0) {
-      await this.persistence.archive(name, this.store.messages);
-    }
-
-    // 2. 清除 Core 上下文（sessionId 文件 + AgentStateManager）
+    // 1. 清除 Core 上下文（sessionId 文件 + AgentStateManager + context 文件）
     await this.core.clearContext(name);
 
-    // 3. 清空 TUI store
+    // 2. 清空 TUI store
     this.store.clear();
     this.store.syncTo(tuiState);
     defaultLogger.info(`TuiBridge: new session started for [${name}]`);
   }
 
   async clearAllContexts(): Promise<void> {
-    // 委托 Core 清理所有持久化上下文（AgentStateManager + sessionId）
+    // 委托 Core 清理所有持久化上下文（AgentStateManager + sessionId + context 文件）
     await this.core.modules.clearAllContexts();
-    // 清理 TUI 持久化
-    if (this.persistence) {
-      const sessions = await this.persistence.list();
-      for (const s of sessions) await this.persistence.remove(s);
-    }
     this.store.clear();
     this.store.syncTo(tuiState);
     defaultLogger.info('TuiBridge: all contexts cleared');
@@ -656,6 +635,29 @@ export class TuiBridge implements IAgentBridge {
     }
   }
 
+  getAgentModels(): { value: string; name: string; current: boolean }[] {
+    return this.core.getAgentModels(this.core.getCurrentAgent());
+  }
+
+  async setAgentModel(modelValue: string): Promise<void> {
+    await this.core.setAgentModel(this.core.getCurrentAgent(), modelValue);
+  }
+
+  async setGlobalDefaultModel(modelValue: string): Promise<void> {
+    const projectRoot = this.core.getProjectRoot();
+    const { ConfigLoader } = await import('../config/ConfigLoader.js');
+    const workspace = await ConfigLoader.load(projectRoot);
+    const defaultEntry = ConfigLoader.getDefaultConfig(workspace);
+    defaultEntry.agents.default = { ...defaultEntry.agents.default, model: modelValue };
+    await ConfigLoader.upsertEntry(projectRoot, defaultEntry);
+    const agents = this.core.getModuleNames();
+    for (const name of agents) {
+      try { await this.core.setAgentModel(name, modelValue); } catch (err) {
+        defaultLogger.warn(`TuiBridge: setAgentModel [${name}]: ${(err as Error).message}`);
+      }
+    }
+  }
+
   setTargetType(type: 'module' | 'role' | 'workflow'): void {
     tuiState.setCurrentTarget(type);
   }
@@ -688,16 +690,16 @@ export class TuiBridge implements IAgentBridge {
   // -----------------------------------------------------------------------
 
   async saveSession(moduleName?: string): Promise<void> {
-    if (!this.persistence) return;
     const name = moduleName || this.core.getCurrentAgent();
     if (!name) return;
-    await this.persistence.save(name, this.store.messages);
-    defaultLogger.info(`TuiBridge: session saved for [${name}]`);
+    const coreMsgs = this.store.formatForCore(this.store.messages);
+    await this.core.modules.saveContext(name, coreMsgs);
+    defaultLogger.info(`TuiBridge: session saved for [${name}] (${coreMsgs.length} msgs to context)`);
   }
 
   async loadSession(moduleName: string): Promise<ChatMessage[]> {
-    if (!this.persistence) return [];
-    return this.persistence.load(moduleName);
+    const msgs = await this.core.modules.loadContext(moduleName);
+    return this.store.formatFromCore(msgs);
   }
 
   /** 将加载的消息同步到 store（确保后续 Core 事件不覆盖） */
@@ -707,13 +709,19 @@ export class TuiBridge implements IAgentBridge {
   }
 
   async listSessions(): Promise<string[]> {
-    if (!this.persistence) return [];
-    return this.persistence.list();
+    // 读取 context 目录下列出的文件名（去掉 .json 后缀）
+    const projectRoot = this.core.getProjectRoot();
+    const contextDir = path.join(projectRoot, '.module-agent', 'context');
+    try {
+      const files = await fs.readdir(contextDir);
+      return files.filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, ''));
+    } catch {
+      return [];
+    }
   }
 
   async removeSession(moduleName: string): Promise<void> {
-    if (!this.persistence) return;
-    await this.persistence.remove(moduleName);
+    await this.core.modules.clearModuleContext(moduleName);
   }
 
   public autoSave(): void {

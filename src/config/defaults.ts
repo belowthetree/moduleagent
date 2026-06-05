@@ -20,6 +20,7 @@ export interface ProjectConfig {
   };
   exclude: string[];
   projectPath: string;
+  sessionRound?: number;
   summarization?: {
     enabled: boolean;
   };
@@ -60,6 +61,7 @@ export const DEFAULT_CONFIG_ENTRY: ConfigEntry = {
   },
   exclude: [],
   projectPath: '.',
+  sessionRound: 1,
   summarization: { enabled: false },
 };
 

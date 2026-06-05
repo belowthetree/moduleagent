@@ -20,6 +20,7 @@ const COMMANDS: CommandItem[] = [
   { name: "/get", description: "查看模块详情" },
   { name: "/module", description: "切换模块" },
   { name: "/mode", description: "查看/切换 agent 模式" },
+  { name: "/model", description: "查看/切换 agent 模型" },
   { name: "/role", description: "角色 Agent 管理 (list/start/stop/cancel)" },
   { name: "/workflow", description: "工作流管理 (list/run/status/cancel)" },
   { name: "/status", description: "显示子系统运行状态" },
@@ -38,6 +39,7 @@ const COMMANDS: CommandItem[] = [
 // 子命令定义：当用户输入 "/cmd " 时显示的选项
 const SUB_COMMANDS: Record<string, CommandItem[]> = {
   "/mode": [], // 动态填充
+  "/model": [], // 动态填充
   "/role": [
     { name: "/role list", description: "列出所有角色" },
     { name: "/role start", description: "启动角色" },
@@ -85,6 +87,14 @@ export default function CommandPalette() {
         const modes = service?.getAgentModes?.() ?? [];
         return modes.map((m: any) => ({
           name: `/mode ${m.value}`,
+          description: m.name + (m.current ? ' (current)' : ''),
+        }));
+      }
+      if (parent === '/model') {
+        const service = (globalThis as any).__tuiAgentService;
+        const models = service?.getAgentModels?.() ?? [];
+        return models.map((m: any) => ({
+          name: `/model ${m.value}`,
           description: m.name + (m.current ? ' (current)' : ''),
         }));
       }

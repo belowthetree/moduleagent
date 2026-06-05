@@ -26,7 +26,7 @@ export class TuiSessionStore {
   /** 从 core 查询消息历史并转换为 TUI 格式 */
   async loadHistory(core: ModuleAgentCore, moduleName: string): Promise<void> {
     const msgs = await core.modules.loadContext(moduleName);
-    this._messages = this._formatFromCore(msgs);
+    this._messages = this.formatFromCore(msgs);
     defaultLogger.info(`TuiSessionStore: loaded ${this._messages.length} msgs for [${moduleName}]`);
   }
 
@@ -141,12 +141,60 @@ export class TuiSessionStore {
   // ── 格式转换 ──
 
   /**
+   * 将 TUI 的 ChatMessage[] 逆转换为 Core 的 ChatMsg[]。
+   * 连续的 agent_reply / agent_thought（同一 base id）合并为单条 ChatMsg。
+   */
+  formatForCore(msgs: ChatMessage[]): ChatMsg[] {
+    const result: ChatMsg[] = [];
+    let i = 0;
+    while (i < msgs.length) {
+      const m = msgs[i]!;
+      switch (m.msgType) {
+        case 'user':
+          result.push({ id: m.id, role: 'user', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          i++;
+          break;
+        case 'agent_reply': {
+          // 检查前一条是否是同源的 agent_thought（id = baseId + '-thought'）
+          const baseId = m.id;
+          let thinking = '';
+          if (i > 0 && msgs[i - 1]!.msgType === 'agent_thought' && msgs[i - 1]!.id === baseId + '-thought') {
+            thinking = msgs[i - 1]!.content;
+          }
+          result.push({ id: baseId, role: 'agent', content: m.content, thinking, time: m.time, status: 'completed', timeline: [] });
+          i++;
+          break;
+        }
+        case 'agent_thought': {
+          // 检查后一条是否同源的 agent_reply，是则跳过（已在 agent_reply 分支处理）
+          if (i + 1 < msgs.length && msgs[i + 1]!.msgType === 'agent_reply' && msgs[i + 1]!.id === m.id.replace(/-thought$/, '')) {
+            i++; // 跳过，由下一条 agent_reply 分支合并
+          } else {
+            // 孤立的 thought（无配套 reply），仍保留
+            result.push({ id: m.id, role: 'agent', content: '', thinking: m.content, time: m.time, status: 'completed', timeline: [] });
+            i++;
+          }
+          break;
+        }
+        case 'tool_call':
+        case 'system':
+        case 'cross_context':
+        default:
+          result.push({ id: m.id, role: 'system', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          i++;
+          break;
+      }
+    }
+    return result;
+  }
+
+  /**
    * 将 Core 的 ChatMsg[] 转换为 TUI 的 ChatMessage[]。
    * 一条 agent ChatMsg 可能展开为两条 ChatMessage：
    *   - agent_reply（content 字段）
    *   - agent_thought（thinking 字段，非空时）
    */
-  private _formatFromCore(msgs: ChatMsg[]): ChatMessage[] {
+  formatFromCore(msgs: ChatMsg[]): ChatMessage[] {
     const result: ChatMessage[] = [];
     for (const msg of msgs) {
       switch (msg.role) {

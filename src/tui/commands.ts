@@ -56,6 +56,7 @@ export function executeCommand(input: string): void {
         '/load [name]     — 加载历史对话',
         '/clearAll        — 清理所有 agent 上下文及历史记录',
         '/mode [value]    — 查看/切换 agent 模式',
+        '/model [value]   — 查看/切换 agent 模型',
         '/diffpanel       — 打开工作区变更面板',
         '/diff            — 工作区变更: /diff, /diff <file>, /diff apply|discard',
         '/setup           — 重新配置项目',
@@ -214,6 +215,48 @@ export function executeCommand(input: string): void {
       addSystemMsg(`正在全局切换模式到 ${mode.name}...`);
       service.setGlobalDefaultMode?.(arg).then(() => {
         addSystemMsg(`默认模式已设为 "${mode.name}"，已应用到所有运行中的 agent。`);
+      }).catch((err: Error) => {
+        addSystemMsg(`切换失败: ${err.message}`);
+      });
+      break;
+    }
+
+    case '/model': {
+      const service = getAgentService();
+      if (!service) { addSystemMsg('Agent 服务未就绪'); return; }
+
+      const models: { value: string; name: string; current: boolean }[] = service.getAgentModels?.() ?? [];
+      if (models.length === 0) {
+        addSystemMsg('当前 agent 无可用模型列表（agent 未上报 configOptions.model）。');
+        return;
+      }
+
+      if (!arg) {
+        // 列出所有模型
+        const items = models.map(m => `  ${m.current ? '* ' : '  '}${m.value} — ${m.name}`).join('\n');
+        addSystemMsg(`可用模型:\n${items}\n\n使用 /model <value> 切换。`);
+        tuiState.setCommands(models.map(m => ({
+          name: `/model ${m.value}`,
+          description: m.name,
+          handler: () => executeCommand(`/model ${m.value}`),
+        })));
+        tuiState.setShowCommands(true);
+        return;
+      }
+
+      // 切换模型（全局：写配置 + 应用到所有运行中的 agent）
+      const model = models.find(m => m.value === arg);
+      if (!model) {
+        addSystemMsg(`未知模型: ${arg}\n可用模型: ${models.map(m => m.value).join(', ')}`);
+        return;
+      }
+      if (model.current) {
+        addSystemMsg(`已在模型 "${model.name}" 中。`);
+        return;
+      }
+      addSystemMsg(`正在全局切换模型到 ${model.name}...`);
+      service.setGlobalDefaultModel?.(arg).then(() => {
+        addSystemMsg(`默认模型已设为 "${model.name}"，已应用到所有运行中的 agent。`);
       }).catch((err: Error) => {
         addSystemMsg(`切换失败: ${err.message}`);
       });

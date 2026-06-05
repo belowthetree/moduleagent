@@ -174,12 +174,15 @@ export class AgentStateManager {
 
   // ── Context persistence ──
 
+  private _safeName(moduleName: string): string {
+    return moduleName.replace(/[<>:"/\\|?*]/g, '_');
+  }
+
   async saveContext(moduleName: string, msgs: ChatMsg[]): Promise<void> {
     try {
       await this.initContextDir();
       const json = JSON.stringify(msgs);
-      const finalPath = path.join(this.contextBaseDir, `${moduleName}.json`);
-      // 直接写最终路径，避免 Windows 上 rename 覆盖已有文件时失败导致数据丢失
+      const finalPath = path.join(this.contextBaseDir, `${this._safeName(moduleName)}.json`);
       await fs.writeFile(finalPath, json, 'utf-8');
     } catch (err) {
       defaultLogger.warn(`[AgentStateManager] saveContext failed for [${moduleName}]: ${(err as Error).message}`);
@@ -188,7 +191,7 @@ export class AgentStateManager {
 
   async loadContext(moduleName: string): Promise<ChatMsg[]> {
     try {
-      const filePath = path.join(this.contextBaseDir, `${moduleName}.json`);
+      const filePath = path.join(this.contextBaseDir, `${this._safeName(moduleName)}.json`);
       const raw = await fs.readFile(filePath, 'utf-8');
       const result = JSON.parse(raw) as ChatMsg[];
       if (result.length > 0) {
@@ -205,7 +208,7 @@ export class AgentStateManager {
 
   async clearContext(moduleName: string): Promise<void> {
     try {
-      const filePath = path.join(this.contextBaseDir, `${moduleName}.json`);
+      const filePath = path.join(this.contextBaseDir, `${this._safeName(moduleName)}.json`);
       await fs.unlink(filePath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
