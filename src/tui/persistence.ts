@@ -77,6 +77,40 @@ export class TuiPersistence {
     }
   }
 
+  /** 将当前对话存档（保存到带时间戳的文件，然后清空当前会话） */
+  async archive(moduleName: string, messages: ChatMessage[]): Promise<string> {
+    await fs.ensureDir(this.sessionsDir);
+    const filteredMsgs = messages.filter(m => m.content.trim());
+    if (filteredMsgs.length === 0) {
+      defaultLogger.info(`TuiPersistence: nothing to archive for [${moduleName}]`);
+      // 仍清除当前会话文件
+      await this.remove(moduleName);
+      return '';
+    }
+    const timestamp = Date.now();
+    const safe = moduleName.replace(/[<>:"/\\|?*]/g, '_');
+    const archiveName = `${safe}.${timestamp}`;
+    const fp = path.join(this.sessionsDir, `${archiveName}.json`);
+
+    const file: SessionFile = {
+      moduleName: archiveName,
+      savedAt: new Date().toISOString(),
+      messages: filteredMsgs.map(m => ({
+        id: m.id,
+        role: m.role,
+        msgType: m.msgType,
+        content: m.content,
+        time: m.time || '',
+      })),
+    };
+    await fs.writeFile(fp, JSON.stringify(file, null, 2), 'utf-8');
+    defaultLogger.info(`TuiPersistence: archived ${filteredMsgs.length} msgs for [${moduleName}] → ${archiveName}.json`);
+
+    // 删除当前会话文件，让新会话从零开始
+    await this.remove(moduleName);
+    return archiveName;
+  }
+
   /** 删除对话 */
   async remove(moduleName: string): Promise<void> {
     const fp = this._filePath(moduleName);
@@ -86,13 +120,28 @@ export class TuiPersistence {
     }
   }
 
-  /** 列出所有已保存的会话 */
+  /** 列出所有已保存的会话（排除存档） */
   async list(): Promise<string[]> {
     await fs.ensureDir(this.sessionsDir);
     try {
       const files = await fs.readdir(this.sessionsDir);
       return files
-        .filter(f => f.endsWith('.json'))
+        .filter(f => f.endsWith('.json') && !/\.\d+\.json$/.test(f))
+        .map(f => f.replace(/\.json$/, ''));
+    } catch {
+      return [];
+    }
+  }
+
+  /** 列出指定模块的存档文件 */
+  async listArchives(moduleName: string): Promise<string[]> {
+    await fs.ensureDir(this.sessionsDir);
+    const safe = moduleName.replace(/[<>:"/\\|?*]/g, '_');
+    const prefix = `${safe}.`;
+    try {
+      const files = await fs.readdir(this.sessionsDir);
+      return files
+        .filter(f => f.startsWith(prefix) && f.endsWith('.json') && /\.\d+\.json$/.test(f))
         .map(f => f.replace(/\.json$/, ''));
     } catch {
       return [];
@@ -109,6 +158,30 @@ export class TuiPersistence {
       return { messageCount: file.messages.length, savedAt: file.savedAt };
     } catch {
       return null;
+    }
+  }
+
+  /** 按完整文件名加载（用于加载存档） */
+  async loadByName(name: string): Promise<ChatMessage[]> {
+    const fp = path.join(this.sessionsDir, `${name}.json`);
+    if (!(await fs.pathExists(fp))) {
+      defaultLogger.info(`TuiPersistence: no saved session at ${fp}`);
+      return [];
+    }
+    try {
+      const raw = await fs.readFile(fp, 'utf-8');
+      const file: SessionFile = JSON.parse(raw);
+      defaultLogger.info(`TuiPersistence: loaded ${file.messages.length} msgs from ${name}.json`);
+      return file.messages.map(m => ({
+        id: m.id,
+        role: m.role as ChatMessage['role'],
+        msgType: m.msgType,
+        content: m.content,
+        time: m.time,
+      }));
+    } catch (err) {
+      defaultLogger.warn(`TuiPersistence: failed to load [${name}]: ${(err as Error).message}`);
+      return [];
     }
   }
 

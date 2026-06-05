@@ -35,6 +35,7 @@ export function executeCommand(input: string): void {
         '/get <name>      — 查看模块详情',
         '/module <name>   — 切换模块',
         '/clear           — 清空上下文',
+        '/new [name]      — 创建新会话（旧会话自动存档）',
       ].join('\n');
       const roleHelp = [
         '/role list       — 列出所有角色',
@@ -215,6 +216,18 @@ export function executeCommand(input: string): void {
         addSystemMsg(`默认模式已设为 "${mode.name}"，已应用到所有运行中的 agent。`);
       }).catch((err: Error) => {
         addSystemMsg(`切换失败: ${err.message}`);
+      });
+      break;
+    }
+
+    case '/new': {
+      const service = getAgentService();
+      if (!service?.newSession) { addSystemMsg('Agent 服务未就绪'); return; }
+      const target = arg || undefined; // /new <name> 指定模块
+      service.newSession(target).then(() => {
+        addSystemMsg(`已创建新会话${target ? ` (${target})` : ''}，旧会话已存档`);
+      }).catch((err: Error) => {
+        addSystemMsg(`创建新会话失败: ${err.message}`);
       });
       break;
     }

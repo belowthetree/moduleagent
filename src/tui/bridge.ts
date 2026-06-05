@@ -428,6 +428,25 @@ export class TuiBridge implements IAgentBridge {
     }
   }
 
+  /** 创建新会话：存档当前消息 → 清除 Core 上下文 → 清空 TUI 状态 */
+  async newSession(moduleName?: string): Promise<void> {
+    const name = moduleName || this.core.getCurrentAgent();
+    if (!name) return;
+
+    // 1. 存档当前 TUI 消息（带时间戳，与旧会话区分）
+    if (this.persistence && this.store.messages.length > 0) {
+      await this.persistence.archive(name, this.store.messages);
+    }
+
+    // 2. 清除 Core 上下文（sessionId 文件 + AgentStateManager）
+    await this.core.clearContext(name);
+
+    // 3. 清空 TUI store
+    this.store.clear();
+    this.store.syncTo(tuiState);
+    defaultLogger.info(`TuiBridge: new session started for [${name}]`);
+  }
+
   async clearAllContexts(): Promise<void> {
     // 委托 Core 清理所有持久化上下文（AgentStateManager + sessionId）
     await this.core.modules.clearAllContexts();
