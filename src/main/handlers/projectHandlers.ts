@@ -81,30 +81,6 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
           return ctx.core.modules.buildPromptBlocksForModule(name, text);
         },
         sendCrossContext(source, target, direction, phase, content) {
-          // 跨模块通信：管理目标模块的流状态
-          if (direction === 'received' && phase === 'request') {
-            ctx.core.modules.startStream(source);
-          } else if (direction === 'sent' && phase === 'response') {
-            const acc = ctx.core.modules.finishStream(source);
-            if (acc) {
-              const timeStr = new Date().toLocaleTimeString();
-              const agentMsg: ChatMsg = {
-                id: 'x' + Date.now().toString(36),
-                role: 'agent',
-                content: acc.reply || '',
-                thinking: acc.thinking || '',
-                timeline: acc.timeline || [],
-                time: timeStr,
-                status: 'completed',
-                moduleName: source,
-              };
-              ctx.core.modules.loadContext(source).then(existing => {
-                existing.push(agentMsg);
-                ctx.core.modules.saveContext(source, existing);
-              }).catch(() => {});
-            }
-          }
-
           // 更新时间线元数据
           const st = ctx.core.modules.getStreamState(source);
           if (st && st.timeline) {
@@ -140,6 +116,13 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
         },
         setAgentStatus(name, status) {
           ctx.core.modules.setAgentStatus(name, status);
+        },
+        startStream: (moduleName) => ctx.core.modules.startStream(moduleName),
+        finishStream: (moduleName) => ctx.core.modules.finishStream(moduleName),
+        saveCrossContext: async (moduleName, userMsg, agentMsg) => {
+          const existing = await ctx.core.modules.loadContext(moduleName);
+          existing.push(userMsg, agentMsg);
+          await ctx.core.modules.saveContext(moduleName, existing);
         },
         onLog(level, message) {
           if (level === 'error') ctx.logger.error(message);

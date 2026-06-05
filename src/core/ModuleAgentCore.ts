@@ -161,6 +161,13 @@ export class ModuleAgentCore {
         this.modules.setAgentStatus(moduleName, status);
         this.callbacks.onModuleStatusChange?.(moduleName, status);
       },
+      startStream: (moduleName) => this.modules.startStream(moduleName),
+      finishStream: (moduleName) => this.modules.finishStream(moduleName),
+      saveCrossContext: async (moduleName, userMsg, agentMsg) => {
+        const existing = await this.modules.loadContext(moduleName);
+        existing.push(userMsg, agentMsg);
+        await this.modules.saveContext(moduleName, existing);
+      },
     };
     this.mcpBackend = new McpBackendServer(callbacks);
     const port = await this.mcpBackend.start();

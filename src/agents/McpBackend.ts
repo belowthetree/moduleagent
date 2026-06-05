@@ -7,6 +7,7 @@ import http from 'node:http';
 import type { ContentBlock } from '@agentclientprotocol/sdk';
 import { defaultLogger } from '../core/Logger.js';
 import type { Agent } from './Agent.js';
+import type { ChatMsg } from '../types/shared.js';
 
 export interface McpBackendCallbacks {
   getAgentEntry(moduleName: string): Agent | undefined;
@@ -21,6 +22,12 @@ export interface McpBackendCallbacks {
   buildPromptBlocks(moduleName: string, userText: string): ContentBlock[];
   setAgentStatus?(moduleName: string, status: 'idle' | 'streaming' | 'error'): void;
   onLog?(level: 'info' | 'warn' | 'error', message: string): void;
+  /** 开始流累积（module_call 前调用，确保 accumulator 干净） */
+  startStream?(moduleName: string): void;
+  /** 结束流累积并返回 accumulator（module_call 后调用） */
+  finishStream?(moduleName: string): { reply: string; thinking: string; tools: string; timeline?: unknown[] } | undefined;
+  /** 持久化跨模块对话：load + append user/agent msg + save */
+  saveCrossContext?(moduleName: string, userMsg: ChatMsg, agentMsg: ChatMsg): Promise<void>;
 }
 
 export class McpBackendServer {
@@ -176,6 +183,7 @@ export class McpBackendServer {
         };
 
         try {
+          this.callbacks.startStream?.(targetModule);
           this.callbacks.setAgentStatus?.(targetModule, 'streaming');
           const promptBlocks = this.callbacks.buildPromptBlocks(targetModule, promptText);
           const result = await entry.connection.prompt({
@@ -195,6 +203,35 @@ export class McpBackendServer {
                 : { result: responseText || `Agent response (stopReason: ${result.stopReason})` }),
             }),
           );
+
+          // ── 持久化跨模块对话（子模块消息落盘） ──
+          const acc = this.callbacks.finishStream?.(targetModule);
+          if (acc && this.callbacks.saveCrossContext) {
+            const timeStr = new Date().toLocaleTimeString();
+            const crossMsg: ChatMsg = {
+              id: 'x' + Date.now().toString(36),
+              role: 'user',
+              content: `[跨模块请求 from ${requestingModule || '?'}]\n${taskContent}`,
+              thinking: '',
+              time: timeStr,
+              status: 'sent',
+              moduleName: targetModule,
+              sessionId: entry.sessionId,
+            };
+            const agentMsg: ChatMsg = {
+              id: 'x' + (Date.now() + 1).toString(36),
+              role: 'agent',
+              content: acc.reply || responseText,
+              thinking: acc.thinking || '',
+              timeline: acc.timeline || [],
+              time: timeStr,
+              status: 'completed',
+              moduleName: targetModule,
+            };
+            this.callbacks.saveCrossContext(targetModule, crossMsg, agentMsg).catch(err => {
+              this.log('warn', `MCP: saveCrossContext failed for [${targetModule}]: ${(err as Error).message}`);
+            });
+          }
 
           // 始终通知双方通信结果（即使 agent 未产生文本回复）
           const crossResponseText = responseText || `(无文本, stopReason: ${result.stopReason})`;
