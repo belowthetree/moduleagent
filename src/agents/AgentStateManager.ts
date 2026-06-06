@@ -181,7 +181,7 @@ export class AgentStateManager {
   async saveContext(moduleName: string, msgs: ChatMsg[]): Promise<void> {
     try {
       await this.initContextDir();
-      const json = JSON.stringify(msgs);
+      const json = JSON.stringify(msgs, null, 2);
       const finalPath = path.join(this.contextBaseDir, `${this._safeName(moduleName)}.json`);
       await fs.writeFile(finalPath, json, 'utf-8');
     } catch (err) {
