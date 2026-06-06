@@ -163,9 +163,9 @@ export class ModuleAgentCore {
       },
       startStream: (moduleName) => this.modules.startStream(moduleName),
       finishStream: (moduleName) => this.modules.finishStream(moduleName),
-      saveCrossContext: async (moduleName, userMsg, agentMsg) => {
+      saveCrossContext: async (moduleName, msgs) => {
         const existing = await this.modules.loadContext(moduleName);
-        existing.push(userMsg, agentMsg);
+        existing.push(...msgs);
         await this.modules.saveContext(moduleName, existing);
       },
     };

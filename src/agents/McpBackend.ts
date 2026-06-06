@@ -26,8 +26,8 @@ export interface McpBackendCallbacks {
   startStream?(moduleName: string): void;
   /** 结束流累积并返回 accumulator（module_call 后调用） */
   finishStream?(moduleName: string): { reply: string; thinking: string; tools: string; timeline?: unknown[] } | undefined;
-  /** 持久化跨模块对话：load + append user/agent msg + save */
-  saveCrossContext?(moduleName: string, userMsg: ChatMsg, agentMsg: ChatMsg): Promise<void>;
+  /** 持久化跨模块对话：load + append msgs + save */
+  saveCrossContext?(moduleName: string, msgs: ChatMsg[]): Promise<void>;
 }
 
 export class McpBackendServer {
@@ -208,8 +208,12 @@ export class McpBackendServer {
           const acc = this.callbacks.finishStream?.(targetModule);
           if (acc && this.callbacks.saveCrossContext) {
             const timeStr = new Date().toLocaleTimeString();
-            const crossMsg: ChatMsg = {
-              id: 'x' + Date.now().toString(36),
+            const baseId = 'x' + Date.now().toString(36);
+            const msgs: ChatMsg[] = [];
+
+            // 1. 跨模块请求（作为 user 消息）
+            msgs.push({
+              id: baseId,
               role: 'user',
               content: `[跨模块请求 from ${requestingModule || '?'}]\n${taskContent}`,
               thinking: '',
@@ -217,18 +221,36 @@ export class McpBackendServer {
               status: 'sent',
               moduleName: targetModule,
               sessionId: entry.sessionId,
-            };
-            const agentMsg: ChatMsg = {
-              id: 'x' + (Date.now() + 1).toString(36),
+            });
+
+            // 2. 时间线中的工具调用（展开为独立 system 消息）
+            for (const ev of (acc.timeline || []) as Array<{ type?: string; content?: string; toolCallId?: string }>) {
+              if (ev.type === 'tool_call' && ev.content) {
+                msgs.push({
+                  id: `tool-${targetModule}-${ev.toolCallId || Math.random().toString(36).slice(2, 6)}`,
+                  role: 'system',
+                  content: ev.content,
+                  thinking: '',
+                  time: timeStr,
+                  status: 'sent',
+                  moduleName: targetModule,
+                });
+              }
+            }
+
+            // 3. Agent 回复（thinking 和 content）
+            msgs.push({
+              id: baseId + 'r',
               role: 'agent',
               content: acc.reply || responseText,
               thinking: acc.thinking || '',
-              timeline: acc.timeline || [],
+              timeline: [],
               time: timeStr,
               status: 'completed',
               moduleName: targetModule,
-            };
-            this.callbacks.saveCrossContext(targetModule, crossMsg, agentMsg).catch(err => {
+            });
+
+            this.callbacks.saveCrossContext(targetModule, msgs).catch(err => {
               this.log('warn', `MCP: saveCrossContext failed for [${targetModule}]: ${(err as Error).message}`);
             });
           }

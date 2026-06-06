@@ -119,9 +119,9 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
         },
         startStream: (moduleName) => ctx.core.modules.startStream(moduleName),
         finishStream: (moduleName) => ctx.core.modules.finishStream(moduleName),
-        saveCrossContext: async (moduleName, userMsg, agentMsg) => {
+        saveCrossContext: async (moduleName, msgs) => {
           const existing = await ctx.core.modules.loadContext(moduleName);
-          existing.push(userMsg, agentMsg);
+          existing.push(...msgs);
           await ctx.core.modules.saveContext(moduleName, existing);
         },
         onLog(level, message) {

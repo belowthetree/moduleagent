@@ -285,14 +285,28 @@ export class ModuleAgentSubsystem {
   }
 
   async cancel(): Promise<void> {
-    const entry = this.agents.get(this.currentModule);
-    if (!entry) return;
+    // 取消所有正在 stream 的 agent（不限于 currentModule，子模块也可能在流式输出）
+    const streamingAgents: string[] = [];
+    for (const [name, status] of this._agentStatus) {
+      if (status === 'streaming') streamingAgents.push(name);
+    }
+    if (streamingAgents.length === 0) {
+      this.logger.info('cancel: no streaming agents');
+      return;
+    }
 
-    await entry.agent.cancel();
-    // stop() 已终止进程，从映射移除，下次 send 自动重启
-    this.agents.delete(this.currentModule);
-    this.deleteAgentStatus(this.currentModule);
-    this.logger.info(`cancel [${this.currentModule}] → stopped`);
+    for (const name of streamingAgents) {
+      const entry = this.agents.get(name);
+      if (!entry) continue;
+      try {
+        await entry.agent.cancel();
+        this.agents.delete(name);
+        this.deleteAgentStatus(name);
+        this.logger.info(`cancel [${name}] → stopped`);
+      } catch (err) {
+        this.logger.warn(`cancel [${name}] failed: ${(err as Error).message}`);
+      }
+    }
   }
 
   /** 清空当前模块的上下文（创建新会话 + 删除持久化消息） */
