@@ -51,6 +51,7 @@ export class AgentLoop {
     this.events = events;
     this._sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+    // 注入系统提示词
     if (this.systemPrompt) {
       this.history.push({ role: 'system', content: this.systemPrompt });
     }
@@ -139,6 +140,7 @@ export class AgentLoop {
       if (hasToolCalls) {
         toolRounds++;
 
+        // 将 assistant 消息（含 tool_calls）加入对话历史
         this.history.push({
           role: 'assistant',
           content: message.content,
@@ -161,6 +163,7 @@ export class AgentLoop {
           this.events.onToolCall(toolName, 'running', JSON.stringify(args).slice(0, 500));
           this.setPhase('tool_call' as LoopPhase, { toolName, args });
 
+          // 执行工具
           const result = await this.registry.execute(toolName, args);
 
           this.logger.info(`[AgentLoop] tool_result: ${toolName} success=${!result.metadata?.error}`);
@@ -170,6 +173,7 @@ export class AgentLoop {
             result.content.slice(0, 500),
           );
 
+          // 将工具结果加入对话历史
           this.history.push({
             role: 'tool',
             tool_call_id: tc.id,
@@ -177,10 +181,12 @@ export class AgentLoop {
           });
         }
 
+        // 继续循环，让模型处理工具结果
         this.setPhase('thinking' as LoopPhase);
         continue;
       }
 
+      // 无工具调用，返回文本响应
       const textContent = message.content || '';
       this.history.push({
         role: 'assistant',
@@ -193,9 +199,10 @@ export class AgentLoop {
       };
     }
 
+    // 达到最大工具调用轮数
     return {
       stopReason: 'max_turns',
-      content: 'Reached maximum tool call rounds.',
+      content: '已达到最大工具调用轮数。',
     };
   }
 

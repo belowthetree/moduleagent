@@ -22,7 +22,7 @@ export function loadPatternsContent(moduleDir: string | undefined): string | nul
   try {
     const content = fs.readFileSync(patternsPath, 'utf-8');
     if (content.trim()) return content;
-  } catch { /* ignore */ }
+  } catch { /* 忽略 */ }
   return null;
 }
 

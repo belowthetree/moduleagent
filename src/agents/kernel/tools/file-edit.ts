@@ -41,7 +41,7 @@ export function createFileEditTool(workspaceRoot: string): Tool {
       if (count === 0) {
         return {
           content: JSON.stringify({
-            error: `The specified text was not found in ${filePath}. Verify the exact text (including whitespace) and try again.`,
+            error: `在 ${filePath} 中未找到指定文本。请验证文本完全匹配（包括空白字符），然后重试。`,
             filePath,
           }),
           metadata: { error: true, code: 'text_not_found' },
@@ -51,7 +51,7 @@ export function createFileEditTool(workspaceRoot: string): Tool {
       if (count > 1) {
         return {
           content: JSON.stringify({
-            error: `Multiple matches (${count}) found for the specified text in ${filePath}. Provide more surrounding context to make the match unique.`,
+            error: `在 ${filePath} 中找到多个匹配（${count} 处）。请提供更多上下文以唯一标识要替换的部分。`,
             filePath,
             matchCount: count,
           }),
@@ -63,7 +63,7 @@ export function createFileEditTool(workspaceRoot: string): Tool {
       await safeWriteFile(workspaceRoot, filePath, newContent);
 
       return {
-        content: `File edited successfully: ${filePath}`,
+        content: `文件已成功编辑: ${filePath}`,
         metadata: { filePath, oldSize: content.length, newSize: newContent.length },
       };
     },

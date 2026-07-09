@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 // agents/kernel/tools/mcp-bridge.ts — MCP 工具桥接
 // 将进程内代理内核连接到现有的 MCP 服务器，提供 module_call、module_query 等工具
+// 通过 stdio 启动 MCP 服务器子进程，使用 JSON-RPC 协议通信
 // ---------------------------------------------------------------------------
 
 import { spawn, type ChildProcess } from 'child_process';
@@ -18,6 +19,7 @@ interface McpBridgeConfig {
 export function createMcpBridgeTools(config: McpBridgeConfig): Tool[] {
   const tools: Tool[] = [];
 
+  // ── module_call ──
   const moduleCallSchema: ToolInputSchema = {
     type: 'object',
     properties: {
@@ -57,7 +59,7 @@ export function createMcpBridgeTools(config: McpBridgeConfig): Tool[] {
 
       if (!result) {
         return {
-          content: JSON.stringify({ error: 'MCP bridge is not available' }),
+          content: JSON.stringify({ error: 'MCP 桥接不可用' }),
           metadata: { error: true, code: 'bridge_unavailable' },
         };
       }
@@ -69,6 +71,7 @@ export function createMcpBridgeTools(config: McpBridgeConfig): Tool[] {
     },
   });
 
+  // ── module_query ──
   const moduleQuerySchema: ToolInputSchema = {
     type: 'object',
     properties: {
@@ -100,7 +103,7 @@ export function createMcpBridgeTools(config: McpBridgeConfig): Tool[] {
 
       if (!result) {
         return {
-          content: JSON.stringify({ error: 'MCP bridge is not available' }),
+          content: JSON.stringify({ error: 'MCP 桥接不可用' }),
           metadata: { error: true, code: 'bridge_unavailable' },
         };
       }
@@ -112,6 +115,7 @@ export function createMcpBridgeTools(config: McpBridgeConfig): Tool[] {
     },
   });
 
+  // ── module_list ──
   const moduleListSchema: ToolInputSchema = {
     type: 'object',
     properties: {},
@@ -130,7 +134,7 @@ export function createMcpBridgeTools(config: McpBridgeConfig): Tool[] {
 
       if (!result) {
         return {
-          content: JSON.stringify({ error: 'MCP bridge is not available' }),
+          content: JSON.stringify({ error: 'MCP 桥接不可用' }),
           metadata: { error: true, code: 'bridge_unavailable' },
         };
       }
@@ -144,6 +148,8 @@ export function createMcpBridgeTools(config: McpBridgeConfig): Tool[] {
 
   return tools;
 }
+
+// ── MCP 通信基础设施 ──
 
 let mcpProcess: ChildProcess | null = null;
 let mcpRequestId = 0;

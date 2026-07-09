@@ -17,10 +17,12 @@ describe('PathUtils', () => {
       expect(result).toBe(path.resolve('src/module.md'));
     });
 
-    it('resolves absolute Unix paths', () => {
-      const result = normalizeCodeSourcePath('/home/user/project');
-      expect(result).toBe('/home/user/project');
-    });
+    if (process.platform !== 'win32') {
+      it('resolves absolute Unix paths', () => {
+        const result = normalizeCodeSourcePath('/home/user/project');
+        expect(result).toBe('/home/user/project');
+      });
+    }
 
     if (process.platform !== 'win32') {
       it('converts Windows drive-letter paths to /mnt/ format on non-Windows', () => {

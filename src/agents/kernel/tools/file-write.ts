@@ -33,7 +33,7 @@ export function createFileWriteTool(workspaceRoot: string): Tool {
       await safeWriteFile(workspaceRoot, filePath, content);
 
       return {
-        content: `File written successfully: ${filePath} (${content.length} characters)`,
+        content: `文件已成功写入: ${filePath} (${content.length} 个字符)`,
         metadata: { filePath, size: content.length },
       };
     },

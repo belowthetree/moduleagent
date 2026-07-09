@@ -76,7 +76,8 @@ describe('useConfigStore', () => {
       '/project/root',
       'claude',
       ['acp', '--model', 'sonnet'],
-      '/my/project/path'
+      '/my/project/path',
+      true,
     )
 
     spy.mockRestore()

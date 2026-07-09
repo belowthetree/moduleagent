@@ -84,7 +84,7 @@ export function createExecuteCommandTool(workspaceRoot: string): Tool {
                 success: false,
                 exitCode: -1,
                 output: output.slice(0, 10000),
-                error: `Command timed out after ${timeoutMs}ms`,
+                error: `命令在 ${timeoutMs}ms 后超时`,
                 timedOut: true,
               }),
               metadata: { exitCode: -1, success: false, timedOut: true },

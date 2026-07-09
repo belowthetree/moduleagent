@@ -21,8 +21,8 @@ export function loadPromptTemplates(configDir: string): { mainPrompt: string; su
   let mainPrompt = '';
   let subPrompt = '';
 
-  try { mainPrompt = fs.readFileSync(mainPath, 'utf-8'); } catch { /* ignore */ }
-  try { subPrompt = fs.readFileSync(subPath, 'utf-8'); } catch { /* ignore */ }
+  try { mainPrompt = fs.readFileSync(mainPath, 'utf-8'); } catch { /* 忽略 */ }
+  try { subPrompt = fs.readFileSync(subPath, 'utf-8'); } catch { /* 忽略 */ }
 
   return { mainPrompt, subPrompt };
 }
@@ -39,15 +39,15 @@ export function buildSystemPrompt(
   }
 
   if (ctx.moduleBody) {
-    parts.push(`# Module: ${ctx.moduleName}\n\n${ctx.moduleBody}`);
+    parts.push(`# 模块: ${ctx.moduleName}\n\n${ctx.moduleBody}`);
   }
 
   if (ctx.patternsContent) {
-    parts.push(`# Module Modification Patterns\n\n${ctx.patternsContent}`);
+    parts.push(`# 模块修改规范\n\n${ctx.patternsContent}`);
   }
 
   if (ctx.experienceContent) {
-    parts.push(`# Recent Experience\n\n${ctx.experienceContent}`);
+    parts.push(`# 近期经验\n\n${ctx.experienceContent}`);
   }
 
   return parts.join('\n\n---\n\n');

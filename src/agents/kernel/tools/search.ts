@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
 // agents/kernel/tools/search.ts — 文件内容搜索工具
-// 在工作区内进行正则/glob 搜索
+// 在工作区内进行正则搜索
 // ---------------------------------------------------------------------------
 
 import fs from 'fs-extra';
 import path from 'path';
-import { resolveSandboxPath, isPathWithinWorkspace } from '../sandbox.js';
+import { resolveSandboxPath } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 
 export function createSearchTool(workspaceRoot: string): Tool {
@@ -54,7 +54,7 @@ export function createSearchTool(workspaceRoot: string): Tool {
         regex = new RegExp(pattern, caseSensitive ? 'g' : 'gi');
       } catch {
         return {
-          content: JSON.stringify({ error: `Invalid regex pattern: ${pattern}` }),
+          content: JSON.stringify({ error: `无效的正则表达式: ${pattern}` }),
           metadata: { error: true, code: 'invalid_pattern' },
         };
       }

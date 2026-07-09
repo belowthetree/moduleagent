@@ -10,7 +10,7 @@ export class ToolRegistry {
 
   register(tool: Tool): void {
     if (this.tools.has(tool.name)) {
-      throw new Error(`Tool "${tool.name}" is already registered`);
+      throw new Error(`工具 "${tool.name}" 已被注册`);
     }
     this.tools.set(tool.name, tool);
   }
@@ -48,7 +48,7 @@ export class ToolRegistry {
     const tool = this.tools.get(name);
     if (!tool) {
       return {
-        content: JSON.stringify({ error: `Unknown tool: ${name}` }),
+        content: JSON.stringify({ error: `未知工具: ${name}` }),
         metadata: { error: true, code: 'unknown_tool' },
       };
     }
@@ -58,7 +58,7 @@ export class ToolRegistry {
       return result;
     } catch (err) {
       return {
-        content: JSON.stringify({ error: `Tool execution failed: ${(err as Error).message}` }),
+        content: JSON.stringify({ error: `工具执行失败: ${(err as Error).message}` }),
         metadata: { error: true, code: 'execution_error' },
       };
     }

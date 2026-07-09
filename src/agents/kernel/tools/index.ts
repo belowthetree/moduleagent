@@ -38,8 +38,10 @@ export function createKernelToolRegistry(
 ): ToolRegistry {
   const registry = new ToolRegistry();
 
+  // 注册内置工具
   registry.registerAll(createBuiltinTools(workspaceRoot));
 
+  // 注册 MCP 桥接工具（模块间通信）
   if (mcpOptions) {
     const mcpTools = createMcpBridgeTools(mcpOptions);
     registry.registerAll(mcpTools);

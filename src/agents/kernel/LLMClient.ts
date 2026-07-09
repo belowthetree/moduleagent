@@ -56,13 +56,13 @@ export class LLMClient {
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
-      throw new Error(`LLM API error (${resp.status}): ${errText.slice(0, 500)}`);
+      throw new Error(`LLM API 错误 (${resp.status}): ${errText.slice(0, 500)}`);
     }
 
     const json = (await resp.json()) as ChatResponse;
 
     if (!json.choices || json.choices.length === 0) {
-      throw new Error('LLM API returned empty choices');
+      throw new Error('LLM API 返回空结果');
     }
 
     return json;
@@ -96,11 +96,11 @@ export class LLMClient {
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
-      throw new Error(`LLM API error (${resp.status}): ${errText.slice(0, 500)}`);
+      throw new Error(`LLM API 错误 (${resp.status}): ${errText.slice(0, 500)}`);
     }
 
     if (!resp.body) {
-      throw new Error('LLM API streaming response has no body');
+      throw new Error('LLM API 流式响应体为空');
     }
 
     const reader = resp.body.getReader();

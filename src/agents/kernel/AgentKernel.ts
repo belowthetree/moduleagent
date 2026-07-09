@@ -61,11 +61,12 @@ export class AgentKernel {
 
     this.client = new LLMClient(options.config);
 
+    // 注册内置工具 + 可选 MCP 桥接
     this.registry = createKernelToolRegistry(options.workspaceRoot, options.mcpBridge);
 
     const loopEvents: LoopEvents = {
       onPhaseChange: (phase, data) => {
-        this.logger.info(`[Kernel:${this.name}] phase: ${phase}`);
+        this.logger.info(`[Kernel:${this.name}] 阶段: ${phase}`);
         if (phase === 'tool_call' && data) {
           const d = data as { toolName?: string; args?: unknown };
           this._emit('tool_call', {
@@ -96,7 +97,7 @@ export class AgentKernel {
         }
       },
       onError: (error) => {
-        this.logger.error(`[Kernel:${this.name}] error: ${error.message}`);
+        this.logger.error(`[Kernel:${this.name}] 错误: ${error.message}`);
       },
     };
 
@@ -128,9 +129,9 @@ export class AgentKernel {
   }
 
   async send(blocks: PromptBlock[]): Promise<KernelSendResult> {
-    this.logger.info(`[Kernel:${this.name}] send: ${blocks.length} blocks`);
+    this.logger.info(`[Kernel:${this.name}] 发送: ${blocks.length} 个块`);
     const result = await this.loop.send(blocks);
-    this.logger.info(`[Kernel:${this.name}] result: stopReason=${result.stopReason}, content=${result.content.slice(0, 100)}`);
+    this.logger.info(`[Kernel:${this.name}] 结果: stopReason=${result.stopReason}`);
     return result;
   }
 

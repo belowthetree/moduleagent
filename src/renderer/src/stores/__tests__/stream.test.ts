@@ -37,11 +37,13 @@ describe('stream composable (simplified IPC flow)', () => {
 
     await store.sendMessage('mod2', 'Will fail', '/cwd')
 
-    // User message should still be in context
+    // User message and agent placeholder should still be in context
     const msgs = store.getMsgs('mod2')
-    expect(msgs).toHaveLength(1)
+    expect(msgs).toHaveLength(2)
     expect(msgs[0]!.role).toBe('user')
     expect(msgs[0]!.content).toBe('Will fail')
+    expect(msgs[1]!.role).toBe('agent')
+    expect(msgs[1]!.status).toBe('error')
   })
 
   it('cancelAgent: updates executing message to interrupted', async () => {

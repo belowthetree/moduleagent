@@ -56,7 +56,7 @@ export function createGitOperationsTool(workspaceRoot: string): Tool {
       if (!ALLOWED_OPERATIONS.includes(operation)) {
         return {
           content: JSON.stringify({
-            error: `Unsupported git operation: ${operation}. Allowed: ${ALLOWED_OPERATIONS.join(', ')}`,
+            error: `不支持的 git 操作: ${operation}。允许的操作：${ALLOWED_OPERATIONS.join(', ')}`,
           }),
           metadata: { error: true, code: 'invalid_operation' },
         };

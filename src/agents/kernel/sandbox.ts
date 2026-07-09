@@ -12,7 +12,7 @@ export function resolveSandboxPath(workspaceRoot: string, filePath: string): str
   const root = workspaceRoot.replace(/\\/g, '/');
 
   if (!normalized.startsWith(root + '/') && normalized !== root) {
-    throw new Error(`Access denied: "${filePath}" is outside workspace root "${workspaceRoot}"`);
+    throw new Error(`访问被拒绝："${filePath}" 不在工作区根目录 "${workspaceRoot}" 内`);
   }
 
   return resolved;
@@ -38,12 +38,12 @@ export async function safeReadFile(
   const resolved = resolveSandboxPath(workspaceRoot, filePath);
 
   if (!(await fs.pathExists(resolved))) {
-    throw new Error(`File not found: ${filePath}`);
+    throw new Error(`文件未找到: ${filePath}`);
   }
 
   const stat = await fs.stat(resolved);
   if (!stat.isFile()) {
-    throw new Error(`Not a file: ${filePath}`);
+    throw new Error(`不是文件: ${filePath}`);
   }
 
   const content = await fs.readFile(resolved, 'utf-8');

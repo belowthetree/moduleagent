@@ -126,12 +126,10 @@ describe('useAgentStore', () => {
 
     const msgs = store.getMsgs('target-module')
     expect(msgs).toHaveLength(1)
-    expect(msgs[0]!.role).toBe('cross')
+    expect(msgs[0]!.role).toBe('agent')
     expect(msgs[0]!.moduleName).toBe('target-module')
-    expect(msgs[0]!.crossModule).toBe('other-module')
-    expect(msgs[0]!.crossDirection).toBe('received')
-    expect(msgs[0]!.crossPhase).toBe('request')
-    expect(msgs[0]!.content).toBe('Cross-context message from another module')
+    expect(msgs[0]!.status).toBe('executing')
+    expect(msgs[0]!.content).toBe('')
   })
 
   it('restoreContext: loads from IPC when contextMap is empty', async () => {
