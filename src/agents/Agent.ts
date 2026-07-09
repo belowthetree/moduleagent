@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 // agents/Agent.ts — 统一的 Agent 类
-// 封装 agent 子进程完整生命周期：启动、session 管理、发送、取消、停止、清空上下文
+// 封装 agent 完整生命周期：启动、session 管理、发送、取消、停止、清空上下文
+// 支持两种模式：ACP 子进程（默认）和 kernel 进程内代理
 // 内置状态机 + 对话队列：busy 时自动排队，idle 后自动消费
 // 供 ModuleAgentSubsystem、RoleAgentManager、WorkflowManager 统一使用
 // ---------------------------------------------------------------------------
@@ -15,6 +16,7 @@ import type {
 } from '@agentclientprotocol/sdk';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
+import { AgentKernel, type KernelNotification } from './kernel/index.js';
 
 // ---------------------------------------------------------------------------
 // AgentState — Agent 运行状态枚举
@@ -79,6 +81,15 @@ export interface AgentStartOptions {
 
   /** 测试注入：替换 spawn 连接为内存 faux connection */
   createConnection?: ConnectionFactory;
+
+  /** kernel 模式：使用进程内代理内核替代 ACP 子进程 */
+  useKernel?: boolean;
+
+  /** kernel 模式：系统提示词 */
+  systemPrompt?: string;
+
+  /** kernel 模式：MCP 模块名称 */
+  kernelModuleName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +111,9 @@ export class Agent {
   readonly config: AgentConfig;
   readonly cwd: string;
 
-  private _launched: LaunchedAgent;
+  private _launched: LaunchedAgent | null = null;
+  private _kernel: AgentKernel | null = null;
+  private _useKernel: boolean;
   private _sessionId: string;
   private _logger: Logger;
   private _capabilities: AgentCapabilities | undefined;
@@ -121,11 +134,11 @@ export class Agent {
     name: string,
     config: AgentConfig,
     cwd: string,
-    launched: LaunchedAgent,
     sessionId: string,
     sessionResult: any,
     logger: Logger,
     buildMcpServers: (cwd: string) => McpServerStdio[],
+    useKernel: boolean,
     onStateChange?: (newState: AgentState, oldState: AgentState) => void,
     onQueue?: (queueLength: number) => void,
     onSystemMessage?: (text: string, queueLength: number) => void,
@@ -133,12 +146,11 @@ export class Agent {
     this.name = name;
     this.config = config;
     this.cwd = cwd;
-    this._launched = launched;
     this._sessionId = sessionId;
     this._sessionResult = sessionResult;
     this._logger = logger;
-    this._capabilities = launched.agentCapabilities;
     this._buildMcpServers = buildMcpServers;
+    this._useKernel = useKernel;
     this._onStateChange = onStateChange;
     this._onQueue = onQueue;
     this._onSystemMessage = onSystemMessage;
@@ -147,6 +159,9 @@ export class Agent {
   // -- 访问器 --
 
   get sessionId(): string {
+    if (this._useKernel && this._kernel) {
+      return this._kernel.sessionId;
+    }
     return this._sessionId;
   }
 
@@ -171,12 +186,22 @@ export class Agent {
 
   /** 底层的 ACP 连接（供子系统需要直接操作连接时使用） */
   get connection(): ClientSideConnection {
-    return this._launched.connection;
+    return this._launched!.connection;
   }
 
   /** 底层的 LaunchedAgent（供 McpBackend 等需要拦截 onSessionUpdate 时使用） */
   get launched(): LaunchedAgent {
-    return this._launched;
+    return this._launched!;
+  }
+
+  /** kernel 实例（仅在 kernel 模式下可用） */
+  get kernel(): AgentKernel | null {
+    return this._kernel;
+  }
+
+  /** 是否使用 kernel 模式 */
+  get useKernel(): boolean {
+    return this._useKernel;
   }
 
   // -- 工厂：启动 agent 子进程 + 创建 ACP 会话 --
@@ -184,6 +209,11 @@ export class Agent {
   static async start(options: AgentStartOptions): Promise<Agent> {
     const log = options.logger || defaultLogger;
     const { name, config, cwd, launcher, buildMcpServers, onNotification, onStateChange } = options;
+    const useKernel = options.useKernel ?? config.kernel ?? false;
+
+    if (useKernel) {
+      return Agent._startKernel(options);
+    }
 
     // Agent 实例的间接引用（用于 onPermissionRejected 回调，在 Agent 构造后赋值）
     let agentRef: Agent | null = null;
@@ -193,7 +223,6 @@ export class Agent {
       subModuleDirs: options.subModuleDirs,
       createConnection: options.createConnection,
       onPermissionRejected: (toolName, reason) => {
-        // 在 ACP 回调栈之外通过 queueMicrotask 安全入队
         const agent = agentRef;
         if (agent) {
           queueMicrotask(() => agent._enqueueSystemMessage(
@@ -248,14 +277,13 @@ export class Agent {
     options.sessionResume?.save(sessionId);
 
     // 5. 构建 Agent 实例（初始状态 Starting）
-    const agent = new Agent(name, config, cwd, launched, sessionId, sessionResult, log, buildMcpServers, onStateChange, options.onQueue, options.onSystemMessage);
-    agentRef = agent; // 激活 onPermissionRejected 回调
+    const agent = new Agent(name, config, cwd, sessionId, sessionResult, log, buildMcpServers, false, onStateChange, options.onQueue, options.onSystemMessage);
+    agent._launched = launched;
+    agent._capabilities = launched.agentCapabilities;
+    agentRef = agent;
 
     // 6. 连接 session 更新 → 内部状态机 + 外部回调
-    //    使用 agentRef 间接引用，因为 launched.onSessionUpdate 在 Agent 构造后设置
-    //    但 newSession 不会产生 stream 通知，所以安全
     launched.onSessionUpdate = (_agentName, _sid, notification) => {
-      // try-catch 隔离：防止内部异常传播到 ACP SDK 导致流损坏
       try { agent._handleNotification(notification); } catch (err) {
         log.warn(`[${name}] _handleNotification error: ${(err as Error).message}`);
       }
@@ -267,7 +295,53 @@ export class Agent {
     // 7. 启动完成 → idle
     agent._transition(AgentState.Idle);
 
-    log.info(`Agent [${name}] ready, sessionId=${sessionId}`);
+    log.info(`Agent [${name}] ready (ACP mode), sessionId=${sessionId}`);
+    return agent;
+  }
+
+  private static async _startKernel(options: AgentStartOptions): Promise<Agent> {
+    const log = options.logger || defaultLogger;
+    const { name, config, cwd, launcher, onNotification, onStateChange, buildMcpServers } = options;
+
+    const systemPrompt = options.systemPrompt || '';
+
+    const kernel = await launcher.launchKernel(config, name, cwd, systemPrompt, log, {
+      moduleName: options.kernelModuleName || name,
+    });
+
+    const sessionId = kernel.sessionId;
+
+    // 创建虚拟 sessionResult 以兼容现有代码
+    const sessionResult: any = {
+      sessionId,
+      configOptions: {},
+    };
+
+    const agent = new Agent(name, config, cwd, sessionId, sessionResult, log, buildMcpServers, true, onStateChange, options.onQueue, options.onSystemMessage);
+    agent._kernel = kernel;
+    agent._capabilities = undefined;
+
+    // 连接 kernel 通知 → 内部状态机 + 外部回调
+    kernel.onNotification((notif: KernelNotification) => {
+      const notification = {
+        sessionId: notif.sessionId,
+        update: notif.update,
+      } as SessionNotification;
+
+      try { agent._handleKernelNotification(notif); } catch (err) {
+        log.warn(`[${name}] kernel _handleNotification error: ${(err as Error).message}`);
+      }
+      try { onNotification(notif.sessionId, notification); } catch (err) {
+        log.warn(`[${name}] kernel onNotification error: ${(err as Error).message}`);
+      }
+    });
+
+    // 使用 buildMcpServers 来初始化 MCP 桥接（通过 kernel 的工具注册机制）
+    // 注意：MCP 工具的详细桥接由 kernel/tools/mcp-bridge.ts 处理
+
+    agent._transition(AgentState.Idle);
+
+    log.info(`Agent [${name}] ready (kernel mode), sessionId=${sessionId}, model=${kernel.getModel()}`);
     return agent;
   }
 
@@ -283,7 +357,6 @@ export class Agent {
       throw new Error(`Agent [${this.name}] is stopped`);
     }
 
-    // 如果当前 busy，排队等待
     if (this._state !== AgentState.Idle && this._state !== AgentState.Error) {
       return new Promise<void>((resolve, reject) => {
         this._queue.push({ blocks, resolve, reject });
@@ -295,44 +368,37 @@ export class Agent {
       });
     }
 
-    // idle / error → 立即处理
     return this._processMessage(blocks);
   }
 
-  /**
-   * 取消当前流式响应。
-   *
-   * 根据 session capabilities 选择取消策略：
-   * - 若 agent 声明了 sessionCapabilities（符合 ACP 规范的 agent），
-   *   使用 `session/cancel` 通知优雅取消，返回 `'cancelled'`；
-   * - 若 agent 未声明 sessionCapabilities（旧版 / 非规范 agent），
-   *   或 cancel 通知失败，回退为 force stop（杀进程），返回 `'stopped'`。
-   *
-   * 调用者可根据返回值决定后续处理：
-   * - `'cancelled'`：agent 回到 idle，可继续发送；
-   * - `'stopped'`：进程已终止，需重新启动。
-   */
-  /**
-   * 取消当前流式响应。
-   *
-   * session/cancel 是 ACP 基线通知（fire-and-forget），但部分 agent 不响应。
-   * capabilities 中无字段可判断 cancel 支持与否，故统一使用 stop() 杀进程。
-   * Agent 停止后下次 sendMessage 会自动重启，会话通过 sessionResume 恢复。
-   */
   async cancel(): Promise<'cancelled' | 'stopped'> {
+    if (this._useKernel && this._kernel) {
+      this._kernel.cancel();
+      this._logger.info(`Agent [${this.name}] kernel cancelled`);
+      return 'cancelled';
+    }
+
     this._logger.info(`Agent [${this.name}] stopping process (cancel not supported reliably via ACP)`);
     this.stop();
     return 'stopped';
   }
 
-  /** 停止 agent 子进程，清空队列并拒绝所有等待消息 */
+  /** 停止 agent，清空队列并拒绝所有等待消息 */
   stop(): void {
     this._transition(AgentState.Stopped);
-    try {
-      this._launched.process.kill();
-      this._logger.info(`Agent [${this.name}] stopped`);
-    } catch {
-      // 忽略
+
+    if (this._useKernel && this._kernel) {
+      this._kernel.stop();
+      this._logger.info(`Agent [${this.name}] kernel stopped`);
+    }
+
+    if (this._launched) {
+      try {
+        this._launched.process.kill();
+        this._logger.info(`Agent [${this.name}] ACP process stopped`);
+      } catch {
+        // 忽略
+      }
     }
 
     // 拒绝所有队列中的消息
@@ -345,13 +411,26 @@ export class Agent {
   /**
    * 清空上下文：创建新 session（不杀进程）。
    * 返回新的 sessionId。
-   * 如果 newSession 失败会抛出异常，调用者应处理回退逻辑。
    */
   async clearContext(mcpServers?: McpServerStdio[]): Promise<string> {
     this._transition(AgentState.Starting);
+
+    if (this._useKernel && this._kernel) {
+      try {
+        this._kernel.clearContext(true);
+        this._sessionId = this._kernel.sessionId;
+        this._logger.info(`Agent [${this.name}] kernel context cleared: ${this._sessionId}`);
+        this._transition(AgentState.Idle);
+        return this._sessionId;
+      } catch (err) {
+        this._transition(AgentState.Error);
+        throw err;
+      }
+    }
+
     try {
       const servers = mcpServers || this._buildMcpServers(this.cwd);
-      const result = await this._launched.connection.newSession({
+      const result = await this._launched!.connection.newSession({
         cwd: this.cwd,
         mcpServers: servers,
       });
@@ -368,7 +447,11 @@ export class Agent {
 
   /** 设置 session 配置选项（mode、model 等） */
   async setConfigOption(configId: string, value: string): Promise<void> {
-    await this._launched.connection.setSessionConfigOption({
+    if (this._useKernel) {
+      this._logger.info(`Agent [${this.name}] kernel mode: config ${configId}=${value} (ignored)`);
+      return;
+    }
+    await this._launched!.connection.setSessionConfigOption({
       sessionId: this._sessionId,
       configId,
       value,
@@ -394,6 +477,25 @@ export class Agent {
     }
   }
 
+  /** 处理 kernel 通知，更新状态机 */
+  private _handleKernelNotification(notification: KernelNotification): void {
+    const update = notification.update.sessionUpdate;
+
+    if (update === 'tool_call') {
+      const status = notification.update.status as string | undefined;
+      if (status === 'running') {
+        this._transition(AgentState.UsingTool);
+      }
+    } else if (update === 'tool_call_update') {
+      const status = notification.update.status as string | undefined;
+      if (status === 'completed' || status === 'error') {
+        if (this._state === AgentState.UsingTool) {
+          this._transition(AgentState.Streaming);
+        }
+      }
+    }
+  }
+
   /** 根据 ACP 通知更新运行状态 */
   private _handleNotification(notification: SessionNotification): void {
     const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
@@ -407,7 +509,6 @@ export class Agent {
     } else if (update === 'tool_call_update') {
       const tc = data as { status?: string };
       if (tc.status === 'completed' || tc.status === 'error') {
-        // 工具执行完毕，回到 streaming（模型可能继续生成）
         if (this._state === AgentState.UsingTool) {
           this._transition(AgentState.Streaming);
         }
@@ -417,9 +518,6 @@ export class Agent {
 
   /**
    * 将文本作为系统消息直接推入内部队列（不经过 send()）。
-   * 这是为 ACP 回调上下文（onSessionUpdate 内）设计的低开销路径，
-   * 避免在 SDK 回调中分配 Promise 或触发状态检查影响流式传输。
-   * 队列会在 agent 恢复 idle 后由 _drainQueue 自动消费。
    */
   private _enqueueSystemMessage(text: string): void {
     const blocks: ContentBlock[] = [{ type: 'text', text }];
@@ -439,8 +537,6 @@ export class Agent {
     this._logger.info(
       `[${this.name}] system message queued (state=${this._state}, queue=${this._queue.length})`,
     );
-    // 延迟到下一个微任务触发回调，避免在 ACP onSessionUpdate 回调栈中
-    // 执行可能触发 TUI 重渲染的同步操作（syncMessages 等），防止流损坏
     const cb = this._onSystemMessage;
     if (cb) {
       queueMicrotask(() => {
@@ -456,8 +552,20 @@ export class Agent {
   /** 处理单条消息（发送 → 等待完成 → 恢复 idle） */
   private async _processMessage(blocks: ContentBlock[]): Promise<void> {
     this._transition(AgentState.Streaming);
+
+    if (this._useKernel && this._kernel) {
+      try {
+        await this._kernel.send(blocks as any);
+        this._transition(AgentState.Idle);
+      } catch (err) {
+        this._transition(AgentState.Error);
+        throw err;
+      }
+      return;
+    }
+
     try {
-      await this._launched.connection.prompt({
+      await this._launched!.connection.prompt({
         sessionId: this._sessionId,
         prompt: blocks,
       });
@@ -484,7 +592,6 @@ export class Agent {
           item.resolve();
         } catch (err) {
           item.reject(err as Error);
-          // 出错后尝试继续消费（如果状态允许）
         }
       }
     } finally {

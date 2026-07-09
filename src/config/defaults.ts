@@ -10,12 +10,22 @@ export interface ProjectConfig {
       args?: string[];
       model?: string;
       defaultMode?: string;
+      kernel?: boolean;
+      apiKey?: string;
+      baseUrl?: string;
+      fastModel?: string;
+      maxTokens?: number;
     };
     modules?: Record<string, {
       command: string;
       args?: string[];
       model?: string;
       defaultMode?: string;
+      kernel?: boolean;
+      apiKey?: string;
+      baseUrl?: string;
+      fastModel?: string;
+      maxTokens?: number;
     }>;
   };
   exclude: string[];

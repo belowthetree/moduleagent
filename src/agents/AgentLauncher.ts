@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 // AgentLauncher.ts — Agent 子进程的统一启动器，负责 spawn 进程、建立 ACP 连接
 // 注册文件系统/终端客户端处理器，是所有 Agent 的启动入口
+// 同时提供 kernel 模式启动：使用进程内 AgentKernel 替代外部 ACP 子进程
 // ---------------------------------------------------------------------------
 
 import path from 'path';
@@ -11,6 +12,7 @@ import type { ClientSideConnection, Client, SessionNotification, AgentCapabiliti
 import type { ChildProcess } from 'child_process';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
+import { AgentKernel, type KernelOptions, type KernelNotification } from './kernel/index.js';
 
 export interface AgentConfig {
   command: string;
@@ -18,6 +20,11 @@ export interface AgentConfig {
   env?: Record<string, string>;
   model?: string;
   defaultMode?: string;
+  kernel?: boolean;
+  apiKey?: string;
+  baseUrl?: string;
+  maxTokens?: number;
+  fastModel?: string;
 }
 
 /** 连接工厂函数签名 — 允许测试注入 FauxAcpAgent。
@@ -46,6 +53,65 @@ export interface LaunchedAgent {
 }
 
 export class AgentLauncher {
+  async launchKernel(
+    config: AgentConfig,
+    name: string,
+    cwd: string,
+    systemPrompt: string,
+    logger?: Logger,
+    kernelOptions?: {
+      mcpGraphFile?: string;
+      mcpBackendUrl?: string;
+      moduleName?: string;
+      maxToolRounds?: number;
+    },
+  ): Promise<AgentKernel> {
+    const log = logger || defaultLogger;
+    const normalizedCwd = cwd.replace(/\\/g, '/');
+
+    const apiKey = config.apiKey
+      || process.env['ANTHROPIC_API_KEY']
+      || process.env['OPENAI_API_KEY']
+      || process.env['DASHSCOPE_API_KEY']
+      || process.env['DEEPSEEK_API_KEY']
+      || '';
+
+    const baseUrl = config.baseUrl
+      || process.env['API_BASE_URL']
+      || 'https://api.anthropic.com';
+
+    const model = config.model || 'claude-3-5-sonnet-20241022';
+
+    const kernelConfig: KernelOptions = {
+      name,
+      config: {
+        apiKey,
+        baseUrl,
+        model,
+        maxTokens: config.maxTokens ?? 4096,
+        temperature: 0.7,
+        fastModel: config.fastModel,
+      },
+      workspaceRoot: normalizedCwd,
+      systemPrompt,
+      maxToolRounds: kernelOptions?.maxToolRounds ?? 15,
+      logger: log,
+    };
+
+    if (kernelOptions?.moduleName) {
+      kernelConfig.mcpBridge = {
+        workspaceRoot: normalizedCwd,
+        moduleName: kernelOptions.moduleName,
+        graphFilePath: kernelOptions.mcpGraphFile,
+        backendUrl: kernelOptions.mcpBackendUrl,
+      };
+    }
+
+    const kernel = new AgentKernel(kernelConfig);
+    log.info(`[Kernel:${name}] initialized with model=${model}, baseUrl=${baseUrl}`);
+    return kernel;
+  }
+
   async launch(config: AgentConfig, name: string, cwd: string, logger?: Logger, options?: LaunchOptions): Promise<LaunchedAgent> {
     const log = logger || defaultLogger;
     cwd = cwd.replace(/\\/g, '/');

@@ -13,6 +13,10 @@ export const AgentConfigSchema = z.object({
   fastModel: z.string().optional(),
   normalModel: z.string().optional(),
   autoSwitchModel: z.boolean().optional(),
+  kernel: z.boolean().optional(),
+  apiKey: z.string().optional(),
+  baseUrl: z.string().optional(),
+  maxTokens: z.number().int().positive().optional(),
 });
 
 // 单条项目配置（无名称）
