@@ -3,8 +3,8 @@
 // 配置 LLM 提供商（方向键选择）、API 密钥、模型和项目路径
 // ---------------------------------------------------------------------------
 
-import { createSignal, createMemo, For, onMount, onCleanup } from "solid-js";
-import { useRenderer } from "@opentui/solid";
+import { createSignal, createMemo } from "solid-js";
+import { useRenderer, useKeyboard } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
 import { tuiState } from "../state.js";
 import {
@@ -17,11 +17,11 @@ interface SetupWizardProps {
 }
 
 const PROVIDERS = [
-  { value: 'anthropic', label: 'Anthropic (Claude)' },
-  { value: 'openai', label: 'OpenAI (GPT)' },
-  { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'google', label: 'Google (Gemini)' },
-  { value: 'custom', label: 'Custom (OpenAI-compatible)' },
+  { value: 'anthropic', label: 'Anthropic (Claude)', defaultModel: 'claude-sonnet-4-20250514' },
+  { value: 'openai', label: 'OpenAI (GPT)', defaultModel: 'gpt-4o' },
+  { value: 'deepseek', label: 'DeepSeek', defaultModel: 'deepseek-chat' },
+  { value: 'google', label: 'Google (Gemini)', defaultModel: 'gemini-2.0-flash' },
+  { value: 'custom', label: 'Custom (OpenAI-compatible)', defaultModel: '' },
 ];
 
 export default function SetupWizard(props: SetupWizardProps) {
@@ -43,67 +43,60 @@ export default function SetupWizard(props: SetupWizardProps) {
     Math.max(0, PROVIDERS.findIndex(p => p.value === (existing.provider || fallbackProvider))),
   );
 
-  // ── 使用 renderer.keyInput 直接监听键盘（绕过 focus 系统）───
-  let keyHandler: ((key: KeyEvent) => void) | null = null;
+  useKeyboard((key: KeyEvent) => {
+    const step = tuiState.setupStep();
 
-  onMount(() => {
-    keyHandler = (key: KeyEvent) => {
-      const step = tuiState.setupStep();
+    if (step === 0) {
+      const max = PROVIDERS.length - 1;
+      if (key.name === 'up' || key.name === 'k') {
+        setProviderSelIdx(prev => prev > 0 ? prev - 1 : max);
+        renderer.requestRender();
+        return;
+      }
+      if (key.name === 'down' || key.name === 'j') {
+        setProviderSelIdx(prev => prev < max ? prev + 1 : 0);
+        renderer.requestRender();
+        return;
+      }
+      if (key.name === 'return' || key.name === 'enter' || key.name === ' ') {
+        const idx = providerSelIdx();
+        setProvider(PROVIDERS[idx]?.value || fallbackProvider);
+        // 自动填充该提供商的默认模型（仅在用户未手动输入模型时）
+        if (!model()) {
+          setModel(PROVIDERS[idx]?.defaultModel || '');
+        }
+        saveStepData(0);
+        tuiState.setSetupStep(1);
+        return;
+      }
+      if (key.name === 'escape') {
+        props.onComplete();
+        return;
+      }
+    }
 
-      if (step === 0) {
-        const max = PROVIDERS.length - 1;
-        if (key.name === 'up' || key.name === 'k') {
-          setProviderSelIdx(prev => prev > 0 ? prev - 1 : max);
-          return;
-        }
-        if (key.name === 'down' || key.name === 'j') {
-          setProviderSelIdx(prev => prev < max ? prev + 1 : 0);
-          return;
-        }
-        if (key.name === 'return' || key.name === 'enter' || key.name === ' ') {
-          const idx = providerSelIdx();
-          setProvider(PROVIDERS[idx]?.value || fallbackProvider);
-          saveStepData(0);
-          tuiState.setSetupStep(1);
-          return;
-        }
-        if (key.name === 'escape') {
-          props.onComplete();
-          return;
+    if (step >= 1 && step <= 3) {
+      if (key.name === "return" || key.name === "enter") {
+        saveStepData(step);
+        tuiState.setSetupStep(step + 1);
+      } else if (key.name === "escape") {
+        saveStepData(step);
+        if (step === 1) {
+          initProviderIdx();
+          tuiState.setSetupStep(0);
+        } else {
+          tuiState.setSetupStep(step - 1);
         }
       }
+    }
 
-      if (step >= 1 && step <= 3) {
-        if (key.name === "return" || key.name === "enter") {
-          saveStepData(step);
-          tuiState.setSetupStep(step + 1);
-        } else if (key.name === "escape") {
-          saveStepData(step);
-          if (step === 1) {
-            initProviderIdx();
-            tuiState.setSetupStep(0);
-          } else {
-            tuiState.setSetupStep(step - 1);
-          }
-        }
+    if (step === 4) {
+      if (key.name === "return" || key.name === "enter") {
+        handleComplete();
+      } else if (key.name === "escape") {
+        saveStepData(4);
+        tuiState.setSetupStep(3);
       }
-
-      if (step === 4) {
-        if (key.name === "return" || key.name === "enter") {
-          handleComplete();
-        } else if (key.name === "escape") {
-          saveStepData(4);
-          tuiState.setSetupStep(3);
-        }
-      }
-    };
-
-    renderer.keyInput.on('keypress', keyHandler);
-  });
-
-  onCleanup(() => {
-    if (keyHandler) {
-      renderer.keyInput.removeListener('keypress', keyHandler);
     }
   });
 
@@ -159,28 +152,27 @@ export default function SetupWizard(props: SetupWizardProps) {
   const summaryText = createMemo((): string => {
     const data = tuiState.setupData();
     const lines: string[] = [];
-
     const pVal = data.provider || fallbackProvider;
     const pLabel = PROVIDERS.find(p => p.value === pVal)?.label || pVal;
     lines.push(`Provider: ${pLabel} (${pVal})`);
     lines.push(`Model: ${data.model || fallbackModel || '(default)'}`);
     lines.push(`API Key: ${data.apiKey ? '***configured***' : '(not set)'}`);
     lines.push(`项目目录: ${data.projectPath || fallbackProjectPath}`);
-
     return lines.join("\n");
   });
 
   return (
     <box flexDirection="column" padding={1} gap={1}>
-      {/* ── Step 0: Provider selector ─────────────────── */}
       {step() === 0 && (
         <box flexDirection="column">
           <text>LLM 提供商 (↑↓ 选择, 空格/回车 确认)</text>
           <text dim>当前: {PROVIDERS.find(p => p.value === (existing.provider || fallbackProvider))?.label || fallbackProvider}</text>
+
           <box flexDirection="column" padding={0}>
-            <For each={PROVIDERS}>
-              {(item, i) => {
-                const isSel = i() === providerSelIdx();
+            {(() => {
+              const selIdx = providerSelIdx();
+              return PROVIDERS.map((item, i) => {
+                const isSel = i === selIdx;
                 return (
                   <box
                     flexDirection="row"
@@ -196,28 +188,30 @@ export default function SetupWizard(props: SetupWizardProps) {
                     <text dim>  ({item.value})</text>
                   </box>
                 );
-              }}
-            </For>
+              });
+            })()}
           </box>
         </box>
       )}
 
-      {/* ── Step 1: Model ────────────────────────────── */}
       {step() === 1 && (
         <>
           <text>模型</text>
           <text dim>当前: {fallbackModel || '(未设置)'}</text>
+          <text dim>{(() => {
+            const sel = PROVIDERS[providerSelIdx()];
+            return sel ? `${sel.label} 默认: ${sel.defaultModel || '(无)'}` : '';
+          })()}</text>
           <input
             focused={true}
             value={model()}
-            placeholder={fallbackModel || 'claude-sonnet-4-20250514'}
+            placeholder={fallbackModel || PROVIDERS[providerSelIdx()]?.defaultModel || ''}
             onInput={(v: string) => setModel(v)}
           />
           <text dim>留空则使用提供商默认模型。按 Enter 继续。</text>
         </>
       )}
 
-      {/* ── Step 2: API Key ──────────────────────────── */}
       {step() === 2 && (
         <>
           <text>API 密钥</text>
@@ -232,7 +226,6 @@ export default function SetupWizard(props: SetupWizardProps) {
         </>
       )}
 
-      {/* ── Step 3: Project path ─────────────────────── */}
       {step() === 3 && (
         <>
           <text>项目目录</text>
@@ -249,7 +242,6 @@ export default function SetupWizard(props: SetupWizardProps) {
         </>
       )}
 
-      {/* ── Step 4: Confirm ──────────────────────────── */}
       {step() === 4 && (
         <>
           <text>确认设置</text>

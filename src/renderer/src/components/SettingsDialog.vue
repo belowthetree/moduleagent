@@ -25,11 +25,11 @@ const error = ref('')
 const originalProjectPath = ref('')
 
 const providers = [
-  { value: 'anthropic', label: 'Anthropic (Claude)', defaultBaseUrl: 'https://api.anthropic.com' },
-  { value: 'openai', label: 'OpenAI (GPT)', defaultBaseUrl: 'https://api.openai.com/v1' },
-  { value: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com' },
-  { value: 'google', label: 'Google (Gemini)', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
-  { value: 'custom', label: 'Custom (OpenAI-compatible)', defaultBaseUrl: '' },
+  { value: 'anthropic', label: 'Anthropic (Claude)', defaultBaseUrl: 'https://api.anthropic.com', defaultModel: 'claude-sonnet-4-20250514' },
+  { value: 'openai', label: 'OpenAI (GPT)', defaultBaseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
+  { value: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com', defaultModel: 'deepseek-chat' },
+  { value: 'google', label: 'Google (Gemini)', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta', defaultModel: 'gemini-2.0-flash' },
+  { value: 'custom', label: 'Custom (OpenAI-compatible)', defaultBaseUrl: '', defaultModel: '' },
 ]
 
 const showApiKey = ref(false)
@@ -46,9 +46,10 @@ watch(() => props.visible, (v) => {
 })
 
 watch(() => configStore.provider, (newProvider) => {
-  if (!configStore.baseUrl) {
-    const p = providers.find(p => p.value === newProvider)
-    if (p) configStore.baseUrl = p.defaultBaseUrl
+  const p = providers.find(p => p.value === newProvider)
+  if (p) {
+    if (!configStore.baseUrl) configStore.baseUrl = p.defaultBaseUrl
+    if (!configStore.model) configStore.model = p.defaultModel
   }
 })
 
