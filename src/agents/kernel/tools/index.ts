@@ -12,6 +12,7 @@ import { createSearchTool } from './search.js';
 import { createListFilesTool } from './list-files.js';
 import { createGitOperationsTool } from './git-operations.js';
 import { createMcpBridgeTools } from './mcp-bridge.js';
+import type { CrossModuleRouter } from '../../McpBackend.js';
 import type { Tool } from '../types.js';
 
 export function createBuiltinTools(sandbox: AgentSandbox): Tool[] {
@@ -19,30 +20,24 @@ export function createBuiltinTools(sandbox: AgentSandbox): Tool[] {
     createFileReadTool(sandbox),
     createFileWriteTool(sandbox),
     createFileEditTool(sandbox),
-    createExecuteCommandTool(sandbox),
+    // createExecuteCommandTool(sandbox), // 暂时禁用
     createSearchTool(sandbox),
     createListFilesTool(sandbox),
     createGitOperationsTool(sandbox),
   ];
 }
 
-export interface McpBridgeOptions {
-  workspaceRoot: string;
-  moduleName: string;
-  graphFilePath?: string;
-  backendUrl?: string;
-}
-
 export function createKernelToolRegistry(
   sandbox: AgentSandbox,
-  mcpOptions?: McpBridgeOptions,
+  crossModuleRouter?: CrossModuleRouter,
+  requestingModule?: string,
 ): ToolRegistry {
   const registry = new ToolRegistry();
 
   registry.registerAll(createBuiltinTools(sandbox));
 
-  if (mcpOptions) {
-    const mcpTools = createMcpBridgeTools(mcpOptions);
+  if (crossModuleRouter) {
+    const mcpTools = createMcpBridgeTools(crossModuleRouter, requestingModule || '');
     registry.registerAll(mcpTools);
   }
 

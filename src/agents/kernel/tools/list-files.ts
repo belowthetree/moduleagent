@@ -4,6 +4,7 @@
 
 import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
+import { defaultLogger } from '../../../core/Logger.js';
 
 export function createListFilesTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
@@ -35,6 +36,14 @@ export function createListFilesTool(sandbox: AgentSandbox): Tool {
       const maxDepth = (input.maxDepth as number) ?? 3;
 
       const entries = await sandbox.listDir(dirPath, { recursive, maxDepth });
+
+      defaultLogger.info(`[list_files] path="${dirPath}" recursive=${recursive} maxDepth=${maxDepth} found=${entries.length}`);
+      for (const e of entries.slice(0, 30)) {
+        defaultLogger.info(`[list_files]   ${e}`);
+      }
+      if (entries.length > 30) {
+        defaultLogger.info(`[list_files]   ... and ${entries.length - 30} more`);
+      }
 
       return {
         content: JSON.stringify({ path: dirPath, entryCount: entries.length, entries }),

@@ -134,7 +134,7 @@ export class TuiBridge implements IAgentBridge {
         });
         self.store.syncTo(tuiState);
       },
-      onToolCall: (moduleName, toolName, toolStatus, toolDetail) => {
+      onToolCall: (moduleName, toolName, toolStatus, toolDetail, toolCallId) => {
         // 非当前模块的 tool call 不操作 store（避免跨模块通信污染视图）
         if (moduleName !== self.core.getCurrentAgent()) return;
 
@@ -150,7 +150,7 @@ export class TuiBridge implements IAgentBridge {
         }
 
         const statusIcon = toolStatus === 'completed' ? '✓' : toolStatus === 'error' ? '✗' : '…';
-        const displayName = toolName.includes('_') ? toolName.replace(/^[^_]+_/, '') : toolName;
+        const displayName = toolName;
 
         let extra = '';
         try {
@@ -186,6 +186,10 @@ export class TuiBridge implements IAgentBridge {
 
         const inFlight = statusIcon === '…';
         const msgs = self.store.messages;
+
+        // 用 toolCallId + displayName 查找并更新已有消息，避免重复条目
+        const tcid = toolCallId || `${displayName}`;
+
         if (inFlight) {
           let replaced = false;
           for (let i = msgs.length - 1; i >= 0; i--) {
@@ -198,7 +202,7 @@ export class TuiBridge implements IAgentBridge {
           }
           if (!replaced) {
             msgs.push({
-              id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              id: `tool-${tcid}-${Date.now()}`,
               role: 'system', msgType: 'tool_call',
               content, time: new Date().toLocaleTimeString(),
             });
@@ -207,15 +211,15 @@ export class TuiBridge implements IAgentBridge {
           let updated = false;
           for (let i = msgs.length - 1; i >= 0; i--) {
             const m = msgs[i];
-            if (m && m.msgType === 'tool_call' && m.content.startsWith('…') && m.content.includes(displayName)) {
-              m.content = content.length >= m.content.length ? content : m.content.replace(/^…/, statusIcon);
+            if (m && m.msgType === 'tool_call' && m.id.startsWith(`tool-${toolCallId}-`)) {
+              m.content = content;
               updated = true;
               break;
             }
           }
           if (!updated) {
             msgs.push({
-              id: `tool-${moduleName}-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              id: `tool-${toolCallId}-${Date.now()}`,
               role: 'system', msgType: 'tool_call',
               content, time: new Date().toLocaleTimeString(),
             });

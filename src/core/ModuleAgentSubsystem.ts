@@ -5,7 +5,6 @@
 
 import path from 'path';
 import fs from 'fs-extra';
-import os from 'os';
 import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';
 import { Agent } from '../agents/Agent.js';
 import { AgentStateManager } from '../agents/AgentStateManager.js';
@@ -13,13 +12,13 @@ import { ConfigLoader } from '../config/ConfigLoader.js';
 import { ModuleScanner } from './ModuleScanner.js';
 import { ModuleGraph } from './ModuleGraph.js';
 import { defaultLogger, type Logger } from './Logger.js';
-import { writeMcpGraphFile } from '../agents/McpServerBuilder.js';
+import { AgentSandbox } from '../agents/kernel/sandbox.js';
 import {
   loadSystemPrompts,
   buildPromptBlocks,
   dedupMessage,
 } from '../agents/PromptBuilder.js';
-import { AgentSandbox } from '../agents/kernel/sandbox.js';
+import { SendGuard } from './AgentSubsystemUtils.js';
 import type { PromptBlock } from '../agents/kernel/types.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from './CoreTypes.js';
@@ -81,7 +80,7 @@ export class ModuleAgentSubsystem {
   private currentModule = '';
   private sessionPrompted = new Set<string>();
   private lastSent = new Map<string, { text: string; time: number }>();
-  private sendLock = new Map<string, Promise<void>>();
+  private sendGuard = new SendGuard();
   private toolNameById = new Map<string, string>(); // toolCallId → 真实工具名
 
   // Agent 状态管理（流累积 + 上下文持久化）
@@ -90,9 +89,8 @@ export class ModuleAgentSubsystem {
   // 每个模块的 Agent 运行状态
   private _agentStatus = new Map<string, 'idle' | 'streaming' | 'error'>();
 
-  // MCP 状态
-  mcpBackendPort = 0;
-  mcpGraphFile = '';
+  // 跨模块路由
+  crossModuleRouter: import('../agents/McpBackend.js').CrossModuleRouter | null = null;
 
   // 外部钩子
   private _onSessionUpdate?: (moduleName: string, sessionId: string, notification: any) => void;
@@ -134,7 +132,6 @@ export class ModuleAgentSubsystem {
     this.logger.info(`ModuleScanner: found ${descriptors.length} modules`);
     this.graph = new ModuleGraph().build(descriptors, projectRoot);
 
-    this.mcpGraphFile = writeMcpGraphFile(this.graph, os.tmpdir());
     this.prompts = loadSystemPrompts(this.configDir);
     this._stateManager = new AgentStateManager(
       path.join(projectRoot, '.module-agent', 'context'),
@@ -156,7 +153,7 @@ export class ModuleAgentSubsystem {
     }
     this.agents.clear();
     this.pendingStarts.clear();
-    this.sendLock.clear();
+    this.sendGuard.clear();
     this.sessionPrompted.clear();
     this._agentStatus.clear();
   }
@@ -182,13 +179,7 @@ export class ModuleAgentSubsystem {
     }
 
     // 按模块发送互斥锁
-    const prevLock = this.sendLock.get(finalTarget);
-    if (prevLock) {
-      try { await prevLock; } catch { /* 继续 */ }
-    }
-    let resolveLock: () => void = () => {};
-    const lockPromise = new Promise<void>(r => { resolveLock = r; });
-    this.sendLock.set(finalTarget, lockPromise);
+    const release = await this.sendGuard.acquire(finalTarget);
 
     try {
       let entry = this.agents.get(finalTarget);
@@ -208,6 +199,7 @@ export class ModuleAgentSubsystem {
         graph: this.graph,
         prompts: this.prompts,
         sessionPrompted: this.sessionPrompted,
+        cwd: entry.agent.cwd,
       });
 
       this.logger.info(`sendMessage [${finalTarget}]: ${finalText.length} chars, ${blocks.length} blocks`);
@@ -271,8 +263,7 @@ export class ModuleAgentSubsystem {
       this.setStatus('error');
       return { error: message };
     } finally {
-      resolveLock();
-      this.sendLock.delete(finalTarget);
+      release();
     }
   }
 
@@ -480,12 +471,14 @@ export class ModuleAgentSubsystem {
   }
 
   buildPromptBlocksForModule(moduleName: string, text: string): PromptBlock[] {
+    const entry = this.agents.get(moduleName);
     return buildPromptBlocks({
       moduleName,
       userText: text,
       graph: this.graph,
       prompts: this.prompts,
       sessionPrompted: this.sessionPrompted,
+      cwd: entry?.agent.cwd,
     });
   }
 
@@ -539,6 +532,35 @@ export class ModuleAgentSubsystem {
 
   getStreamState(moduleName: string) {
     return this._stateManager?.getStreamState(moduleName);
+  }
+
+  getModuleListForBridge(requestingModule: string): { name: string; description: string; path: string }[] {
+    if (!this.graph) return [];
+    const root = this.graph.root;
+    const accessible = requestingModule && requestingModule !== root
+      ? this._getAccessibleModules(requestingModule)
+      : null;
+    const result: { name: string; description: string; path: string }[] = [];
+    for (const [name, node] of this.graph.nodes) {
+      if (accessible && !accessible.has(name)) continue;
+      result.push({
+        name,
+        description: node.definition.frontmatter.description,
+        path: node.relativePath,
+      });
+    }
+    return result;
+  }
+
+  private _getAccessibleModules(moduleName: string): Set<string> {
+    const accessible = new Set<string>();
+    if (!this.graph) return accessible;
+    const node = this.graph.nodes.get(moduleName);
+    if (!node) return accessible;
+    accessible.add(moduleName);
+    for (const child of node.children) accessible.add(child);
+    if (node.parent) accessible.add(node.parent);
+    return accessible;
   }
 
   async loadContext(moduleName: string): Promise<import('../types/shared.js').ChatMsg[]> {
@@ -665,7 +687,7 @@ export class ModuleAgentSubsystem {
           if (tc.toolCallId && tc.title) self.toolNameById.set(tc.toolCallId, tc.title);
           const toolInput = tc.input || tc.arguments || tc.params || tc.toolCall;
           const detail = toolInput ? JSON.stringify(toolInput).slice(0, 200) : undefined;
-          self.callbacks.onToolCall?.(moduleName, toolName, toolStatus, detail);
+          self.callbacks.onToolCall?.(moduleName, toolName, toolStatus, detail, tc.toolCallId);
           if (tc.status === 'error') {
             self.setAgentStatus(moduleName, 'error');
             self.callbacks.onStreamError(moduleName, `Tool call failed: ${toolName}`);
@@ -674,7 +696,7 @@ export class ModuleAgentSubsystem {
           const tc = data as { title?: string; status?: string; toolCallId?: string; toolName?: string; name?: string; rawInput?: Record<string, unknown> };
           const realName = (tc.toolCallId && self.toolNameById.get(tc.toolCallId)) || tc.toolName || tc.title || tc.name || 'unknown';
           if (tc.status) {
-            self.callbacks.onToolCall?.(moduleName, realName, tc.status);
+            self.callbacks.onToolCall?.(moduleName, realName, tc.status, undefined, tc.toolCallId);
           }
         }
 
@@ -697,6 +719,8 @@ export class ModuleAgentSubsystem {
         logger: this.logger,
         sandbox,
         onNotification,
+        crossModuleRouter: this.crossModuleRouter ?? undefined,
+        kernelModuleName: moduleName,
         onQueue: (qlen: number) => {
           self.callbacks.onMessage({
             id: `queue-${Date.now()}`,

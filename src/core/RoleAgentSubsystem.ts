@@ -5,7 +5,6 @@
 
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
 import { AgentLauncher } from '../agents/AgentLauncher.js';
 import { RoleAgentManager, type RoleAgentEntry } from '../agents/RoleAgentManager.js';
 import { AgentStateManager } from '../agents/AgentStateManager.js';
@@ -14,6 +13,7 @@ import type { PromptBlock } from '../agents/kernel/types.js';
 import { defaultLogger, type Logger } from './Logger.js';
 import type { CoreCallbacks } from './CoreTypes.js';
 import type { ChatMsg } from '../types/shared.js';
+import { SendGuard, persistContext, resolveKnowledgePath } from './AgentSubsystemUtils.js';
 
 // ---------------------------------------------------------------------------
 // RoleAgentSubsystem 选项
@@ -45,7 +45,7 @@ export class RoleAgentSubsystem {
   private projectPath: string;
   private rolePrompt = '';
   private sessionPrompted = new Set<string>();
-  private sendLock = new Map<string, Promise<void>>();
+  private sendGuard = new SendGuard();
   private _onSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
   private _stateManager: AgentStateManager | null = null;
   private _onPostSend?: (roleName: string, msgs: ChatMsg[], entry: RoleAgentEntry) => void;
@@ -150,7 +150,7 @@ export class RoleAgentSubsystem {
   async dispose(): Promise<void> {
     await this.manager.stopAll();
     this.sessionPrompted.clear();
-    this.sendLock.clear();
+    this.sendGuard.clear();
   }
 
   // -----------------------------------------------------------------------
@@ -161,14 +161,7 @@ export class RoleAgentSubsystem {
     roleName: string,
     text: string,
   ): Promise<{ result?: { reply: string; thinking: string; tools: string; timeline?: unknown[]; stopReason?: string }; error?: string }> {
-    const prevLock = this.sendLock.get(roleName);
-    if (prevLock) {
-      try { await prevLock; } catch { /* 继续 */ }
-    }
-
-    let resolveLock: () => void = () => {};
-    const lockPromise = new Promise<void>(r => { resolveLock = r; });
-    this.sendLock.set(roleName, lockPromise);
+    const release = await this.sendGuard.acquire(roleName);
 
     try {
       let entry = this.manager.getAgent(roleName);
@@ -198,30 +191,7 @@ export class RoleAgentSubsystem {
       this.callbacks.onStatusChange('idle');
 
       // ── 构建消息并持久化上下文 ──
-      const timeStr = new Date().toLocaleTimeString();
-      const userMsg: ChatMsg = {
-        id: 'r' + Date.now().toString(36),
-        role: 'user',
-        content: text,
-        thinking: '',
-        time: timeStr,
-        status: 'sent',
-        moduleName: ctxKey,
-      };
-      const agentMsg: ChatMsg = {
-        id: 'r' + (Date.now() + 1).toString(36),
-        role: 'agent',
-        content: acc?.reply || '',
-        thinking: acc?.thinking || '',
-        timeline: acc?.timeline || [],
-        time: timeStr,
-        status: 'completed',
-        moduleName: ctxKey,
-      };
-
-      const existingMsgs = await this._stateManager?.loadContext(ctxKey) ?? [];
-      existingMsgs.push(userMsg, agentMsg);
-      await this._stateManager?.saveContext(ctxKey, existingMsgs);
+      const existingMsgs = await persistContext(this._stateManager, ctxKey, text, acc!);
 
       // ── 后处理钩子 ──
       this._onPostSend?.(roleName, existingMsgs, entry);
@@ -243,8 +213,7 @@ export class RoleAgentSubsystem {
       this.callbacks.onStatusChange('error');
       return { error: message };
     } finally {
-      resolveLock();
-      this.sendLock.delete(roleName);
+      release();
     }
   }
 
@@ -310,7 +279,7 @@ export class RoleAgentSubsystem {
     const sections: string[] = [];
 
     for (const ref of refs) {
-      const filePath = this._resolveKnowledgePath(ref.filename);
+      const filePath = resolveKnowledgePath(this.projectPath, ref.filename);
       if (!filePath) {
         this.logger.warn(`Knowledge file not found: ${ref.filename}`);
         continue;
@@ -332,20 +301,5 @@ export class RoleAgentSubsystem {
       sections.join('\n\n---\n\n') +
       '\n\n---\n\n'
     );
-  }
-
-  /**
-   * 在所有知识目录中查找知识文件。
-   */
-  private _resolveKnowledgePath(filename: string): string | null {
-    const dirs = [
-      path.join(this.projectPath, '.module-agent', 'knowledge'),
-      path.join(os.homedir(), '.module-agent', 'config', 'knowledge'),
-    ];
-    for (const dir of dirs) {
-      const filePath = path.join(dir, filename);
-      if (fs.existsSync(filePath)) return filePath;
-    }
-    return null;
   }
 }

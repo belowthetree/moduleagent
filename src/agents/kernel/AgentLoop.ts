@@ -1,14 +1,12 @@
 // ---------------------------------------------------------------------------
-// agents/kernel/AgentLoop.ts — 核心推理循环
-// 手动管理工具调用循环，使用 ai-sdk 作为 LLM 提供商抽象
+// agents/kernel/AgentLoop.ts — 核心推理循环（基于 ai-sdk generateText）
+// 使用 ai-sdk 的 stopWhen 自动处理工具调用循环
 // ---------------------------------------------------------------------------
 
-import { generateText, type ModelMessage } from 'ai';
+import { generateText, stepCountIs } from 'ai';
 import { resolveLanguageModel } from './ProviderResolver.js';
-import { convertToolDefinitionToAISDK } from './ToolConverter.js';
-import { ToolRegistry } from './ToolRegistry.js';
+import { convertToolsToAISDK } from './ToolConverter.js';
 import type {
-  ToolDefinition,
   AgentLoopConfig,
   LoopPhase,
   PromptBlock,
@@ -19,7 +17,7 @@ import { defaultLogger } from '../../core/Logger.js';
 export interface LoopEvents {
   onPhaseChange: (phase: LoopPhase, data?: unknown) => void;
   onStreamChunk: (text: string) => void;
-  onToolCall: (toolName: string, status: string, detail?: string) => void;
+  onToolCall: (toolName: string, toolCallId: string, status: string, detail?: string) => void;
   onError: (error: Error) => void;
 }
 
@@ -27,14 +25,14 @@ const DEFAULT_MAX_TOOL_ROUNDS = 15;
 
 export class AgentLoop {
   private systemPrompt: string;
-  private workspaceRoot: string;
   private maxToolRounds: number;
-  private history: ModelMessage[] = [];
+  private messages: any[] = [];
   private logger: Logger;
   private events: LoopEvents;
   private _phase: LoopPhase = 'idle' as LoopPhase;
   private _cancelled = false;
   private _sessionId: string;
+  private tools: Record<string, any>;
   private model: ReturnType<typeof resolveLanguageModel>['model'];
   private abortController: AbortController | null = null;
 
@@ -42,18 +40,13 @@ export class AgentLoop {
     const resolved = resolveLanguageModel(config.kernelConfig);
     this.model = resolved.model;
     this.systemPrompt = config.systemPrompt;
-    this.workspaceRoot = config.workspaceRoot;
     this.maxToolRounds = config.maxToolRounds ?? DEFAULT_MAX_TOOL_ROUNDS;
     this.logger = logger || defaultLogger;
     this.events = events;
     this._sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    const registry = new ToolRegistry();
-    registry.registerAll(config.tools);
-    this._tools = registry.list();
+    this.tools = convertToolsToAISDK(config.tools);
   }
-
-  private _tools: import('./types.js').Tool[] = [];
 
   get sessionId(): string {
     return this._sessionId;
@@ -63,8 +56,8 @@ export class AgentLoop {
     return this._phase;
   }
 
-  get conversationHistory(): ModelMessage[] {
-    return [...this.history];
+  get conversationHistory(): any[] {
+    return [...this.messages];
   }
 
   private setPhase(phase: LoopPhase, data?: unknown): void {
@@ -79,7 +72,7 @@ export class AgentLoop {
   }
 
   resetHistory(): void {
-    this.history = [];
+    this.messages = [];
     this._sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
@@ -89,12 +82,59 @@ export class AgentLoop {
     this.setPhase('thinking' as LoopPhase);
 
     const userText = blocks.map((b) => b.text).join('\n');
-    this.history.push({ role: 'user', content: userText });
+    this.messages.push({ role: 'user', content: userText });
 
     try {
-      const result = await this._runLoop();
+      const result = await generateText({
+        model: this.model,
+        system: this.systemPrompt,
+        messages: this.messages,
+        tools: Object.keys(this.tools).length > 0 ? this.tools : undefined,
+        stopWhen: stepCountIs(this.maxToolRounds + 1),
+        abortSignal: this.abortController!.signal,
+        maxRetries: 1,
+        onStepFinish: (event) => {
+          if (event.toolCalls) {
+            for (const tc of event.toolCalls) {
+              const tcid = (tc as any).toolCallId || '';
+              this.logger.info(`[AgentLoop] tool_call: ${tc.toolName} id=${tcid}`);
+              this.events.onToolCall(tc.toolName, tcid, 'running', JSON.stringify((tc as any).input || {}).slice(0, 500));
+              this.setPhase('tool_call' as LoopPhase, { toolName: tc.toolName, toolCallId: tcid, args: (tc as any).input });
+            }
+          }
+          if (event.toolResults) {
+            for (const tr of event.toolResults) {
+              const tcid = (tr as any).toolCallId || '';
+              this.logger.info(`[AgentLoop] tool_result: ${tr.toolName} id=${tcid}`);
+              this.events.onToolCall(
+                tr.toolName,
+                tcid,
+                (tr as any).error ? 'error' : 'completed',
+                JSON.stringify((tr as any).output || '').slice(0, 500),
+              );
+            }
+          }
+        },
+      });
+
+      if (this._cancelled) {
+        this.setPhase('cancelled' as LoopPhase);
+        return { stopReason: 'cancelled', content: '' };
+      }
+
+      const text = result.text || '';
+
+      this.messages = [...result.response.messages];
+
+      if (text) {
+        this.events.onStreamChunk(text);
+      }
+
       this.setPhase('done' as LoopPhase);
-      return result;
+      return {
+        stopReason: 'end_turn',
+        content: text || 'Task completed.',
+      };
     } catch (err) {
       if (this._cancelled) {
         this.setPhase('cancelled' as LoopPhase);
@@ -102,117 +142,8 @@ export class AgentLoop {
       }
       this.setPhase('error' as LoopPhase);
       this.events.onError(err as Error);
+      this.logger.error(`[AgentLoop] error: ${(err as Error).message}`);
       throw err;
     }
-  }
-
-  private async _runLoop(): Promise<{ stopReason: string; content: string }> {
-    let toolRounds = 0;
-
-    while (toolRounds < this.maxToolRounds) {
-      if (this._cancelled) {
-        return { stopReason: 'cancelled', content: '' };
-      }
-
-      const messages: ModelMessage[] = [
-        ...this.history,
-      ];
-
-      const toolDefs = this._tools.map((t) => convertToolDefinitionToAISDK(t));
-
-      const response = await generateText({
-        model: this.model,
-        system: this.systemPrompt,
-        messages,
-        tools: toolDefs.length > 0 ? toolDefs as any : undefined,
-        abortSignal: this.abortController!.signal,
-        maxRetries: 1,
-      });
-
-      if (this._cancelled) {
-        return { stopReason: 'cancelled', content: '' };
-      }
-
-      const text = response.text || '';
-      if (text) {
-        this.events.onStreamChunk(text);
-      }
-
-      const toolCalls = response.toolCalls || [];
-      const hasToolCalls = toolCalls.length > 0;
-
-      if (hasToolCalls) {
-        toolRounds++;
-
-        const assistantContent: any[] = [];
-        if (text) {
-          assistantContent.push({ type: 'text', text });
-        }
-        for (const tc of toolCalls) {
-          assistantContent.push({
-            type: 'tool-call',
-            toolCallId: tc.toolCallId,
-            toolName: tc.toolName,
-            args: (tc as any).input || {},
-          });
-        }
-        this.history.push({
-          role: 'assistant',
-          content: assistantContent as any,
-        });
-
-        for (const tc of toolCalls) {
-          if (this._cancelled) break;
-
-          const toolName = tc.toolName;
-          const input = (tc as any).input as Record<string, unknown>;
-
-          this.logger.info(`[AgentLoop] tool_call: ${toolName} ${JSON.stringify(input).slice(0, 200)}`);
-          this.events.onToolCall(toolName, 'running', JSON.stringify(input).slice(0, 500));
-          this.setPhase('tool_call' as LoopPhase, { toolName, args: input });
-
-          const registry = new ToolRegistry();
-          registry.registerAll(this._tools);
-          const result = await registry.execute(toolName, input);
-
-          this.logger.info(`[AgentLoop] tool_result: ${toolName} success=${!result.metadata?.error}`);
-          this.events.onToolCall(
-            toolName,
-            result.metadata?.error ? 'error' : 'completed',
-            result.content.slice(0, 500),
-          );
-
-          this.history.push({
-            role: 'tool',
-            content: [
-              {
-                type: 'tool-result',
-                toolCallId: tc.toolCallId,
-                toolName: tc.toolName,
-                result: result.content,
-              },
-            ] as any,
-          });
-        }
-
-        this.setPhase('thinking' as LoopPhase);
-        continue;
-      }
-
-      this.history.push({
-        role: 'assistant',
-        content: text || '',
-      });
-
-      return {
-        stopReason: 'end_turn',
-        content: text || '',
-      };
-    }
-
-    return {
-      stopReason: 'max_turns',
-      content: '已达到最大工具调用轮数。',
-    };
   }
 }

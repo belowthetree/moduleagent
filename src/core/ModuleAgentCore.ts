@@ -1,14 +1,14 @@
 // ---------------------------------------------------------------------------
-// core/ModuleAgentCore.ts �?统一 Agent 编排核心
-// 组合 ModuleAgentSubsystem、RoleAgentSubsystem、WorkflowSubsystem �?MCP 后端
-// 提供统一的消息发送、Agent 管理和生命周期控�?// ---------------------------------------------------------------------------
+// core/ModuleAgentCore.ts �?统一 Agent 编排核心
+// 组合 ModuleAgentSubsystem、RoleAgentSubsystem、WorkflowSubsystem �?MCP 后端
+// 提供统一的消息发送、Agent 管理和生命周期控�?// ---------------------------------------------------------------------------
 
 import path from 'path';
 import { defaultLogger, type Logger } from './Logger.js';
 import { ModuleAgentSubsystem } from './ModuleAgentSubsystem.js';
 import { RoleAgentSubsystem } from './RoleAgentSubsystem.js';
 import { WorkflowSubsystem } from './WorkflowSubsystem.js';
-import { McpBackendServer, type McpBackendCallbacks } from '../agents/McpBackend.js';
+import { CrossModuleRouter, type CrossModuleRouterCallbacks } from '../agents/McpBackend.js';
 import type {
   CoreCallbacks,
   CoreStatus,
@@ -44,7 +44,7 @@ export interface ModuleAgentCoreOptions {
 }
 
 // ---------------------------------------------------------------------------
-// ModuleAgentCore 核心�?// ---------------------------------------------------------------------------
+// ModuleAgentCore 核心�?// ---------------------------------------------------------------------------
 
 export class ModuleAgentCore {
   private callbacks: CoreCallbacks;
@@ -55,7 +55,7 @@ export class ModuleAgentCore {
   modules: ModuleAgentSubsystem;
   roles: RoleAgentSubsystem | null = null;
   workflows: WorkflowSubsystem | null = null;
-  private mcpBackend: McpBackendServer | null = null;
+  private crossModuleRouter: CrossModuleRouter | null = null;
 
   private projectRoot = '';
   private initialized = false;
@@ -81,7 +81,7 @@ export class ModuleAgentCore {
     });
 
     if (options.enableRoles) {
-      // 角色子系统需�?init 时设置的 projectPath �?workspaceRoot
+      // 角色子系统需�?init 时设置的 projectPath �?workspaceRoot
     }
   }
 
@@ -107,7 +107,7 @@ export class ModuleAgentCore {
   }
 
   /**
-   * 完整初始化：扫描模块 + 加载角色 + 初始化工作流�?   * 替代手动调用 init() �?initRoles() �?initWorkflows() 的编排模式�?   */
+   * 完整初始化：扫描模块 + 加载角色 + 初始化工作流�?   * 替代手动调用 init() �?initRoles() �?initWorkflows() 的编排模式�?   */
   async initAll(projectRoot: string, configDir?: string): Promise<InitResult> {
     const result = await this.init(projectRoot, configDir);
 
@@ -127,7 +127,7 @@ export class ModuleAgentCore {
       this.initWorkflows(resolvedProjectPath, workspaceRoot);
       this.logger.info('ModuleAgentCore: auto-initialised workflow subsystem');
 
-      // 启动 MCP 后端（跨模块通信�?      await this.startMcpBackend();
+      // 启动 MCP 后端（跨模块通信�?      await this.startMcpBackend();
     } catch (err) {
       this.logger.warn(`ModuleAgentCore: role/workflow init skipped: ${(err as Error).message}`);
     }
@@ -135,14 +135,13 @@ export class ModuleAgentCore {
     return result;
   }
 
-  /** 启动 MCP HTTP 后端，使模块间可以通过 module_call/module_query 通信 */
+  /** 初始化跨模块通信路由器 */
   async startMcpBackend(): Promise<void> {
-    if (this.mcpBackend) return;
-    const callbacks: McpBackendCallbacks = {
+    if (this.crossModuleRouter) return;
+    const callbacks: CrossModuleRouterCallbacks = {
       getAgentEntry: (moduleName) => {
         const entry = this.modules.getAgent(moduleName);
-        if (!entry) return undefined;
-        return entry.agent;
+        return entry ? entry.agent : undefined;
       },
       startAgent: async (moduleName) => {
         await this.modules.startAgent(moduleName);
@@ -163,20 +162,17 @@ export class ModuleAgentCore {
         existing.push(...msgs);
         await this.modules.saveContext(moduleName, existing);
       },
+      getModuleList: (requestingModule) => this.modules.getModuleListForBridge(requestingModule),
     };
-    this.mcpBackend = new McpBackendServer(callbacks);
-    const port = await this.mcpBackend.start();
-    this.modules.mcpBackendPort = port;
-    this.logger.info(`ModuleAgentCore: MCP backend started on port ${port}`);
+    this.crossModuleRouter = new CrossModuleRouter(callbacks);
+    this.modules.crossModuleRouter = this.crossModuleRouter;
+    this.logger.info('ModuleAgentCore: cross-module router initialized');
   }
 
-  /** 停止 MCP 后端 */
+  /** 停止跨模块通信路由器 */
   async stopMcpBackend(): Promise<void> {
-    if (this.mcpBackend) {
-      await this.mcpBackend.stop();
-      this.mcpBackend = null;
-      this.modules.mcpBackendPort = 0;
-    }
+    this.crossModuleRouter = null;
+    this.modules.crossModuleRouter = null;
   }
 
   /**
@@ -328,7 +324,7 @@ export class ModuleAgentCore {
   // -----------------------------------------------------------------------
 
   private _ensureInit(): void {
-    if (!this.initialized) throw new Error('ModuleAgentCore not initialized �?call init() first');
+    if (!this.initialized) throw new Error('ModuleAgentCore not initialized �?call init() first');
   }
 }
 

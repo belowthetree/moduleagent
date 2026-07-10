@@ -105,10 +105,11 @@ export class AgentSandbox {
 
   async listDir(
     dirPath?: string,
-    opts?: { recursive?: boolean; maxDepth?: number },
+    opts?: { recursive?: boolean; maxDepth?: number; markExcluded?: boolean },
   ): Promise<string[]> {
     const resolved = dirPath ? this.resolvePath(dirPath) : this.rootPath;
     const maxDepth = opts?.maxDepth ?? (opts?.recursive ? 10 : 1);
+    const markExcluded = opts?.markExcluded ?? true;
     const results: string[] = [];
 
     const self = this;
@@ -121,7 +122,13 @@ export class AgentSandbox {
         const relPath = path.relative(self.rootPath, fullPath).replace(/\\/g, '/');
 
         if (entry.isDirectory()) {
-          if (!self.isPathVisible(fullPath)) continue;
+          const isExcluded = self.isExcludedPath(fullPath);
+          if (isExcluded) {
+            if (markExcluded) {
+              results.push(relPath + '/ [submodule]');
+            }
+            continue;
+          }
           results.push(relPath + '/');
           if (depth < maxDepth) await walk(fullPath, depth + 1);
         } else {
@@ -133,5 +140,15 @@ export class AgentSandbox {
 
     await walk(resolved, 1);
     return results.sort();
+  }
+
+  private isExcludedPath(resolved: string): boolean {
+    const normalized = resolved.replace(/\\/g, '/');
+    for (const e of this.excluded) {
+      if (normalized === e || normalized.startsWith(e + '/')) {
+        return true;
+      }
+    }
+    return false;
   }
 }

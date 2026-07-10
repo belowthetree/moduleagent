@@ -6,7 +6,6 @@
 import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
 import { Agent } from './Agent.js';
 import path from 'path';
-import fs from 'fs';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
 import type { RoleConfig } from '../config/defaults.js';
@@ -183,32 +182,6 @@ export class RoleAgentManager {
       this.logger.error(`startRoleAgent [${roleName}] failed: ${(err as Error).message}`);
       throw err;
     }
-  }
-
-  // -----------------------------------------------------------------------
-  // 为角色 Agent 构建 MCP 服务器
-  // -----------------------------------------------------------------------
-
-  private _buildRoleMcpServers(_workspacePath: string): any[] {
-    const bundlePath = path.join(this.basePath, 'dist', 'mcp-role-server.cjs');
-    if (!fs.existsSync(bundlePath)) {
-      this.logger.warn(`Role MCP server bundle not found: ${bundlePath}. Run: npm run build:mcp-role-server`);
-      return [];
-    }
-
-    const servers: any[] = [{
-      name: 'role-agent',
-      command: 'node',
-      args: [bundlePath, '--workspace', _workspacePath],
-      env: [],
-    }];
-
-    this.logger.info('Role MCP servers:');
-    for (const s of servers) {
-      this.logger.info(`  stdio: ${s.command} ${(s.args || []).join(' ')}`);
-    }
-
-    return servers;
   }
 
   // -----------------------------------------------------------------------

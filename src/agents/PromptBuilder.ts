@@ -52,13 +52,19 @@ export function buildPromptBlocks(options: {
   graph: ModuleGraph | null;
   prompts: { mainPrompt: string; subPrompt: string };
   sessionPrompted: Set<string>;
+  cwd?: string;
 }): PromptBlock[] {
-  const { moduleName, userText, graph, prompts, sessionPrompted } = options;
+  const { moduleName, userText, graph, prompts, sessionPrompted, cwd } = options;
   const blocks: PromptBlock[] = [];
   const isFirst = !sessionPrompted.has(moduleName);
 
   if (isFirst) {
     sessionPrompted.add(moduleName);
+
+    // cwd 提示（非根模块）
+    if (cwd && moduleName !== graph?.root) {
+      blocks.push({ type: 'text', text: `当前工作目录: ${cwd}\n\n` });
+    }
 
     // 系统提示
     const systemPrompt = moduleName === graph?.root ? prompts.mainPrompt : prompts.subPrompt;

@@ -6,11 +6,12 @@
 
 import { ToolRegistry } from './ToolRegistry.js';
 import { AgentLoop, type LoopEvents } from './AgentLoop.js';
-import { createKernelToolRegistry, type McpBridgeOptions } from './tools/index.js';
+import { createKernelToolRegistry } from './tools/index.js';
 import { AgentSandbox } from './sandbox.js';
 import type { KernelConfig, AgentLoopConfig, PromptBlock } from './types.js';
 import type { Logger } from '../../core/Logger.js';
 import { defaultLogger } from '../../core/Logger.js';
+import type { CrossModuleRouter } from '../McpBackend.js';
 
 export interface KernelOptions {
   name: string;
@@ -18,7 +19,8 @@ export interface KernelOptions {
   workspaceRoot: string;
   systemPrompt: string;
   sandbox?: AgentSandbox;
-  mcpBridge?: McpBridgeOptions;
+  crossModuleRouter?: CrossModuleRouter;
+  requestingModule?: string;
   maxToolRounds?: number;
   logger?: Logger;
 }
@@ -62,36 +64,31 @@ export class AgentKernel {
     // 注册内置工具 + 可选 MCP 桥接
     this.registry = createKernelToolRegistry(
       options.sandbox || new AgentSandbox({ allowed: [options.workspaceRoot], excluded: [] }),
-      options.mcpBridge,
+      options.crossModuleRouter,
+      options.requestingModule,
     );
 
     const loopEvents: LoopEvents = {
-      onPhaseChange: (phase, data) => {
+      onPhaseChange: (phase) => {
         this.logger.info(`[Kernel:${this.name}] 阶段: ${phase}`);
-        if (phase === 'tool_call' && data) {
-          const d = data as { toolName?: string; args?: unknown };
-          this._emit('tool_call', {
-            title: d.toolName || 'unknown',
-            status: 'running',
-            detail: { arguments: d.args },
-          });
-        }
       },
       onStreamChunk: (text) => {
         this._emit('agent_message_chunk', {
           content: { type: 'text', text },
         });
       },
-      onToolCall: (toolName, status, detail) => {
+      onToolCall: (toolName, toolCallId, status, detail) => {
         if (status === 'completed' || status === 'error') {
           this._emit('tool_call_update', {
             title: toolName,
+            toolCallId,
             status,
             detail: { output: detail },
           });
         } else {
           this._emit('tool_call', {
             title: toolName,
+            toolCallId,
             status,
             detail: { input: detail },
           });

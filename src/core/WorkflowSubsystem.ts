@@ -5,13 +5,13 @@
 
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
 import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';
 import { WorkflowManager } from '../agents/WorkflowManager.js';
 import { prepareStepWorkspace, collectStepOutput, cleanupStepWorkspace } from '../agents/WorkflowWorkspace.js';
 import { WorkflowScanner } from './WorkflowScanner.js';
 import { defaultLogger, type Logger } from './Logger.js';
 import type { CoreCallbacks } from './CoreTypes.js';
+import { resolveKnowledgePath } from './AgentSubsystemUtils.js';
 import type {
   WorkflowDescriptor,
   WorkflowStepDescriptor,
@@ -493,7 +493,7 @@ export class WorkflowSubsystem {
     const refs = step.definition.agent?.knowledgeRefs;
     if (refs && refs.length > 0) {
       for (const ref of refs) {
-        const filePath = this._resolveKnowledgePath(ref.filename);
+        const filePath = resolveKnowledgePath(this.projectPath, ref.filename);
         if (!filePath) {
           this.logger.warn(`Workflow: knowledge file not found: ${ref.filename}`);
           continue;
@@ -594,18 +594,6 @@ export class WorkflowSubsystem {
       command: step.definition.agent?.command || projectConfig.command,
       args: step.definition.agent?.args || projectConfig.args,
     };
-  }
-
-  private _resolveKnowledgePath(filename: string): string | null {
-    const dirs = [
-      path.join(this.projectPath, '.module-agent', 'knowledge'),
-      path.join(os.homedir(), '.module-agent', 'config', 'knowledge'),
-    ];
-    for (const dir of dirs) {
-      const filePath = path.join(dir, filename);
-      if (fs.existsSync(filePath)) return filePath;
-    }
-    return null;
   }
 
   // -----------------------------------------------------------------------

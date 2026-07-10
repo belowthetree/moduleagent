@@ -16,7 +16,6 @@ export type { ProviderType, ResolvedProvider } from './ProviderResolver.js';
 export { convertToolToAISDK, convertToolDefinitionToAISDK, convertToolsToAISDK } from './ToolConverter.js';
 export { ToolRegistry } from './ToolRegistry.js';
 export { createKernelToolRegistry, createBuiltinTools } from './tools/index.js';
-export type { McpBridgeOptions } from './tools/index.js';
 
 export { buildSystemPrompt, loadPromptTemplates } from './prompts/system.js';
 export type { SystemPromptContext } from './prompts/system.js';

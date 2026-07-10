@@ -10,12 +10,11 @@
 import { ipcMain } from 'electron';
 import path from 'path';
 import fs from 'fs-extra';
-import os from 'os';
 import { IpcChannel } from '../../protocol/IpcChannels.js';
 import type { HandlerContext } from './HandlerContext.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';
 import { DEFAULT_CONFIG, DEFAULT_MODULE_GEN_ROLE, type RoleConfig } from '../../config/defaults.js';
-import { McpBackendServer } from '../../agents/McpBackend.js';
+import { CrossModuleRouter } from '../../agents/McpBackend.js';
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { writeMcpGraphFile } from '../../agents/McpServerBuilder.js';
@@ -58,12 +57,8 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
 
       const graph = new ModuleGraph().build(descriptors, projectRoot);
 
-      // 设置 MCP 后端端口到 core.modules
-      ctx.core.modules.mcpBackendPort = 0;
-      ctx.core.modules.mcpGraphFile = writeMcpGraphFile(graph, os.tmpdir());
-
-      // 创建 MCP 后端 — 回调委托给 core.modules API
-      const mcpBackend = new McpBackendServer({
+      // 跨模块通信路由器
+      const crossRouter = new CrossModuleRouter({
         getAgentEntry(name) {
           const e = ctx.core.modules.getAgent(name);
           return e ? e.agent : undefined;
@@ -72,7 +67,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
           return ctx.core.modules.startAgent(name)
             .then(() => true)
             .catch((err) => {
-              ctx.logger.error(`MCP: failed to auto-start ${name}: ${(err as Error).message}`);
+              ctx.logger.error(`cross-module: failed to auto-start ${name}: ${(err as Error).message}`);
               return false;
             });
         },
@@ -80,7 +75,6 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
           return ctx.core.modules.buildPromptBlocksForModule(name, text);
         },
         sendCrossContext(source, target, direction, phase, content) {
-          // 更新时间线元数据
           const st = ctx.core.modules.getStreamState(source);
           if (st && st.timeline) {
             for (let i = st.timeline.length - 1; i >= 0; i--) {
@@ -93,15 +87,12 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
                   ev.detail = content;
                 } else {
                   ev.crossPhase = phase;
-                  if (ev.detail) {
-                    ev.detail = ev.detail + '\n\n---\n\n' + content;
-                  }
+                  if (ev.detail) ev.detail = ev.detail + '\n\n---\n\n' + content;
                 }
                 break;
               }
             }
           }
-
           if (ctx.mainWindow && !ctx.mainWindow.isDestroyed()) {
             ctx.mainWindow.webContents.send(IpcChannel.Push.CrossContext, {
               moduleName: source,
@@ -128,12 +119,11 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
           else if (level === 'warn') ctx.logger.warn(message);
           else ctx.logger.info(message);
         },
+        getModuleList: (requestingModule) => ctx.core.modules.getModuleListForBridge(requestingModule),
       });
+      ctx.core.modules.crossModuleRouter = crossRouter;
 
-      const port = await mcpBackend.start();
-      ctx.core.modules.mcpBackendPort = port;
-
-      ctx.logger.info(`MCP setup complete: graph=${ctx.core.modules.mcpGraphFile} port=${port}`);
+      ctx.logger.info('Cross-module router initialized');
 
       const nodes: Record<string, ModuleGraphNode> = {};
       for (const [name, node] of graph.nodes) {

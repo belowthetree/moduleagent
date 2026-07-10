@@ -45,6 +45,7 @@ export interface AgentStartOptions {
   };
   systemPrompt?: string;
   kernelModuleName?: string;
+  crossModuleRouter?: import('./McpBackend.js').CrossModuleRouter;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,8 +131,9 @@ export class Agent {
 
     const systemPrompt = options.systemPrompt || '';
 
-    const kernel = await launcher.launchKernel(config, name, cwd, systemPrompt, log, {
-      moduleName: options.kernelModuleName || name,
+    const kernel = await launcher.launch(config, name, cwd, systemPrompt, log, {
+      crossModuleRouter: options.crossModuleRouter,
+      requestingModule: options.kernelModuleName || name,
       sandbox: options.sandbox,
     });
 

@@ -30,9 +30,8 @@ export class AgentLauncher {
     systemPrompt: string,
     logger?: Logger,
     kernelOptions?: {
-      mcpGraphFile?: string;
-      mcpBackendUrl?: string;
-      moduleName?: string;
+      crossModuleRouter?: import('./McpBackend.js').CrossModuleRouter;
+      requestingModule?: string;
       maxToolRounds?: number;
       sandbox?: AgentSandbox;
     },
@@ -72,13 +71,9 @@ export class AgentLauncher {
       logger: log,
     };
 
-    if (kernelOptions?.moduleName) {
-      kernelConfig.mcpBridge = {
-        workspaceRoot: normalizedCwd,
-        moduleName: kernelOptions.moduleName,
-        graphFilePath: kernelOptions.mcpGraphFile,
-        backendUrl: kernelOptions.mcpBackendUrl,
-      };
+    if (kernelOptions?.crossModuleRouter) {
+      kernelConfig.crossModuleRouter = kernelOptions.crossModuleRouter;
+      kernelConfig.requestingModule = kernelOptions.requestingModule;
     }
 
     const kernel = new AgentKernel(kernelConfig);
@@ -86,21 +81,4 @@ export class AgentLauncher {
     return kernel;
   }
 
-  // 兼容旧 API 的别名
-  async launchKernel(
-    config: AgentConfig,
-    name: string,
-    cwd: string,
-    systemPrompt: string,
-    logger?: Logger,
-    kernelOptions?: {
-      mcpGraphFile?: string;
-      mcpBackendUrl?: string;
-      moduleName?: string;
-      maxToolRounds?: number;
-      sandbox?: AgentSandbox;
-    },
-  ): Promise<AgentKernel> {
-    return this.launch(config, name, cwd, systemPrompt, logger, kernelOptions);
-  }
 }

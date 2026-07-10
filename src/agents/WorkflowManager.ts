@@ -5,8 +5,6 @@
 
 import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
 import { Agent } from './Agent.js';
-import path from 'path';
-import fs from 'fs';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
 
@@ -148,29 +146,4 @@ export class WorkflowManager {
     return this.agents.get(WorkflowManager.agentKey(workflowName, stepName));
   }
 
-  // -----------------------------------------------------------------------
-  // Internal: build MCP servers for step agent
-  // -----------------------------------------------------------------------
-
-  private _buildStepMcpServers(workspacePath: string): any[] {
-    const bundlePath = path.join(this.basePath, 'dist', 'mcp-role-server.cjs');
-    if (!fs.existsSync(bundlePath)) {
-      this.logger.warn(`MCP server bundle not found: ${bundlePath}. Run: npm run build:mcp-role-server`);
-      return [];
-    }
-
-    const servers: any[] = [{
-      name: 'workflow-step',
-      command: 'node',
-      args: [bundlePath, '--workspace', workspacePath],
-      env: [],
-    }];
-
-    this.logger.info('Step MCP servers:');
-    for (const s of servers) {
-      this.logger.info(`  stdio: ${s.command} ${(s.args || []).join(' ')}`);
-    }
-
-    return servers;
-  }
 }
