@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import http from 'node:http';
-import type { ContentBlock } from '@agentclientprotocol/sdk';
+import type { PromptBlock } from './kernel/types.js';
 import { defaultLogger } from '../core/Logger.js';
 import type { Agent } from './Agent.js';
 import type { ChatMsg } from '../types/shared.js';
@@ -19,7 +19,7 @@ export interface McpBackendCallbacks {
     phase: 'request' | 'response',
     content: string,
   ): void;
-  buildPromptBlocks(moduleName: string, userText: string): ContentBlock[];
+  buildPromptBlocks(moduleName: string, userText: string): PromptBlock[];
   setAgentStatus?(moduleName: string, status: 'idle' | 'streaming' | 'error'): void;
   onLog?(level: 'info' | 'warn' | 'error', message: string): void;
   /** 开始流累积（module_call 前调用，确保 accumulator 干净） */
@@ -166,41 +166,30 @@ export class McpBackendServer {
           );
         }
 
-        const chunks: string[] = [];
-        const prevHandler = entry.launched.onSessionUpdate;
-        entry.launched.onSessionUpdate = (name, sid, notification) => {
-          prevHandler?.(name, sid, notification);
-          if (sid === entry.sessionId) {
-            const u = notification.update;
-            if (u.sessionUpdate === 'agent_message_chunk') {
-              const text = (u as { content?: { text?: string } }).content?.text;
-              if (text) chunks.push(text);
-            } else if (u.sessionUpdate === 'agent_thought_chunk') {
-              const text = (u as { content?: { thinking?: string } }).content?.thinking;
-              if (text) chunks.push(text);
-            }
-          }
-        };
-
         try {
           this.callbacks.startStream?.(targetModule);
           this.callbacks.setAgentStatus?.(targetModule, 'streaming');
           const promptBlocks = this.callbacks.buildPromptBlocks(targetModule, promptText);
-          const result = await entry.connection.prompt({
-            sessionId: entry.sessionId,
-            prompt: promptBlocks,
-          });
+
+          let responseText = '';
+          const kernel = entry.kernel;
+          if (kernel) {
+            const result = await kernel.send(promptBlocks);
+            responseText = result.content;
+          } else {
+            responseText = 'No kernel available';
+          }
+
           this.callbacks.setAgentStatus?.(targetModule, 'idle');
 
           res.writeHead(200);
-          const responseText = chunks.join('').trim();
           const isQuery = !!msg.query && !msg.task;
           res.end(
             JSON.stringify({
               success: true,
               ...(isQuery
-                ? { answer: responseText || `Agent response (stopReason: ${result.stopReason})` }
-                : { result: responseText || `Agent response (stopReason: ${result.stopReason})` }),
+                ? { answer: responseText || 'Agent response' }
+                : { result: responseText || 'Agent response' }),
             }),
           );
 
@@ -256,7 +245,7 @@ export class McpBackendServer {
           }
 
           // 始终通知双方通信结果（即使 agent 未产生文本回复）
-          const crossResponseText = responseText || `(无文本, stopReason: ${result.stopReason})`;
+          const crossResponseText = responseText || '(No text)';
           if (requestingModule && targetModule) {
             this.callbacks.sendCrossContext?.(
               targetModule,
@@ -282,8 +271,6 @@ export class McpBackendServer {
               error: `Prompt failed: ${(err as Error).message}`,
             }),
           );
-        } finally {
-          entry.launched.onSessionUpdate = prevHandler;
         }
       } catch {
         res.writeHead(400);

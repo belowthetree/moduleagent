@@ -8,7 +8,7 @@ import fs from 'fs';
 import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';
 import { defaultLogger, type Logger } from './Logger.js';
 import type { ChatMsg } from '../types/shared.js';
-import type { ContentBlock } from '@agentclientprotocol/sdk';
+import type { PromptBlock } from '../agents/kernel/types.js';
 
 export interface SummarizeParams {
   moduleName: string;
@@ -52,10 +52,11 @@ export class ExperienceSummarizer {
         agentConfig,
         `summarizer-${moduleName}`,
         cwd,
+        '',
         this.logger,
       );
 
-      const { sessionId } = await launched.connection.newSession({
+      const { sessionId } = await (launched as any).connection.newSession({
         cwd,
         mcpServers: [],
       });
@@ -63,13 +64,13 @@ export class ExperienceSummarizer {
       const blocks = this.buildPrompt(moduleName, chatMsgs, projectRoot);
       this.logger.info(`ExperienceSummarizer: sending prompt [${moduleName}] (${blocks.length} blocks)`);
 
-      await launched.connection.prompt({ sessionId, prompt: blocks });
+      await (launched as any).connection.prompt({ sessionId, prompt: blocks });
       this.logger.info(`ExperienceSummarizer: completed for [${moduleName}]`);
     } catch (err) {
       this.logger.error(`ExperienceSummarizer: failed for [${moduleName}]: ${(err as Error).message}`);
     } finally {
       if (launched) {
-        try { launched.process.kill(); } catch { /* 忽略 */ }
+        try { (launched as any).process.kill(); } catch { /* 忽略 */ }
       }
     }
   }
@@ -99,8 +100,8 @@ export class ExperienceSummarizer {
     }
   }
 
-  private buildPrompt(moduleName: string, chatMsgs: ChatMsg[], projectRoot: string): ContentBlock[] {
-    const blocks: ContentBlock[] = [];
+  private buildPrompt(moduleName: string, chatMsgs: ChatMsg[], projectRoot: string): PromptBlock[] {
+    const blocks: PromptBlock[] = [];
 
     if (this.summarizerPrompt) {
       blocks.push({ type: 'text', text: this.summarizerPrompt + '\n\n---\n\n' });

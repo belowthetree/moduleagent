@@ -7,7 +7,6 @@ import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
 import { Agent } from './Agent.js';
 import path from 'path';
 import fs from 'fs';
-import type { SessionNotification, McpServerStdio } from '@agentclientprotocol/sdk';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
 
@@ -31,7 +30,7 @@ export interface WorkflowManagerOptions {
   workspaceRoot: string;
   logger?: Logger;
   callbacks?: {
-    onSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
+    onSessionUpdate?: (agentName: string, sessionId: string, notification: any) => void;
     onQueue?: (queueLength: number) => void;
     onSystemMessage?: (text: string, queueLength: number) => void;
   };
@@ -87,17 +86,13 @@ export class WorkflowManager {
 
       // Build onNotification callback
       const self = this;
-      const onNotification = (sessionId: string, notification: SessionNotification): void => {
+      const onNotification = (sessionId: string, notification: any): void => {
         if (self.callbacks?.onSessionUpdate) {
           self.callbacks.onSessionUpdate(key, sessionId, notification);
         }
       };
 
       // Build MCP servers factory
-      const buildMcpServersFn = (_cwd: string): McpServerStdio[] => {
-        return this._buildStepMcpServers(workspacePath);
-      };
-
       // Start agent via unified Agent class
       const agent = await Agent.start({
         name: `workflow:${key}`,
@@ -105,7 +100,6 @@ export class WorkflowManager {
         cwd: workspacePath,
         launcher: this.launcher,
         logger: this.logger,
-        buildMcpServers: buildMcpServersFn,
         onNotification,
         onQueue: self.callbacks?.onQueue,
         onSystemMessage: self.callbacks?.onSystemMessage,
@@ -158,14 +152,14 @@ export class WorkflowManager {
   // Internal: build MCP servers for step agent
   // -----------------------------------------------------------------------
 
-  private _buildStepMcpServers(workspacePath: string): McpServerStdio[] {
+  private _buildStepMcpServers(workspacePath: string): any[] {
     const bundlePath = path.join(this.basePath, 'dist', 'mcp-role-server.cjs');
     if (!fs.existsSync(bundlePath)) {
       this.logger.warn(`MCP server bundle not found: ${bundlePath}. Run: npm run build:mcp-role-server`);
       return [];
     }
 
-    const servers: McpServerStdio[] = [{
+    const servers: any[] = [{
       name: 'workflow-step',
       command: 'node',
       args: [bundlePath, '--workspace', workspacePath],

@@ -1,10 +1,11 @@
 // ---------------------------------------------------------------------------
 // tui/components/SetupWizard.tsx — TUI 设置向导组件
-// 引导用户在 TUI 模式下配置项目路径、Agent 命令等
+// 配置 LLM 提供商（方向键选择）、API 密钥、模型和项目路径
 // ---------------------------------------------------------------------------
 
-import { createSignal, createMemo } from "solid-js";
-import { useKeyboard } from "@opentui/solid";
+import { createSignal, createMemo, For, onMount, onCleanup } from "solid-js";
+import { useRenderer } from "@opentui/solid";
+import type { KeyEvent } from "@opentui/core";
 import { tuiState } from "../state.js";
 import {
   writeModuleAgentJson,
@@ -15,55 +16,114 @@ interface SetupWizardProps {
   onComplete: () => void;
 }
 
+const PROVIDERS = [
+  { value: 'anthropic', label: 'Anthropic (Claude)' },
+  { value: 'openai', label: 'OpenAI (GPT)' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'google', label: 'Google (Gemini)' },
+  { value: 'custom', label: 'Custom (OpenAI-compatible)' },
+];
+
 export default function SetupWizard(props: SetupWizardProps) {
+  const renderer = useRenderer();
   const defaultConfig = getDefaultConfig();
   const existing = tuiState.setupData();
 
-  // 回退和占位符的现有/默认值
-  const fallbackCommand = existing.command || defaultConfig.agents.default.command;
-  const fallbackModel = existing.model || '';
-  const fallbackArgs = existing.args || (defaultConfig.agents.default.args ?? []).join(" ");
+  const fallbackProvider = existing.provider || defaultConfig.agents.default.provider || 'anthropic';
+  const fallbackModel = existing.model || defaultConfig.agents.default.model || '';
+  const fallbackApiKey = existing.apiKey || '';
   const fallbackProjectPath = existing.projectPath || tuiState.workingDir() || process.cwd();
 
-  // ── 本地编辑状态（初始为空，用户输入需显式确认） ─────
-  const [command, setCommand] = createSignal("");
+  const [provider, setProvider] = createSignal("");
   const [model, setModel] = createSignal("");
-  const [extraArgs, setExtraArgs] = createSignal("");
+  const [apiKey, setApiKey] = createSignal("");
   const [projectPath, setProjectPath] = createSignal("");
 
-  // ── 键盘导航 ─────────────────────────────────────────────
-  useKeyboard((key: { name: string }) => {
-    const step = tuiState.setupStep();
+  const [providerSelIdx, setProviderSelIdx] = createSignal(
+    Math.max(0, PROVIDERS.findIndex(p => p.value === (existing.provider || fallbackProvider))),
+  );
 
-    if (key.name === "return") {
-      if (step < 4) {
-        saveStepData(step);
-        tuiState.setSetupStep(step + 1);
-      } else if (step === 4) {
-        handleComplete();
-      }
-    } else if (key.name === "escape") {
+  // ── 使用 renderer.keyInput 直接监听键盘（绕过 focus 系统）───
+  let keyHandler: ((key: KeyEvent) => void) | null = null;
+
+  onMount(() => {
+    keyHandler = (key: KeyEvent) => {
+      const step = tuiState.setupStep();
+
       if (step === 0) {
-        props.onComplete();
-      } else {
-        saveStepData(step);
-        tuiState.setSetupStep(step - 1);
+        const max = PROVIDERS.length - 1;
+        if (key.name === 'up' || key.name === 'k') {
+          setProviderSelIdx(prev => prev > 0 ? prev - 1 : max);
+          return;
+        }
+        if (key.name === 'down' || key.name === 'j') {
+          setProviderSelIdx(prev => prev < max ? prev + 1 : 0);
+          return;
+        }
+        if (key.name === 'return' || key.name === 'enter' || key.name === ' ') {
+          const idx = providerSelIdx();
+          setProvider(PROVIDERS[idx]?.value || fallbackProvider);
+          saveStepData(0);
+          tuiState.setSetupStep(1);
+          return;
+        }
+        if (key.name === 'escape') {
+          props.onComplete();
+          return;
+        }
       }
+
+      if (step >= 1 && step <= 3) {
+        if (key.name === "return" || key.name === "enter") {
+          saveStepData(step);
+          tuiState.setSetupStep(step + 1);
+        } else if (key.name === "escape") {
+          saveStepData(step);
+          if (step === 1) {
+            initProviderIdx();
+            tuiState.setSetupStep(0);
+          } else {
+            tuiState.setSetupStep(step - 1);
+          }
+        }
+      }
+
+      if (step === 4) {
+        if (key.name === "return" || key.name === "enter") {
+          handleComplete();
+        } else if (key.name === "escape") {
+          saveStepData(4);
+          tuiState.setSetupStep(3);
+        }
+      }
+    };
+
+    renderer.keyInput.on('keypress', keyHandler);
+  });
+
+  onCleanup(() => {
+    if (keyHandler) {
+      renderer.keyInput.removeListener('keypress', keyHandler);
     }
   });
 
-  // ── 数据持久化 ────────────────────────────────────────────────
+  function initProviderIdx(): void {
+    const p = provider() || existing.provider || fallbackProvider;
+    const idx = PROVIDERS.findIndex(item => item.value === p);
+    setProviderSelIdx(Math.max(0, idx));
+  }
+
   function saveStepData(step: number): void {
     const data = { ...tuiState.setupData() };
     switch (step) {
       case 0:
-        data.command = command() || fallbackCommand;
+        data.provider = provider() || PROVIDERS[providerSelIdx()]?.value || fallbackProvider;
         break;
       case 1:
         data.model = model() || fallbackModel;
         break;
       case 2:
-        data.args = extraArgs() || fallbackArgs;
+        data.apiKey = apiKey() || fallbackApiKey;
         break;
       case 3:
         data.projectPath = projectPath() || fallbackProjectPath;
@@ -74,101 +134,105 @@ export default function SetupWizard(props: SetupWizardProps) {
 
   async function handleComplete(): Promise<void> {
     const data = tuiState.setupData();
-
-    // 构建 args：只放额外参数，model 独立字段不混入
-    const argsParts: string[] = data.args
-      ? data.args.split(/\s+/).filter(Boolean)
-      : [];
-
     const resolvedProjectPath = data.projectPath || fallbackProjectPath;
 
     const merged = {
       agents: {
         default: {
-          command: data.command || defaultConfig.agents.default.command,
-          args: argsParts.length > 0 ? argsParts : defaultConfig.agents.default.args,
-          ...(data.model ? { model: data.model } : {}),
+          provider: data.provider || fallbackProvider,
+          model: data.model || fallbackModel,
+          apiKey: data.apiKey || fallbackApiKey,
         },
       },
       projectPath: resolvedProjectPath,
     };
 
-    // 将配置保存到用户指定的项目目录
     await writeModuleAgentJson(resolvedProjectPath, merged);
 
-    // 更新工作目录并通知外部
     tuiState.setSetupData({ ...data, savedTo: resolvedProjectPath });
     tuiState.setWorkingDir(resolvedProjectPath);
     props.onComplete();
   }
 
-  // ── 派生 ─────────────────────────────────────────────────────────
   const step = createMemo(() => tuiState.setupStep());
 
   const summaryText = createMemo((): string => {
     const data = tuiState.setupData();
     const lines: string[] = [];
 
-    const modelPart = data.model ? ` (model: ${data.model})` : '';
-    const argsPart = data.args ? ` [${data.args}]` : '';
-    lines.push(
-      `Agent: ${data.command || defaultConfig.agents.default.command}${modelPart}${argsPart}`,
-    );
+    const pVal = data.provider || fallbackProvider;
+    const pLabel = PROVIDERS.find(p => p.value === pVal)?.label || pVal;
+    lines.push(`Provider: ${pLabel} (${pVal})`);
+    lines.push(`Model: ${data.model || fallbackModel || '(default)'}`);
+    lines.push(`API Key: ${data.apiKey ? '***configured***' : '(not set)'}`);
     lines.push(`项目目录: ${data.projectPath || fallbackProjectPath}`);
-    lines.push(`配置保存目录: ${tuiState.workingDir() || process.cwd()}`);
 
     return lines.join("\n");
   });
 
-  // ── 渲染 ──────────────────────────────────────────────────────────
   return (
     <box flexDirection="column" padding={1} gap={1}>
-      {/* ── 步骤 0：Agent 命令 ──────────────────────────────────────── */}
+      {/* ── Step 0: Provider selector ─────────────────── */}
       {step() === 0 && (
-        <>
-          <text>Agent 命令</text>
-          <text dim>当前: {fallbackCommand}</text>
-          <input
-            focused={true}
-            value={command()}
-            placeholder={fallbackCommand}
-            onInput={(v: string) => setCommand(v)}
-          />
-        </>
+        <box flexDirection="column">
+          <text>LLM 提供商 (↑↓ 选择, 空格/回车 确认)</text>
+          <text dim>当前: {PROVIDERS.find(p => p.value === (existing.provider || fallbackProvider))?.label || fallbackProvider}</text>
+          <box flexDirection="column" padding={0}>
+            <For each={PROVIDERS}>
+              {(item, i) => {
+                const isSel = i() === providerSelIdx();
+                return (
+                  <box
+                    flexDirection="row"
+                    height={1}
+                    backgroundColor={isSel ? '#1a2538' : 'transparent'}
+                  >
+                    <text width={2} fg={isSel ? '#58a6ff' : '#555555'}>
+                      {isSel ? '▸' : ' '}
+                    </text>
+                    <text fg={isSel ? '#58a6ff' : '#c9d1d9'} bold={isSel}>
+                      {item.label}
+                    </text>
+                    <text dim>  ({item.value})</text>
+                  </box>
+                );
+              }}
+            </For>
+          </box>
+        </box>
       )}
 
-      {/* ── 步骤 1：模型 ──────────────────────────────────────── */}
+      {/* ── Step 1: Model ────────────────────────────── */}
       {step() === 1 && (
         <>
           <text>模型</text>
-          <text dim>例如: gpt-4, claude-sonnet-4-20250514, deepseek-v3</text>
           <text dim>当前: {fallbackModel || '(未设置)'}</text>
           <input
             focused={true}
             value={model()}
-            placeholder={fallbackModel || 'gpt-4'}
+            placeholder={fallbackModel || 'claude-sonnet-4-20250514'}
             onInput={(v: string) => setModel(v)}
           />
-          <text dim>留空则使用 Agent 默认模型。</text>
+          <text dim>留空则使用提供商默认模型。按 Enter 继续。</text>
         </>
       )}
 
-      {/* ── 步骤 2：额外参数 ──────────────────────────────────────── */}
+      {/* ── Step 2: API Key ──────────────────────────── */}
       {step() === 2 && (
         <>
-          <text>额外参数</text>
-          <text dim>其他需要传递给 Agent 的命令行参数。</text>
-          <text dim>当前: {fallbackArgs || '(无)'}</text>
+          <text>API 密钥</text>
+          <text dim>当前: {fallbackApiKey ? '***已配置***' : '(未设置)'}</text>
           <input
             focused={true}
-            value={extraArgs()}
-            placeholder={fallbackArgs}
-            onInput={(v: string) => setExtraArgs(v)}
+            value={apiKey()}
+            placeholder="sk-..."
+            onInput={(v: string) => setApiKey(v)}
           />
+          <text dim>存储于项目 .module-agent.json 中。按 Enter 继续。</text>
         </>
       )}
 
-      {/* ── 步骤 3：项目目录 ──────────────────────────────────────── */}
+      {/* ── Step 3: Project path ─────────────────────── */}
       {step() === 3 && (
         <>
           <text>项目目录</text>
@@ -181,10 +245,11 @@ export default function SetupWizard(props: SetupWizardProps) {
             placeholder={fallbackProjectPath}
             onInput={(v: string) => setProjectPath(v)}
           />
+          <text dim>按 Enter 继续。</text>
         </>
       )}
 
-      {/* ── 步骤 4：确认设置 ────────────────────────────────────────── */}
+      {/* ── Step 4: Confirm ──────────────────────────── */}
       {step() === 4 && (
         <>
           <text>确认设置</text>

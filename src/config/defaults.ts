@@ -6,26 +6,26 @@
 export interface ProjectConfig {
   agents: {
     default: {
-      command: string;
-      args?: string[];
-      model?: string;
-      defaultMode?: string;
-      kernel?: boolean;
+      provider?: string;
       apiKey?: string;
       baseUrl?: string;
+      model?: string;
       fastModel?: string;
       maxTokens?: number;
+      command?: string;
+      args?: string[];
+      defaultMode?: string;
     };
     modules?: Record<string, {
-      command: string;
-      args?: string[];
-      model?: string;
-      defaultMode?: string;
-      kernel?: boolean;
+      provider?: string;
       apiKey?: string;
       baseUrl?: string;
+      model?: string;
       fastModel?: string;
       maxTokens?: number;
+      command?: string;
+      args?: string[];
+      defaultMode?: string;
     }>;
   };
   exclude: string[];
@@ -41,7 +41,10 @@ export interface ConfigEntry extends ProjectConfig {
 }
 
 export interface RoleAgentConfig {
-  command: string;
+  provider?: string;
+  apiKey?: string;
+  model?: string;
+  command?: string;
   args?: string[];
 }
 
@@ -65,8 +68,8 @@ export const DEFAULT_CONFIG_ENTRY: ConfigEntry = {
   name: 'default',
   agents: {
     default: {
-      command: 'opencode',
-      args: ['acp'],
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
     },
   },
   exclude: [],
@@ -81,8 +84,8 @@ export const DEFAULT_MODULE_GEN_ROLE: RoleConfig = {
   visibleModulePaths: [],
   agents: {
     default: {
-      command: 'opencode',
-      args: ['acp'],
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
     },
   },
   knowledgeRefs: [

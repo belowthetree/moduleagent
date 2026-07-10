@@ -1,8 +1,7 @@
 // ---------------------------------------------------------------------------
-// core/ModuleAgentCore.ts — 统一 Agent 编排核心
-// 组合 ModuleAgentSubsystem、RoleAgentSubsystem、WorkflowSubsystem 和 MCP 后端
-// 提供统一的消息发送、Agent 管理和生命周期控制
-// ---------------------------------------------------------------------------
+// core/ModuleAgentCore.ts �?统一 Agent 编排核心
+// 组合 ModuleAgentSubsystem、RoleAgentSubsystem、WorkflowSubsystem �?MCP 后端
+// 提供统一的消息发送、Agent 管理和生命周期控�?// ---------------------------------------------------------------------------
 
 import path from 'path';
 import { defaultLogger, type Logger } from './Logger.js';
@@ -18,7 +17,7 @@ import type {
   AgentInfo,
 } from './CoreTypes.js';
 import type { RoleConfig } from '../config/defaults.js';
-import type { SessionNotification } from '@agentclientprotocol/sdk';
+import type { PromptBlock } from '../agents/kernel/types.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 
 // ---------------------------------------------------------------------------
@@ -33,11 +32,11 @@ export interface ModuleAgentCoreOptions {
   /** Enable role agent support */
   enableRoles?: boolean;
   /** Optional external session-update listener (e.g. AgentStateManager in Electron) */
-  onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void;
+  onSessionUpdate?: (moduleName: string, sessionId: string, notification: any) => void;
   /** Optional role session-update listener */
-  onRoleSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
+  onRoleSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
   /** Optional workflow session-update listener */
-  onWorkflowSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
+  onWorkflowSessionUpdate?: (agentName: string, sessionId: string, notification: any) => void;
   /** Optional cross-context notification callback (for UI) */
   onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
   /** Optional post-send hook (summarizer + workspace diff) */
@@ -45,8 +44,7 @@ export interface ModuleAgentCoreOptions {
 }
 
 // ---------------------------------------------------------------------------
-// ModuleAgentCore 核心类
-// ---------------------------------------------------------------------------
+// ModuleAgentCore 核心�?// ---------------------------------------------------------------------------
 
 export class ModuleAgentCore {
   private callbacks: CoreCallbacks;
@@ -61,8 +59,8 @@ export class ModuleAgentCore {
 
   private projectRoot = '';
   private initialized = false;
-  private onRoleSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
-  private onWorkflowSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
+  private onRoleSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
+  private onWorkflowSessionUpdate?: (agentName: string, sessionId: string, notification: any) => void;
 
   constructor(options: ModuleAgentCoreOptions) {
     this.callbacks = options.callbacks;
@@ -83,7 +81,7 @@ export class ModuleAgentCore {
     });
 
     if (options.enableRoles) {
-      // 角色子系统需要 init 时设置的 projectPath 和 workspaceRoot
+      // 角色子系统需�?init 时设置的 projectPath �?workspaceRoot
     }
   }
 
@@ -109,9 +107,7 @@ export class ModuleAgentCore {
   }
 
   /**
-   * 完整初始化：扫描模块 + 加载角色 + 初始化工作流。
-   * 替代手动调用 init() → initRoles() → initWorkflows() 的编排模式。
-   */
+   * 完整初始化：扫描模块 + 加载角色 + 初始化工作流�?   * 替代手动调用 init() �?initRoles() �?initWorkflows() 的编排模式�?   */
   async initAll(projectRoot: string, configDir?: string): Promise<InitResult> {
     const result = await this.init(projectRoot, configDir);
 
@@ -131,8 +127,7 @@ export class ModuleAgentCore {
       this.initWorkflows(resolvedProjectPath, workspaceRoot);
       this.logger.info('ModuleAgentCore: auto-initialised workflow subsystem');
 
-      // 启动 MCP 后端（跨模块通信）
-      await this.startMcpBackend();
+      // 启动 MCP 后端（跨模块通信�?      await this.startMcpBackend();
     } catch (err) {
       this.logger.warn(`ModuleAgentCore: role/workflow init skipped: ${(err as Error).message}`);
     }
@@ -191,7 +186,7 @@ export class ModuleAgentCore {
   initRoles(
     projectPath: string,
     workspaceRoot: string,
-    onSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void,
+    onSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void,
   ): void {
     if (!this.initialized) throw new Error('Must call init() before initRoles()');
 
@@ -213,7 +208,7 @@ export class ModuleAgentCore {
   initWorkflows(
     projectPath: string,
     workspaceRoot: string,
-    onSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void,
+    onSessionUpdate?: (agentName: string, sessionId: string, notification: any) => void,
   ): void {
     if (!this.initialized) throw new Error('Must call init() before initWorkflows()');
 
@@ -333,6 +328,7 @@ export class ModuleAgentCore {
   // -----------------------------------------------------------------------
 
   private _ensureInit(): void {
-    if (!this.initialized) throw new Error('ModuleAgentCore not initialized — call init() first');
+    if (!this.initialized) throw new Error('ModuleAgentCore not initialized �?call init() first');
   }
 }
+

@@ -17,56 +17,49 @@ describe('useConfigStore', () => {
 
   it('initial state: all refs have default values', () => {
     const store = useConfigStore()
-    expect(store.agentCmd).toBe('opencode')
-    expect(store.agentArgs).toBe('acp')
+    expect(store.provider).toBe('anthropic')
+    expect(store.apiKey).toBe('')
+    expect(store.model).toBe('')
     expect(store.projectPath).toBe('')
   })
 
   it('loadFromLocalStorage: preset values restored, missing keys fall back to defaults', () => {
-    localStorage.setItem('agentCmd', 'custom-cmd')
-    localStorage.setItem('agentArgs', '--verbose --model gpt4')
+    localStorage.setItem('provider', 'openai')
+    localStorage.setItem('apiKey', 'sk-test123')
+    localStorage.setItem('model', 'gpt-4o')
     localStorage.setItem('lastProject', '/home/user/project')
 
     const store = useConfigStore()
     store.loadFromLocalStorage()
 
-    expect(store.agentCmd).toBe('custom-cmd')
-    expect(store.agentArgs).toBe('--verbose --model gpt4')
+    expect(store.provider).toBe('openai')
+    expect(store.apiKey).toBe('sk-test123')
+    expect(store.model).toBe('gpt-4o')
     expect(store.projectPath).toBe('/home/user/project')
-  })
-
-  it('loadFromLocalStorage: migrates old lastWorkspace key to lastProject', () => {
-    localStorage.setItem('lastWorkspace', '/legacy/workspace')
-
-    const store = useConfigStore()
-    store.loadFromLocalStorage()
-
-    expect(store.projectPath).toBe('/legacy/workspace')
-    expect(localStorage.getItem('lastWorkspace')).toBeNull()
-    expect(localStorage.getItem('lastProject')).toBe('/legacy/workspace')
   })
 
   it('saveToLocalStorage: store writes to correct keys', () => {
     const store = useConfigStore()
-    store.agentCmd = 'my-agent'
-    store.agentArgs = 'serve'
+    store.provider = 'deepseek'
+    store.apiKey = 'sk-key'
+    store.model = 'deepseek-chat'
     store.projectPath = '/tmp/proj'
 
     store.saveToLocalStorage()
 
-    expect(localStorage.getItem('agentCmd')).toBe('my-agent')
-    expect(localStorage.getItem('agentArgs')).toBe('serve')
+    expect(localStorage.getItem('provider')).toBe('deepseek')
+    expect(localStorage.getItem('apiKey')).toBe('sk-key')
+    expect(localStorage.getItem('model')).toBe('deepseek-chat')
     expect(localStorage.getItem('lastProject')).toBe('/tmp/proj')
-    expect(localStorage.getItem('lastWorkspace')).toBeNull()
-    expect(localStorage.getItem('codeSourceType')).toBeNull()
   })
 
   it('saveToProject: mock saveAgentConfig called with right args', async () => {
     const spy = vi.spyOn(window.moduleAgent, 'saveAgentConfig')
 
     const store = useConfigStore()
-    store.agentCmd = 'claude'
-    store.agentArgs = 'acp --model sonnet'
+    store.provider = 'openai'
+    store.apiKey = 'sk-test'
+    store.model = 'gpt-4o'
     store.projectPath = '/my/project/path'
 
     const result = await store.saveToProject('/project/root')
@@ -74,8 +67,10 @@ describe('useConfigStore', () => {
     expect(result.success).toBe(true)
     expect(spy).toHaveBeenCalledWith(
       '/project/root',
-      'claude',
-      ['acp', '--model', 'sonnet'],
+      'openai',
+      'sk-test',
+      '',
+      'gpt-4o',
       '/my/project/path',
       true,
     )
@@ -85,25 +80,27 @@ describe('useConfigStore', () => {
 
   it('loadFromProject: mock getAgentConfig maps result to refs', async () => {
     vi.spyOn(window.moduleAgent, 'getAgentConfig').mockResolvedValue({
-      command: 'custom-agent',
-      args: ['--verbose', '--debug'],
+      provider: 'anthropic',
+      apiKey: 'sk-ant',
+      model: 'claude-sonnet-4-20250514',
       projectPath: '/project/root',
     })
 
     const store = useConfigStore()
     await store.loadFromProject('/project/root')
 
-    expect(store.agentCmd).toBe('custom-agent')
-    expect(store.agentArgs).toBe('--verbose --debug')
+    expect(store.provider).toBe('anthropic')
+    expect(store.apiKey).toBe('sk-ant')
+    expect(store.model).toBe('claude-sonnet-4-20250514')
     expect(store.projectPath).toBe('/project/root')
   })
 
-  it('corrupt config from project: getAgentConfig throws → promise rejects gracefully', async () => {
+  it('corrupt config from project: getAgentConfig throws -> promise rejects gracefully', async () => {
     vi.spyOn(window.moduleAgent, 'getAgentConfig').mockRejectedValue(new Error('Corrupt config file'))
 
     const store = useConfigStore()
     await expect(store.loadFromProject('/bad/project')).rejects.toThrow('Corrupt config file')
-    expect(store.agentCmd).toBe('opencode')
+    expect(store.provider).toBe('anthropic')
     expect(store.projectPath).toBe('')
   })
 })

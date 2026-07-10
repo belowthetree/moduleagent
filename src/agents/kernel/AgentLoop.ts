@@ -1,15 +1,13 @@
 // ---------------------------------------------------------------------------
 // agents/kernel/AgentLoop.ts — 核心推理循环
-// 实现 prompt → LLM → tool_calls → LLM → response 循环
-// 参考 claude-code-rust 的 Repl::process_input()
+// 手动管理工具调用循环，使用 ai-sdk 作为 LLM 提供商抽象
 // ---------------------------------------------------------------------------
 
-import { LLMClient } from './LLMClient.js';
+import { generateText, type ModelMessage } from 'ai';
+import { resolveLanguageModel } from './ProviderResolver.js';
+import { convertToolDefinitionToAISDK } from './ToolConverter.js';
 import { ToolRegistry } from './ToolRegistry.js';
 import type {
-  ChatMessage,
-  ChatResponse,
-  ToolCall,
   ToolDefinition,
   AgentLoopConfig,
   LoopPhase,
@@ -28,22 +26,21 @@ export interface LoopEvents {
 const DEFAULT_MAX_TOOL_ROUNDS = 15;
 
 export class AgentLoop {
-  private client: LLMClient;
-  private registry: ToolRegistry;
   private systemPrompt: string;
   private workspaceRoot: string;
   private maxToolRounds: number;
-  private history: ChatMessage[] = [];
+  private history: ModelMessage[] = [];
   private logger: Logger;
   private events: LoopEvents;
   private _phase: LoopPhase = 'idle' as LoopPhase;
   private _cancelled = false;
   private _sessionId: string;
+  private model: ReturnType<typeof resolveLanguageModel>['model'];
+  private abortController: AbortController | null = null;
 
   constructor(config: AgentLoopConfig, events: LoopEvents, logger?: Logger) {
-    this.client = new LLMClient(config.kernelConfig);
-    this.registry = new ToolRegistry();
-    this.registry.registerAll(config.tools);
+    const resolved = resolveLanguageModel(config.kernelConfig);
+    this.model = resolved.model;
     this.systemPrompt = config.systemPrompt;
     this.workspaceRoot = config.workspaceRoot;
     this.maxToolRounds = config.maxToolRounds ?? DEFAULT_MAX_TOOL_ROUNDS;
@@ -51,11 +48,12 @@ export class AgentLoop {
     this.events = events;
     this._sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    // 注入系统提示词
-    if (this.systemPrompt) {
-      this.history.push({ role: 'system', content: this.systemPrompt });
-    }
+    const registry = new ToolRegistry();
+    registry.registerAll(config.tools);
+    this._tools = registry.list();
   }
+
+  private _tools: import('./types.js').Tool[] = [];
 
   get sessionId(): string {
     return this._sessionId;
@@ -65,7 +63,7 @@ export class AgentLoop {
     return this._phase;
   }
 
-  get conversationHistory(): ChatMessage[] {
+  get conversationHistory(): ModelMessage[] {
     return [...this.history];
   }
 
@@ -76,23 +74,18 @@ export class AgentLoop {
 
   cancel(): void {
     this._cancelled = true;
+    this.abortController?.abort();
     this.setPhase('cancelled' as LoopPhase);
   }
 
-  resetHistory(keepSystem: boolean = true): void {
-    if (keepSystem) {
-      this.history = this.history.filter((m) => m.role === 'system');
-    } else {
-      this.history = [];
-      if (this.systemPrompt) {
-        this.history.push({ role: 'system', content: this.systemPrompt });
-      }
-    }
+  resetHistory(): void {
+    this.history = [];
     this._sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
   async send(blocks: PromptBlock[]): Promise<{ stopReason: string; content: string }> {
     this._cancelled = false;
+    this.abortController = new AbortController();
     this.setPhase('thinking' as LoopPhase);
 
     const userText = blocks.map((b) => b.text).join('\n');
@@ -114,7 +107,6 @@ export class AgentLoop {
   }
 
   private async _runLoop(): Promise<{ stopReason: string; content: string }> {
-    const tools = this.registry.listDefinitions();
     let toolRounds = 0;
 
     while (toolRounds < this.maxToolRounds) {
@@ -122,49 +114,66 @@ export class AgentLoop {
         return { stopReason: 'cancelled', content: '' };
       }
 
-      const response = await this._callLLM(tools);
+      const messages: ModelMessage[] = [
+        ...this.history,
+      ];
+
+      const toolDefs = this._tools.map((t) => convertToolDefinitionToAISDK(t));
+
+      const response = await generateText({
+        model: this.model,
+        system: this.systemPrompt,
+        messages,
+        tools: toolDefs.length > 0 ? toolDefs as any : undefined,
+        abortSignal: this.abortController!.signal,
+        maxRetries: 1,
+      });
 
       if (this._cancelled) {
         return { stopReason: 'cancelled', content: '' };
       }
 
-      const choice = response.choices?.[0];
-      if (!choice) {
-        return { stopReason: 'end_turn', content: '' };
+      const text = response.text || '';
+      if (text) {
+        this.events.onStreamChunk(text);
       }
 
-      const message = choice.message;
-
-      const hasToolCalls = message.tool_calls && message.tool_calls.length > 0;
+      const toolCalls = response.toolCalls || [];
+      const hasToolCalls = toolCalls.length > 0;
 
       if (hasToolCalls) {
         toolRounds++;
 
-        // 将 assistant 消息（含 tool_calls）加入对话历史
+        const assistantContent: any[] = [];
+        if (text) {
+          assistantContent.push({ type: 'text', text });
+        }
+        for (const tc of toolCalls) {
+          assistantContent.push({
+            type: 'tool-call',
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            args: (tc as any).input || {},
+          });
+        }
         this.history.push({
           role: 'assistant',
-          content: message.content,
-          tool_calls: message.tool_calls,
+          content: assistantContent as any,
         });
 
-        for (const tc of message.tool_calls!) {
+        for (const tc of toolCalls) {
           if (this._cancelled) break;
 
-          const toolName = tc.function.name;
-          let args: Record<string, unknown>;
+          const toolName = tc.toolName;
+          const input = (tc as any).input as Record<string, unknown>;
 
-          try {
-            args = JSON.parse(tc.function.arguments);
-          } catch {
-            args = {};
-          }
+          this.logger.info(`[AgentLoop] tool_call: ${toolName} ${JSON.stringify(input).slice(0, 200)}`);
+          this.events.onToolCall(toolName, 'running', JSON.stringify(input).slice(0, 500));
+          this.setPhase('tool_call' as LoopPhase, { toolName, args: input });
 
-          this.logger.info(`[AgentLoop] tool_call: ${toolName} ${JSON.stringify(args).slice(0, 200)}`);
-          this.events.onToolCall(toolName, 'running', JSON.stringify(args).slice(0, 500));
-          this.setPhase('tool_call' as LoopPhase, { toolName, args });
-
-          // 执行工具
-          const result = await this.registry.execute(toolName, args);
+          const registry = new ToolRegistry();
+          registry.registerAll(this._tools);
+          const result = await registry.execute(toolName, input);
 
           this.logger.info(`[AgentLoop] tool_result: ${toolName} success=${!result.metadata?.error}`);
           this.events.onToolCall(
@@ -173,47 +182,37 @@ export class AgentLoop {
             result.content.slice(0, 500),
           );
 
-          // 将工具结果加入对话历史
           this.history.push({
             role: 'tool',
-            tool_call_id: tc.id,
-            content: result.content,
+            content: [
+              {
+                type: 'tool-result',
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                result: result.content,
+              },
+            ] as any,
           });
         }
 
-        // 继续循环，让模型处理工具结果
         this.setPhase('thinking' as LoopPhase);
         continue;
       }
 
-      // 无工具调用，返回文本响应
-      const textContent = message.content || '';
       this.history.push({
         role: 'assistant',
-        content: textContent,
+        content: text || '',
       });
 
       return {
         stopReason: 'end_turn',
-        content: textContent,
+        content: text || '',
       };
     }
 
-    // 达到最大工具调用轮数
     return {
       stopReason: 'max_turns',
       content: '已达到最大工具调用轮数。',
     };
-  }
-
-  private async _callLLM(tools: ToolDefinition[]): Promise<ChatResponse> {
-    const response = await this.client.chat(this.history, tools.length > 0 ? tools : undefined);
-
-    const textContent = response.choices?.[0]?.message?.content || '';
-    if (textContent) {
-      this.events.onStreamChunk(textContent);
-    }
-
-    return response;
   }
 }

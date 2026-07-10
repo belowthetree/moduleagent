@@ -18,7 +18,7 @@ import { DEFAULT_CONFIG, DEFAULT_MODULE_GEN_ROLE, type RoleConfig } from '../../
 import { McpBackendServer } from '../../agents/McpBackend.js';
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
-import { writeMcpGraphFile, buildMcpServers } from '../../agents/McpServerBuilder.js';
+import { writeMcpGraphFile } from '../../agents/McpServerBuilder.js';
 import { buildPromptBlocks } from '../../agents/PromptBuilder.js';
 import { AgentLauncher } from '../../agents/AgentLauncher.js';
 import { workspacePathForModule, getSubModuleDirs, prepareModuleWorkspace } from '../../agents/WorkspaceIsolator.js';
@@ -213,7 +213,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
       const modules = config.agents.modules;
       if (modules && modules[rootNode.name]) {
         agentCommand = modules[rootNode.name]!.command;
-        agentArgs = modules[rootNode.name]!.args;
+        agentArgs = modules[rootNode.name]!.args || [];
       }
 
       const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
@@ -237,19 +237,14 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
         { command: agentCommand, args: agentArgs },
         rootNode.name,
         cwd,
+        '',
         ctx.logger,
-        { subModuleDirs },
+        { subModuleDirs } as any,
       );
 
-      const basePath = ctx._getBasePath();
       const graphFile = writeMcpGraphFile(graph);
-      const mcpServers = buildMcpServers({
-        moduleName: rootNode.name,
-        basePath,
-        graphFile,
-      });
 
-      const { sessionId } = await launched.connection.newSession({ cwd, mcpServers });
+      const { sessionId } = await (launched as any).connection.newSession({ cwd, mcpServers: [] });
 
       const projectName = path.basename(projectRoot);
       const mainDescriptors = descriptors.filter(
@@ -278,7 +273,7 @@ DO NOT overwrite existing module.md files.`,
         text: `Project: ${projectName}\nProject root: ${projectRoot}\n\nPlease analyze the following source directories and generate module.md for each:\n\n${dirsList}`,
       };
 
-      await launched.connection.prompt({ sessionId, prompt: [systemBlock, userBlock] });
+      await (launched as any).connection.prompt({ sessionId, prompt: [systemBlock, userBlock] });
       try { fs.unlinkSync(graphFile); } catch { /* 忽略 */ }
 
       const newDescriptors = await ModuleScanner.scan({

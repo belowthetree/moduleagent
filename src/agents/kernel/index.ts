@@ -8,7 +8,9 @@ export type { KernelOptions, KernelNotification, NotificationCallback, KernelSen
 export { AgentLoop } from './AgentLoop.js';
 export type { LoopEvents } from './AgentLoop.js';
 
-export { LLMClient } from './LLMClient.js';
+export { resolveLanguageModel } from './ProviderResolver.js';
+export type { ProviderType, ResolvedProvider } from './ProviderResolver.js';
+export { convertToolToAISDK, convertToolDefinitionToAISDK, convertToolsToAISDK } from './ToolConverter.js';
 export { ToolRegistry } from './ToolRegistry.js';
 export { createKernelToolRegistry, createBuiltinTools } from './tools/index.js';
 export type { McpBridgeOptions } from './tools/index.js';

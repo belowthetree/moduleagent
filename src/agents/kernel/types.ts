@@ -94,6 +94,7 @@ export interface ChatResponse {
 }
 
 export interface KernelConfig {
+  provider: string;
   apiKey: string;
   baseUrl: string;
   model: string;

@@ -6,14 +6,14 @@
 import { z } from 'zod';
 
 export const AgentConfigSchema = z.object({
-  command: z.string(),
+  command: z.string().optional(),
   args: z.array(z.string()).optional(),
   model: z.string().optional(),
   defaultMode: z.string().optional(),
   fastModel: z.string().optional(),
   normalModel: z.string().optional(),
   autoSwitchModel: z.boolean().optional(),
-  kernel: z.boolean().optional(),
+  provider: z.string().optional(),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
   maxTokens: z.number().int().positive().optional(),
@@ -42,10 +42,13 @@ export const ConfigEntrySchema = ProjectConfigSchema.extend({
 
 export type ConfigEntry = z.infer<typeof ConfigEntrySchema>;
 
-// 角色 Agent 配置（按角色覆写 Agent 命令）
+// 角色 Agent 配置
 export const RoleAgentConfigSchema = z.object({
-  command: z.string(),
+  command: z.string().optional(),
   args: z.array(z.string()).optional(),
+  provider: z.string().optional(),
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
 });
 
 export type RoleAgentConfig = z.infer<typeof RoleAgentConfigSchema>;

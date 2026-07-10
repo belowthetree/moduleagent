@@ -502,7 +502,7 @@ export class TuiBridge implements IAgentBridge {
         name: r.name,
         description: r.description,
         visibleModulePaths: r.visibleModulePaths,
-        agents: { default: { command: r.agents.default.command, args: r.agents.default.args } },
+        agents: { default: { command: r.agents.default.command || '', args: r.agents.default.args || [] } },
         knowledgeRefs: r.knowledgeRefs,
       }));
     } catch {
@@ -520,7 +520,7 @@ export class TuiBridge implements IAgentBridge {
       name: roleConfig.name,
       description: roleConfig.description,
       visibleModulePaths: roleConfig.visibleModulePaths,
-      agents: { default: { command: roleConfig.agents.default.command, args: roleConfig.agents.default.args || [] } },
+      agents: { default: { command: roleConfig.agents.default.command || '', args: roleConfig.agents.default.args || [] } },
     };
     await this.core.roles.startRole(rc);
     tuiState.setCurrentAgent(roleName);

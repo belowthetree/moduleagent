@@ -46,11 +46,11 @@ const api: ModuleAgentApi = {
   },
 
   // 配置 API
-  saveAgentConfig: (projectRoot: string, cmd: string, args: string[], projectPath?: string, summarizationEnabled?: boolean, fastModel?: string, normalModel?: string, autoSwitchModel?: boolean) =>
-    ipcRenderer.invoke(IpcChannel.Config.Save, projectRoot, { command: cmd, args, projectPath, summarizationEnabled, fastModel, normalModel, autoSwitchModel }) as Promise<{ success: boolean }>,
+  saveAgentConfig: (projectRoot: string, provider: string, apiKey: string, baseUrl: string, model: string, projectPath?: string, summarizationEnabled?: boolean) =>
+    ipcRenderer.invoke(IpcChannel.Config.Save, projectRoot, { provider, apiKey, baseUrl, model, projectPath, summarizationEnabled }) as Promise<{ success: boolean }>,
 
   getAgentConfig: (projectRoot: string) =>
-    ipcRenderer.invoke(IpcChannel.Config.Get, projectRoot) as Promise<{ command: string; args: string[]; projectPath?: string; summarizationEnabled?: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Config.Get, projectRoot) as Promise<{ provider?: string; apiKey?: string; baseUrl?: string; model?: string; projectPath?: string; summarizationEnabled?: boolean }>,
 
   // 迁移 API
   migrateCheck: (keys: string[]) => ipcRenderer.invoke(IpcChannel.Migrate.Check, keys) as Promise<{ needed: string[]; streamNeeded: boolean }>,

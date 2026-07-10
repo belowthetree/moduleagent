@@ -10,7 +10,7 @@ import { AgentLauncher } from '../agents/AgentLauncher.js';
 import { RoleAgentManager, type RoleAgentEntry } from '../agents/RoleAgentManager.js';
 import { AgentStateManager } from '../agents/AgentStateManager.js';
 import type { RoleConfig } from '../config/defaults.js';
-import type { SessionNotification, ContentBlock } from '@agentclientprotocol/sdk';
+import type { PromptBlock } from '../agents/kernel/types.js';
 import { defaultLogger, type Logger } from './Logger.js';
 import type { CoreCallbacks } from './CoreTypes.js';
 import type { ChatMsg } from '../types/shared.js';
@@ -27,7 +27,7 @@ export interface RoleAgentSubsystemOptions {
   workspaceRoot: string;
   logger?: Logger;
   /** 可选的外部会话更新监听器（如 AgentStateManager） */
-  onSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
+  onSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
   /** Shared AgentStateManager for stream accumulation + context persistence */
   stateManager?: AgentStateManager;
   /** Post-send hook (summarizer + workspace diff) */
@@ -46,7 +46,7 @@ export class RoleAgentSubsystem {
   private rolePrompt = '';
   private sessionPrompted = new Set<string>();
   private sendLock = new Map<string, Promise<void>>();
-  private _onSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
+  private _onSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
   private _stateManager: AgentStateManager | null = null;
   private _onPostSend?: (roleName: string, msgs: ChatMsg[], entry: RoleAgentEntry) => void;
 
@@ -273,8 +273,8 @@ export class RoleAgentSubsystem {
   // -----------------------------------------------------------------------
 
   /** 构建角色 Agent 的提示块，首条消息包含知识引用。 */
-  buildPromptBlocks(roleName: string, userText: string): ContentBlock[] {
-    const blocks: ContentBlock[] = [];
+  buildPromptBlocks(roleName: string, userText: string): PromptBlock[] {
+    const blocks: PromptBlock[] = [];
     const isFirst = !this.sessionPrompted.has(roleName);
 
     if (isFirst) {

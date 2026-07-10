@@ -7,7 +7,6 @@ import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
 import { Agent } from './Agent.js';
 import path from 'path';
 import fs from 'fs';
-import type { SessionNotification, McpServerStdio } from '@agentclientprotocol/sdk';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
 import type { RoleConfig } from '../config/defaults.js';
@@ -33,8 +32,8 @@ export interface RoleAgentManagerOptions {
   projectPath: string;
   workspaceRoot: string;
   logger?: Logger;
-  callbacks?: {
-    onSessionUpdate?: (roleName: string, sessionId: string, notification: SessionNotification) => void;
+    callbacks?: {
+      onSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
     onQueue?: (queueLength: number) => void;
     onSystemMessage?: (text: string, queueLength: number) => void;
   };
@@ -149,16 +148,14 @@ export class RoleAgentManager {
 
       // 3. Build onNotification callback
       const self = this;
-      const onNotification = (sessionId: string, notification: SessionNotification): void => {
+      const onNotification = (sessionId: string, notification: any): void => {
         if (self.callbacks?.onSessionUpdate) {
           self.callbacks.onSessionUpdate(roleName, sessionId, notification);
         }
       };
 
-      // 4. Build MCP servers factory
-      const buildMcpServersFn = (_cwd: string): McpServerStdio[] => {
-        return this._buildRoleMcpServers(workspacePath);
-      };
+      // 4. Build MCP servers factory for kernel bridge
+      const graphFile = path.join(this.projectPath, '.module-agent', 'mcp-graph.json');
 
       // 5. Start agent via unified Agent class
       const agent = await Agent.start({
@@ -167,7 +164,6 @@ export class RoleAgentManager {
         cwd: workspacePath,
         launcher: this.launcher,
         logger: this.logger,
-        buildMcpServers: buildMcpServersFn,
         onNotification,
         onQueue: self.callbacks?.onQueue,
         onSystemMessage: self.callbacks?.onSystemMessage,
@@ -193,17 +189,17 @@ export class RoleAgentManager {
   // 为角色 Agent 构建 MCP 服务器
   // -----------------------------------------------------------------------
 
-  private _buildRoleMcpServers(workspacePath: string): McpServerStdio[] {
+  private _buildRoleMcpServers(_workspacePath: string): any[] {
     const bundlePath = path.join(this.basePath, 'dist', 'mcp-role-server.cjs');
     if (!fs.existsSync(bundlePath)) {
       this.logger.warn(`Role MCP server bundle not found: ${bundlePath}. Run: npm run build:mcp-role-server`);
       return [];
     }
 
-    const servers: McpServerStdio[] = [{
+    const servers: any[] = [{
       name: 'role-agent',
       command: 'node',
-      args: [bundlePath, '--workspace', workspacePath],
+      args: [bundlePath, '--workspace', _workspacePath],
       env: [],
     }];
 

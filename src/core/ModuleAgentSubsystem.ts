@@ -15,7 +15,6 @@ import { ModuleGraph } from './ModuleGraph.js';
 import { defaultLogger, type Logger } from './Logger.js';
 import {
   writeMcpGraphFile,
-  buildMcpServers,
 } from '../agents/McpServerBuilder.js';
 import {
   workspacePathForModule,
@@ -28,8 +27,8 @@ import {
   buildPromptBlocks,
   dedupMessage,
 } from '../agents/PromptBuilder.js';
+import type { PromptBlock } from '../agents/kernel/types.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
-import type { SessionNotification, ContentBlock, McpServerStdio } from '@agentclientprotocol/sdk';
 import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from './CoreTypes.js';
 import type { ChatMsg } from '../types/shared.js';
 
@@ -59,7 +58,7 @@ export interface ModuleAgentSubsystemOptions {
   logger?: Logger;
   contextDir?: string;
   /** Optional external session-update listener (e.g. AgentStateManager in Electron) */
-  onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void;
+  onSessionUpdate?: (moduleName: string, sessionId: string, notification: any) => void;
   /** Optional cross-context notification callback (for UI) */
   onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
   /** Post-send hook: invoked after context save (for summarizer + workspace diff) */
@@ -103,7 +102,7 @@ export class ModuleAgentSubsystem {
   mcpGraphFile = '';
 
   // 外部钩子
-  private _onSessionUpdate?: (moduleName: string, sessionId: string, notification: SessionNotification) => void;
+  private _onSessionUpdate?: (moduleName: string, sessionId: string, notification: any) => void;
   private _onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
   private _onPostSend?: (moduleName: string, msgs: ChatMsg[], entry: AgentEntry) => void;
 
@@ -318,13 +317,7 @@ export class ModuleAgentSubsystem {
 
       // 优先调用 newSession 创建新会话（不杀进程，agent 保持运行）
       try {
-        const mcpServers = buildMcpServers({
-          moduleName: name,
-          basePath: this.basePath,
-          backendPort: this.mcpBackendPort,
-          graphFile: this.mcpGraphFile,
-        });
-        const newSessionId = await entry.agent.clearContext(mcpServers);
+        const newSessionId = await entry.agent.clearContext();
         // 保存新 sessionId（回合不变，下次启动可 resume 新会话）
         this._saveSessionId(name, newSessionId);
         this.logger.info(`clearContext: new session for [${name}], sessionId=${newSessionId}`);
@@ -471,28 +464,34 @@ export class ModuleAgentSubsystem {
   // -----------------------------------------------------------------------
 
   resolveAgentConfig(moduleName: string): AgentConfig {
-    if (!this.config) return { command: 'opencode', args: ['acp'] };
+    if (!this.config) return {};
 
     const modules = this.config.agents.modules;
     const def = this.config.agents.default;
     if (modules && modules[moduleName]) {
       const mod = modules[moduleName]!;
       return {
-        command: mod.command,
-        args: mod.args,
+        provider: mod.provider || def.provider,
+        apiKey: mod.apiKey || def.apiKey,
+        baseUrl: mod.baseUrl || def.baseUrl,
         model: mod.model || def.model,
+        maxTokens: mod.maxTokens ?? def.maxTokens,
+        fastModel: mod.fastModel || def.fastModel,
         defaultMode: mod.defaultMode || def.defaultMode,
       };
     }
     return {
-      command: def.command,
-      args: def.args || [],
+      provider: def.provider,
+      apiKey: def.apiKey,
+      baseUrl: def.baseUrl,
       model: def.model,
+      maxTokens: def.maxTokens,
+      fastModel: def.fastModel,
       defaultMode: def.defaultMode,
     };
   }
 
-  buildPromptBlocksForModule(moduleName: string, text: string): ContentBlock[] {
+  buildPromptBlocksForModule(moduleName: string, text: string): PromptBlock[] {
     return buildPromptBlocks({
       moduleName,
       userText: text,
@@ -586,13 +585,7 @@ export class ModuleAgentSubsystem {
       const entry = this.agents.get(name);
       if (entry) {
         try {
-          const mcpServers = buildMcpServers({
-            moduleName: name,
-            basePath: this.basePath,
-            backendPort: this.mcpBackendPort,
-            graphFile: this.mcpGraphFile,
-          });
-          const newSessionId = await entry.agent.clearContext(mcpServers);
+          const newSessionId = await entry.agent.clearContext();
           this._saveSessionId(name, newSessionId);
           await this._applySessionConfig(name, entry.agent);
         } catch (err) {
@@ -655,7 +648,7 @@ export class ModuleAgentSubsystem {
 
       // 构建 onNotification 回调（将 ACP 通知分发给 CoreCallbacks + 外部监听器）
       const self = this;
-      const onNotification = (sessionId: string, notification: SessionNotification): void => {
+      const onNotification = (sessionId: string, notification: any): void => {
         const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
         const data = notification.update as Record<string, unknown>;
 
@@ -696,16 +689,6 @@ export class ModuleAgentSubsystem {
         }
       };
 
-      // 构建 MCP 服务器工厂
-      const buildMcpServersFn = (_cwd: string): McpServerStdio[] => {
-        return buildMcpServers({
-          moduleName,
-          basePath: this.basePath,
-          backendPort: this.mcpBackendPort,
-          graphFile: this.mcpGraphFile,
-        });
-      };
-
       // 启动 Agent
       const agent = await Agent.start({
         name: moduleName,
@@ -714,7 +697,6 @@ export class ModuleAgentSubsystem {
         launcher: this.launcher,
         logger: this.logger,
         subModuleDirs,
-        buildMcpServers: buildMcpServersFn,
         onNotification,
         onQueue: (qlen: number) => {
           self.callbacks.onMessage({

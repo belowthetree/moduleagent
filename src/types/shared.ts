@@ -50,12 +50,13 @@ export interface ChatMsg {
   role: 'user' | 'agent' | 'cross' | 'system';
   content: string;
   thinking: string;
-  tools: string;
+  tools?: string;
   timeline?: TimelineEvent[];
   time: string;
   status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error' | 'interrupted';
   moduleName: string;
-  agentCmd: string;
+  agentCmd?: string;
+  sessionId?: string;
   crossDirection?: 'sent' | 'received';
   crossModule?: string;
   crossPhase?: 'request' | 'response';
@@ -227,23 +228,21 @@ export interface ModuleAgentApi {
 
   saveAgentConfig(
     projectRoot: string,
-    cmd: string,
-    args: string[],
+    provider: string,
+    apiKey: string,
+    baseUrl: string,
+    model: string,
     projectPath?: string,
     summarizationEnabled?: boolean,
-    fastModel?: string,
-    normalModel?: string,
-    autoSwitchModel?: boolean,
   ): Promise<{ success: boolean }>;
 
   getAgentConfig(projectRoot: string): Promise<{
-    command: string;
-    args: string[];
+    provider?: string;
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
     projectPath?: string;
     summarizationEnabled?: boolean;
-    fastModel?: string;
-    normalModel?: string;
-    autoSwitchModel?: boolean;
   }>;
 
   migrateCheck(keys: string[]): Promise<{ needed: string[]; streamNeeded: boolean }>;

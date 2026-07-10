@@ -7,7 +7,6 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import type { ModuleGraphNode, ModuleGraph as ModuleGraphType } from '../types/module.js';
-import type { McpServerStdio } from '@agentclientprotocol/sdk';
 import { defaultLogger } from '../core/Logger.js';
 
 export function writeMcpGraphFile(graph: ModuleGraphType, tempDir?: string): string {
@@ -28,7 +27,7 @@ export function buildMcpServers(options: {
   backendPort?: number;
   graphFile: string;
   nodeBin?: string;
-}): McpServerStdio[] {
+}): any[] {
   const { moduleName, basePath, backendPort, graphFile, nodeBin = 'node' } = options;
 
   if (!graphFile) {
@@ -47,7 +46,7 @@ export function buildMcpServers(options: {
     args.push('--backend-url', `http://127.0.0.1:${backendPort}`);
   }
 
-  const servers: McpServerStdio[] = [{
+  const servers: any[] = [{
     name: 'module-agent',
     command: nodeBin,
     args,

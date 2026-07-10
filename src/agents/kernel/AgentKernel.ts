@@ -4,11 +4,10 @@
 // 内部使用 LLMClient + ToolRegistry + AgentLoop
 // ---------------------------------------------------------------------------
 
-import { LLMClient } from './LLMClient.js';
 import { ToolRegistry } from './ToolRegistry.js';
 import { AgentLoop, type LoopEvents } from './AgentLoop.js';
 import { createKernelToolRegistry, type McpBridgeOptions } from './tools/index.js';
-import type { KernelConfig, AgentLoopConfig, PromptBlock, ChatMessage } from './types.js';
+import type { KernelConfig, AgentLoopConfig, PromptBlock } from './types.js';
 import type { Logger } from '../../core/Logger.js';
 import { defaultLogger } from '../../core/Logger.js';
 
@@ -45,7 +44,6 @@ export class AgentKernel {
   readonly name: string;
   readonly workspaceRoot: string;
 
-  private client: LLMClient;
   private registry: ToolRegistry;
   private loop: AgentLoop;
   private logger: Logger;
@@ -58,8 +56,6 @@ export class AgentKernel {
     this.workspaceRoot = options.workspaceRoot;
     this.logger = options.logger || defaultLogger;
     this._sessionId = `kernel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-    this.client = new LLMClient(options.config);
 
     // 注册内置工具 + 可选 MCP 桥接
     this.registry = createKernelToolRegistry(options.workspaceRoot, options.mcpBridge);
@@ -121,7 +117,7 @@ export class AgentKernel {
   }
 
   getModel(): string {
-    return this.client.getModel();
+    return '';
   }
 
   onNotification(callback: NotificationCallback): void {
@@ -143,12 +139,12 @@ export class AgentKernel {
     this.loop.cancel();
   }
 
-  clearContext(keepSystem: boolean = true): void {
-    this.loop.resetHistory(keepSystem);
+  clearContext(): void {
+    this.loop.resetHistory();
     this._sessionId = `kernel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   }
 
-  getHistory(): ChatMessage[] {
+  getHistory(): any[] {
     return this.loop.conversationHistory;
   }
 

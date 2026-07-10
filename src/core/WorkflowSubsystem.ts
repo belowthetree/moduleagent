@@ -19,7 +19,7 @@ import type {
   WorkflowStepResult,
   StepInput,
 } from '../config/defaults.js';
-import type { SessionNotification, ContentBlock } from '@agentclientprotocol/sdk';
+import type { PromptBlock } from '../agents/kernel/types.js';
 
 // ---------------------------------------------------------------------------
 // WorkflowSubsystemOptions
@@ -32,7 +32,7 @@ export interface WorkflowSubsystemOptions {
   projectPath: string;
   workspaceRoot: string;
   logger?: Logger;
-  onSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
+  onSessionUpdate?: (agentName: string, sessionId: string, notification: any) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ export class WorkflowSubsystem {
   private currentStepIndex = 0;
   private abortFlag = false;
 
-  private _onSessionUpdate?: (agentName: string, sessionId: string, notification: SessionNotification) => void;
+  private _onSessionUpdate?: (agentName: string, sessionId: string, notification: any) => void;
 
   constructor(options: WorkflowSubsystemOptions) {
     this.callbacks = options.callbacks;
@@ -242,7 +242,7 @@ export class WorkflowSubsystem {
       const blocks = this._buildStepPrompt(wf, step, inputContext);
       this.callbacks.onStatusChange('streaming');
 
-      await entry.agent.connection.prompt({
+      await (entry.agent as any).connection.prompt({
         sessionId: entry.agent.sessionId,
         prompt: blocks,
       });
@@ -352,12 +352,12 @@ export class WorkflowSubsystem {
         workspacePath,
       );
 
-      const blocks: ContentBlock[] = [
+      const blocks: PromptBlock[] = [
         { type: 'text', text: this.subPrompt + '\n\n---\n\n' },
         { type: 'text', text: acceptancePrompt },
       ];
 
-      await entry.agent.connection.prompt({
+      await (entry.agent as any).connection.prompt({
         sessionId: entry.agent.sessionId,
         prompt: blocks,
       });
@@ -428,8 +428,8 @@ export class WorkflowSubsystem {
     wf: WorkflowDescriptor,
     step: WorkflowStepDescriptor,
     inputContext: string,
-  ): ContentBlock[] {
-    const blocks: ContentBlock[] = [];
+  ): PromptBlock[] {
+    const blocks: PromptBlock[] = [];
 
     // System prompt
     if (this.subPrompt) {

@@ -1,10 +1,10 @@
 <!--
   SettingsDialog.vue — 设置对话框
-  配置 Agent 命令、模型、参数和项目路径
+  配置 LLM 提供商、API 密钥、模型和项目路径
 -->
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { useModuleAgent } from '../composables/useModuleAgent'
 
@@ -24,7 +24,20 @@ const saving = ref(false)
 const error = ref('')
 const originalProjectPath = ref('')
 
-// ── 对话框打开时追踪原始 projectPath ──
+const providers = [
+  { value: 'anthropic', label: 'Anthropic (Claude)', defaultBaseUrl: 'https://api.anthropic.com' },
+  { value: 'openai', label: 'OpenAI (GPT)', defaultBaseUrl: 'https://api.openai.com/v1' },
+  { value: 'deepseek', label: 'DeepSeek', defaultBaseUrl: 'https://api.deepseek.com' },
+  { value: 'google', label: 'Google (Gemini)', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+  { value: 'custom', label: 'Custom (OpenAI-compatible)', defaultBaseUrl: '' },
+]
+
+const showApiKey = ref(false)
+const customBaseUrl = computed(() => {
+  const p = providers.find(p => p.value === configStore.provider)
+  return p?.defaultBaseUrl || ''
+})
+
 watch(() => props.visible, (v) => {
   if (v) {
     originalProjectPath.value = configStore.projectPath
@@ -32,14 +45,19 @@ watch(() => props.visible, (v) => {
   }
 })
 
-// ── 浏览按钮 ──
+watch(() => configStore.provider, (newProvider) => {
+  if (!configStore.baseUrl) {
+    const p = providers.find(p => p.value === newProvider)
+    if (p) configStore.baseUrl = p.defaultBaseUrl
+  }
+})
+
 async function selectProject(): Promise<void> {
   const d = await api.selectDir('选择项目目录')
   if (!d) return
   configStore.projectPath = d
 }
 
-// ── 保存 ──
 async function onSave(): Promise<void> {
   error.value = ''
   saving.value = true
@@ -78,7 +96,6 @@ function onCancel(): void {
     :close-on-press-escape="false"
     @close="onCancel"
   >
-    <!-- 错误提示 -->
     <el-alert
       v-if="error"
       :title="error"
@@ -94,19 +111,43 @@ function onCancel(): void {
       :disabled="saving"
       class="settings-form"
     >
-      <!-- Agent 命令 -->
-      <el-form-item label="Agent 命令">
-        <p class="field-hint">启动 Agent 的可执行文件名或路径</p>
-        <el-input v-model="configStore.agentCmd" placeholder="opencode" />
+      <el-form-item label="LLM 提供商">
+        <p class="field-hint">选择要使用的 AI 模型提供商</p>
+        <el-select v-model="configStore.provider" class="full-width">
+          <el-option
+            v-for="p in providers"
+            :key="p.value"
+            :label="p.label"
+            :value="p.value"
+          />
+        </el-select>
       </el-form-item>
 
-      <!-- Agent 参数 -->
-      <el-form-item label="Agent 参数">
-        <p class="field-hint">传给 Agent 的额外参数（空格分隔，如: acp）</p>
-        <el-input v-model="configStore.agentArgs" placeholder="acp" />
+      <el-form-item label="API 密钥">
+        <p class="field-hint">提供商 API 密钥（存储在项目 .module-agent.json 中）</p>
+        <el-input
+          v-model="configStore.apiKey"
+          :type="showApiKey ? 'text' : 'password'"
+          placeholder="sk-..."
+        >
+          <template #suffix>
+            <el-button link @click="showApiKey = !showApiKey">
+              {{ showApiKey ? '隐藏' : '显示' }}
+            </el-button>
+          </template>
+        </el-input>
       </el-form-item>
 
-      <!-- 项目目录 -->
+      <el-form-item label="API 基础 URL" v-if="configStore.provider === 'custom'">
+        <p class="field-hint">自定义 OpenAI 兼容 API 端点</p>
+        <el-input v-model="configStore.baseUrl" placeholder="https://api.openai.com/v1" />
+      </el-form-item>
+
+      <el-form-item label="模型">
+        <p class="field-hint">模型名称（如 claude-sonnet-4-20250514、gpt-4o、deepseek-chat）</p>
+        <el-input v-model="configStore.model" placeholder="claude-sonnet-4-20250514" />
+      </el-form-item>
+
       <el-form-item label="项目目录">
         <p class="field-hint">项目根目录，模块文件存储在 .module-agent/module/ 中</p>
         <el-input v-model="configStore.projectPath" placeholder="输入或点击右侧按钮选择项目目录...">
@@ -116,7 +157,6 @@ function onCancel(): void {
         </el-input>
       </el-form-item>
 
-      <!-- 自动文档更新 -->
       <el-form-item label="自动文档更新">
         <p class="field-hint">任务完成后自动评估并更新模块文档（module.md）、任务经验和修改规范</p>
         <el-switch v-model="configStore.autoDocUpdate" />
@@ -124,7 +164,6 @@ function onCancel(): void {
 
     </el-form>
 
-    <!-- 底部按钮 -->
     <template #footer>
       <div class="settings-footer">
         <el-button @click="onCancel">取消</el-button>
@@ -137,18 +176,15 @@ function onCancel(): void {
 </template>
 
 <style scoped>
-/* ── 对话框标题 ── */
 :deep(.el-dialog__header) {
   border-bottom: 1px solid var(--el-border-color);
   padding-bottom: 12px;
 }
 
-/* ── 错误 ── */
 .settings-error {
   margin-bottom: 16px;
 }
 
-/* ── 设置表单 ── */
 .settings-form {
   border-radius: 10px;
 }
@@ -163,7 +199,6 @@ function onCancel(): void {
   margin-bottom: 6px;
 }
 
-/* ── 字段提示 ── */
 .field-hint {
   margin: 0 0 4px 0;
   font-size: 12px;
@@ -171,12 +206,10 @@ function onCancel(): void {
   line-height: 1.4;
 }
 
-/* ── 全宽 ── */
 .full-width {
   width: 100%;
 }
 
-/* ── 输入/选择包装器（扁平，无发光） ── */
 :deep(.el-input__wrapper) {
   box-shadow: none !important;
 }
@@ -186,7 +219,6 @@ function onCancel(): void {
   box-shadow: none !important;
 }
 
-/* ── 底部 ── */
 .settings-footer {
   display: flex;
   justify-content: flex-end;

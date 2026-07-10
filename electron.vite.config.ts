@@ -17,7 +17,6 @@ export default defineConfig({
           'path',
           'url',
           'esbuild',
-          '@agentclientprotocol/sdk',
         ],
         output: {
           format: 'cjs',

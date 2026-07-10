@@ -5,7 +5,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import type { ContentBlock } from '@agentclientprotocol/sdk';
+import type { PromptBlock } from './kernel/types.js';
 import type { ModuleGraph } from '../types/module.js';
 import { defaultLogger } from '../core/Logger.js';
 
@@ -52,9 +52,9 @@ export function buildPromptBlocks(options: {
   graph: ModuleGraph | null;
   prompts: { mainPrompt: string; subPrompt: string };
   sessionPrompted: Set<string>;
-}): ContentBlock[] {
+}): PromptBlock[] {
   const { moduleName, userText, graph, prompts, sessionPrompted } = options;
-  const blocks: ContentBlock[] = [];
+  const blocks: PromptBlock[] = [];
   const isFirst = !sessionPrompted.has(moduleName);
 
   if (isFirst) {

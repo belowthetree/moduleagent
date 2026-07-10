@@ -25,7 +25,7 @@ export async function validateModuleAgentJson(projectRoot: string): Promise<bool
     await fs.access(configPath);
     const config = await ConfigLoader.load(projectRoot);
     // 至少有一个配置条目包含命令才视为有效
-    return config.configs.length > 0 && !!config.configs[0]?.agents.default.command;
+    return config.configs.length > 0 && !!config.configs[0]?.agents.default.provider;
   } catch {
     return false;
   }

@@ -1,47 +1,39 @@
 // ---------------------------------------------------------------------------
 // renderer/src/stores/config.ts — 配置 Pinia Store
-// 管理应用设置（Agent 命令、模型、主题）和 localStorage 持久化
 // ---------------------------------------------------------------------------
 
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-// localStorage 键名——冻结约定，必须与 renderer.ts 完全一致
 const LS_KEYS = {
-  agentCmd: 'agentCmd',
-  agentArgs: 'agentArgs',
+  provider: 'provider',
+  apiKey: 'apiKey',
+  baseUrl: 'baseUrl',
+  model: 'model',
   lastProject: 'lastProject',
   autoDocUpdate: 'autoDocUpdate',
 } as const;
 
 export const useConfigStore = defineStore('config', () => {
-  // ── 状态 ──
-  const agentCmd = ref('opencode');
-  const agentArgs = ref('acp');
+  const provider = ref('anthropic');
+  const apiKey = ref('');
+  const baseUrl = ref('');
+  const model = ref('');
   const projectPath = ref('');
   const autoDocUpdate = ref(true);
 
-  // ── localStorage 持久化 ──
   function loadFromLocalStorage(): void {
-    agentCmd.value = localStorage.getItem(LS_KEYS.agentCmd) || 'opencode';
-    agentArgs.value = localStorage.getItem(LS_KEYS.agentArgs) || 'acp';
+    provider.value = localStorage.getItem(LS_KEYS.provider) || 'anthropic';
+    apiKey.value = localStorage.getItem(LS_KEYS.apiKey) || '';
+    baseUrl.value = localStorage.getItem(LS_KEYS.baseUrl) || '';
+    model.value = localStorage.getItem(LS_KEYS.model) || '';
     autoDocUpdate.value = localStorage.getItem(LS_KEYS.autoDocUpdate) !== 'false';
-
-    // 迁移：旧版 `lastWorkspace` 键 → `lastProject`
-    const legacyWorkspace = localStorage.getItem('lastWorkspace');
-    if (legacyWorkspace) {
-      localStorage.setItem(LS_KEYS.lastProject, legacyWorkspace);
-      localStorage.removeItem('lastWorkspace');
-    }
 
     projectPath.value = localStorage.getItem(LS_KEYS.lastProject) || '';
 
-    // 清理旧版本中已移除的键
     const removedKeys = [
-      'codeSourceType',
-      'codeSourcePath',
-      'codeSourceUrl',
-      'codeSourceBranch',
+      'codeSourceType', 'codeSourcePath', 'codeSourceUrl', 'codeSourceBranch',
+      'agentCmd', 'agentArgs',
     ];
     for (const key of removedKeys) {
       localStorage.removeItem(key);
@@ -49,22 +41,32 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   function saveToLocalStorage(): void {
-    localStorage.setItem(LS_KEYS.agentCmd, agentCmd.value);
-    localStorage.setItem(LS_KEYS.agentArgs, agentArgs.value);
+    localStorage.setItem(LS_KEYS.provider, provider.value);
+    localStorage.setItem(LS_KEYS.apiKey, apiKey.value);
+    localStorage.setItem(LS_KEYS.baseUrl, baseUrl.value);
+    localStorage.setItem(LS_KEYS.model, model.value);
     localStorage.setItem(LS_KEYS.lastProject, projectPath.value);
     localStorage.setItem(LS_KEYS.autoDocUpdate, String(autoDocUpdate.value));
   }
 
-  // ── 项目配置持久化 ──
   async function saveToProject(projectRoot: string): Promise<{ success: boolean }> {
-    const args = agentArgs.value ? agentArgs.value.split(/\s+/).filter(Boolean) : [];
-    return window.moduleAgent.saveAgentConfig(projectRoot, agentCmd.value, args, projectPath.value, autoDocUpdate.value);
+    return window.moduleAgent.saveAgentConfig(
+      projectRoot,
+      provider.value,
+      apiKey.value,
+      baseUrl.value,
+      model.value,
+      projectPath.value,
+      autoDocUpdate.value,
+    );
   }
 
   async function loadFromProject(projectRoot: string): Promise<void> {
     const config = await window.moduleAgent.getAgentConfig(projectRoot);
-    agentCmd.value = config.command;
-    agentArgs.value = (config.args || []).join(' ');
+    provider.value = config.provider || 'anthropic';
+    apiKey.value = config.apiKey || '';
+    baseUrl.value = config.baseUrl || '';
+    model.value = config.model || '';
     projectPath.value = config.projectPath || projectRoot;
     if (config.summarizationEnabled !== undefined) {
       autoDocUpdate.value = config.summarizationEnabled;
@@ -72,12 +74,12 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   return {
-    // 状态引用
-    agentCmd,
-    agentArgs,
+    provider,
+    apiKey,
+    baseUrl,
+    model,
     projectPath,
     autoDocUpdate,
-    // 函数
     loadFromLocalStorage,
     saveToLocalStorage,
     saveToProject,
