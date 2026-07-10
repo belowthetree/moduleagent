@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import path from 'path';
-import { AgentKernel, type KernelOptions } from './kernel/index.js';
+import { AgentKernel, type KernelOptions, AgentSandbox } from './kernel/index.js';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
 
@@ -34,6 +34,7 @@ export class AgentLauncher {
       mcpBackendUrl?: string;
       moduleName?: string;
       maxToolRounds?: number;
+      sandbox?: AgentSandbox;
     },
   ): Promise<AgentKernel> {
     const log = logger || defaultLogger;
@@ -66,6 +67,7 @@ export class AgentLauncher {
       },
       workspaceRoot: normalizedCwd,
       systemPrompt,
+      sandbox: kernelOptions?.sandbox,
       maxToolRounds: kernelOptions?.maxToolRounds ?? 15,
       logger: log,
     };
@@ -96,6 +98,7 @@ export class AgentLauncher {
       mcpBackendUrl?: string;
       moduleName?: string;
       maxToolRounds?: number;
+      sandbox?: AgentSandbox;
     },
   ): Promise<AgentKernel> {
     return this.launch(config, name, cwd, systemPrompt, logger, kernelOptions);

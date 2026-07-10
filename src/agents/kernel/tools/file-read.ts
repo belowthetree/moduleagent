@@ -1,12 +1,11 @@
 // ---------------------------------------------------------------------------
 // agents/kernel/tools/file-read.ts — 文件读取工具
-// 沙箱限制，仅允许读取工作区内的文件
 // ---------------------------------------------------------------------------
 
-import { safeReadFile } from '../sandbox.js';
+import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 
-export function createFileReadTool(workspaceRoot: string): Tool {
+export function createFileReadTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
     type: 'object',
     properties: {
@@ -28,14 +27,14 @@ export function createFileReadTool(workspaceRoot: string): Tool {
 
   return {
     name: 'file_read',
-    description: '读取工作区内的文件内容。可以指定行范围进行部分读取。',
+    description: '读取可见范围内的文件内容。可以指定行范围进行部分读取。',
     inputSchema,
     execute: async (input: Record<string, unknown>) => {
       const filePath = input.filePath as string;
       const offset = input.offset as number | undefined;
       const limit = input.limit as number | undefined;
 
-      const content = await safeReadFile(workspaceRoot, filePath, { offset, limit });
+      const content = await sandbox.readFile(filePath, { offset, limit });
 
       return {
         content: content,

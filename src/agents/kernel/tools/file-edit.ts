@@ -1,12 +1,11 @@
 // ---------------------------------------------------------------------------
 // agents/kernel/tools/file-edit.ts — 文件编辑工具
-// 在工作区内对文件进行查找替换
 // ---------------------------------------------------------------------------
 
-import { safeReadFile, safeWriteFile } from '../sandbox.js';
+import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 
-export function createFileEditTool(workspaceRoot: string): Tool {
+export function createFileEditTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
     type: 'object',
     properties: {
@@ -28,14 +27,14 @@ export function createFileEditTool(workspaceRoot: string): Tool {
 
   return {
     name: 'file_edit',
-    description: '在工作区内的文件中执行精确的查找替换操作。oldText 必须与文件中的内容完全匹配（包括空白字符）。',
+    description: '在可见范围内的文件中执行精确的查找替换操作。oldText 必须与文件中的内容完全匹配。',
     inputSchema,
     execute: async (input: Record<string, unknown>) => {
       const filePath = input.filePath as string;
       const oldText = input.oldText as string;
       const newText = input.newText as string;
 
-      const content = await safeReadFile(workspaceRoot, filePath);
+      const content = await sandbox.readFile(filePath);
 
       const count = content.split(oldText).length - 1;
       if (count === 0) {
@@ -60,7 +59,7 @@ export function createFileEditTool(workspaceRoot: string): Tool {
       }
 
       const newContent = content.replace(oldText, newText);
-      await safeWriteFile(workspaceRoot, filePath, newContent);
+      await sandbox.writeFile(filePath, newContent);
 
       return {
         content: `文件已成功编辑: ${filePath}`,

@@ -9,10 +9,8 @@
 // notification callbacks to receive diff results.
 // ---------------------------------------------------------------------------
 
-import path from 'path';
-import * as WorkspaceDiff from './WorkspaceDiff.js';
 import type { Logger } from './Logger.js';
-import type { ChatMsg, DiffSummary } from '../types/shared.js';
+import type { ChatMsg } from '../types/shared.js';
 import type { ExperienceSummarizer } from './ExperienceSummarizer.js';
 import type { AgentEntry } from './ModuleAgentSubsystem.js';
 
@@ -29,10 +27,7 @@ export interface PostSendHookOptions {
   configDir: string;
   /** Project root directory */
   getProjectRoot: () => string;
-  /** Diff cache: Map<moduleName, DiffSummary> — shared with bridge */
-  diffCache: Map<string, DiffSummary>;
-  /** Called when a workspace diff is ready (bridge pushes to UI) */
-  onDiffReady?: (moduleName: string, summary: DiffSummary | null) => void;
+
 }
 
 // ── Factory ────────────────────────────────────────────────────────────────
@@ -78,32 +73,6 @@ export function createPostSendHook(opts: PostSendHookOptions) {
       });
     }
 
-    // ── 2. Workspace diff（后台异步） ──
-    const workspaceCwd = entry.agent.cwd;
-    const sourceDir = entry.sourcePath;
-    if (!workspaceCwd || !sourceDir) return;
 
-    // 只处理有工作区隔离的模块
-    const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
-    if (!workspaceCwd.startsWith(workspaceBase)) return;
-
-    // 异步执行 diff，不阻塞 sendMessage 返回
-    setImmediate(() => {
-      try {
-        opts.logger.info(`PostSend: analyzing workspace diff for [${moduleName}]`);
-        const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir);
-        summary.moduleName = moduleName;
-        opts.diffCache.set(moduleName, summary);
-        if (summary.files.length > 0) {
-          opts.logger.info(
-            `WorkspaceDiff [${moduleName}]: +${summary.addedCount} ~${summary.modifiedCount} -${summary.deletedCount}`,
-          );
-        }
-        opts.onDiffReady?.(moduleName, summary.files.length > 0 ? summary : null);
-      } catch (err) {
-        opts.logger.error(`WorkspaceDiff error [${moduleName}]: ${(err as Error).message}`);
-        opts.onDiffReady?.(moduleName, null);
-      }
-    });
   };
 }

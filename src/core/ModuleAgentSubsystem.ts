@@ -13,20 +13,13 @@ import { ConfigLoader } from '../config/ConfigLoader.js';
 import { ModuleScanner } from './ModuleScanner.js';
 import { ModuleGraph } from './ModuleGraph.js';
 import { defaultLogger, type Logger } from './Logger.js';
-import {
-  writeMcpGraphFile,
-} from '../agents/McpServerBuilder.js';
-import {
-  workspacePathForModule,
-  getSubModuleDirs,
-  prepareModuleWorkspace,
-  codeSourcePathForModule,
-} from '../agents/WorkspaceIsolator.js';
+import { writeMcpGraphFile } from '../agents/McpServerBuilder.js';
 import {
   loadSystemPrompts,
   buildPromptBlocks,
   dedupMessage,
 } from '../agents/PromptBuilder.js';
+import { AgentSandbox } from '../agents/kernel/sandbox.js';
 import type { PromptBlock } from '../agents/kernel/types.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from './CoreTypes.js';
@@ -313,15 +306,11 @@ export class ModuleAgentSubsystem {
     const name = moduleName || this.currentModule;
     const entry = this.agents.get(name);
     if (entry) {
-      this._ensureGitAnchor(entry.agent.cwd);
-
-      // 优先调用 newSession 创建新会话（不杀进程，agent 保持运行）
       try {
         const newSessionId = await entry.agent.clearContext();
         // 保存新 sessionId（回合不变，下次启动可 resume 新会话）
         this._saveSessionId(name, newSessionId);
         this.logger.info(`clearContext: new session for [${name}], sessionId=${newSessionId}`);
-
         // 恢复 mode/model 配置
         await this._applySessionConfig(name, entry.agent);
       } catch (err) {
@@ -419,9 +408,8 @@ export class ModuleAgentSubsystem {
     if (node.relativePath === '.') {
       return path.join(this.projectRoot, '.module-agent', 'module');
     }
-    // 子模块：优先用 workspacePath，fallback 到 absolutePath
-    const workspaceRoot = path.join(this.projectRoot, '.module-agent', 'workspace');
-    return node.workspacePath || workspacePathForModule(node, workspaceRoot, this.projectRoot);
+    // 子模块：直接用源码路径
+    return this._getSourcePath(moduleName) || node.absolutePath;
   }
 
   getAgentModes(moduleName: string): { value: string; name: string; current: boolean }[] {
@@ -610,40 +598,51 @@ export class ModuleAgentSubsystem {
   // 内部：启动管道
   // -----------------------------------------------------------------------
 
+  /** 计算模块的真实源码目录 */
+  private _getSourcePath(moduleName: string): string | null {
+    const node = this.graph?.nodes.get(moduleName);
+    if (!node || !this.config?.projectPath) return null;
+    return node.relativePath === '.'
+      ? this.config.projectPath
+      : path.join(this.config.projectPath, node.relativePath);
+  }
+
   private async _startAgentInternal(moduleName: string): Promise<AgentEntry> {
     try {
       const agentConfig = this.resolveAgentConfig(moduleName);
       const node = this.graph?.nodes.get(moduleName) ?? null;
 
-      const workspaceRoot = path.join(this.projectRoot, '.module-agent', 'workspace');
-      let cwd: string;
-      if (node && this.config?.projectPath) {
-        if (node.relativePath === '.') {
-          cwd = path.join(this.projectRoot, '.module-agent', 'module');
-        } else {
-          await prepareModuleWorkspace(node, {
-            workspaceRoot,
-            projectPath: this.config.projectPath,
-            graph: this.graph,
-          });
-          cwd = workspacePathForModule(node, workspaceRoot, this.projectRoot);
-        }
-      } else {
-        cwd = node?.relativePath === '.'
-          ? path.join(this.projectRoot, '.module-agent', 'module')
-          : node?.absolutePath || this.projectRoot;
-      }
+      // 计算 cwd + visibility
+      const projectPath = this.config?.projectPath || '';
+      const isRoot = node?.relativePath === '.';
 
-      const subModuleDirs = node
-        ? getSubModuleDirs(node, this.graph, (n) =>
-            workspacePathForModule(n, workspaceRoot, this.projectRoot),
-          )
+      const sourcePath = projectPath && node
+        ? this._getSourcePath(moduleName)!
+        : (node?.absolutePath || this.projectRoot);
+
+      const cwd = isRoot
+        ? path.join(this.projectRoot, '.module-agent', 'module')
+        : sourcePath;
+
+      // visiblePaths: 自身 + 直接子模块
+      const allowed = isRoot
+        ? (this.graph ? [...this.graph.nodes.values()]
+            .filter(n => n.relativePath !== '.')
+            .map(n => path.resolve(projectPath, n.relativePath)) : [])
+        : [path.resolve(sourcePath)];
+
+      const excluded = (!isRoot && node && this.graph)
+        ? node.children
+            .map((childName: string) => this.graph!.nodes.get(childName))
+            .filter((c: any) => !!c)
+            .map((c: any) => this._getSourcePath(c.name))
+            .filter((p: any): p is string => !!p)
         : [];
 
-      this._ensureGitAnchor(cwd);
+      const sandbox = new AgentSandbox({ allowed, excluded });
 
       this.logger.info(
-        `startAgent [${moduleName}] cmd=${agentConfig.command} args=[${(agentConfig.args || []).join(',')}] cwd=${cwd}`,
+        `startAgent [${moduleName}] cwd=${cwd} allowed=[${allowed.join(', ')}] excluded=[${excluded.join(', ')}]`,
       );
 
       // 构建 onNotification 回调（将 ACP 通知分发给 CoreCallbacks + 外部监听器）
@@ -696,7 +695,7 @@ export class ModuleAgentSubsystem {
         cwd,
         launcher: this.launcher,
         logger: this.logger,
-        subModuleDirs,
+        sandbox,
         onNotification,
         onQueue: (qlen: number) => {
           self.callbacks.onMessage({
@@ -745,8 +744,8 @@ export class ModuleAgentSubsystem {
       const entry: AgentEntry = {
         agent,
         modulePath: cwd,
-        sourcePath: node && this.config?.projectPath
-          ? codeSourcePathForModule(node, this.config.projectPath)
+        sourcePath: node && projectPath
+          ? this._getSourcePath(moduleName) || cwd
           : cwd,
         modeOptions: savedModes,
         currentMode: savedCurrentMode,

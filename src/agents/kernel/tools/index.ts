@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { ToolRegistry } from '../ToolRegistry.js';
+import type { AgentSandbox } from '../sandbox.js';
 import { createFileReadTool } from './file-read.js';
 import { createFileWriteTool } from './file-write.js';
 import { createFileEditTool } from './file-edit.js';
@@ -13,15 +14,15 @@ import { createGitOperationsTool } from './git-operations.js';
 import { createMcpBridgeTools } from './mcp-bridge.js';
 import type { Tool } from '../types.js';
 
-export function createBuiltinTools(workspaceRoot: string): Tool[] {
+export function createBuiltinTools(sandbox: AgentSandbox): Tool[] {
   return [
-    createFileReadTool(workspaceRoot),
-    createFileWriteTool(workspaceRoot),
-    createFileEditTool(workspaceRoot),
-    createExecuteCommandTool(workspaceRoot),
-    createSearchTool(workspaceRoot),
-    createListFilesTool(workspaceRoot),
-    createGitOperationsTool(workspaceRoot),
+    createFileReadTool(sandbox),
+    createFileWriteTool(sandbox),
+    createFileEditTool(sandbox),
+    createExecuteCommandTool(sandbox),
+    createSearchTool(sandbox),
+    createListFilesTool(sandbox),
+    createGitOperationsTool(sandbox),
   ];
 }
 
@@ -33,15 +34,13 @@ export interface McpBridgeOptions {
 }
 
 export function createKernelToolRegistry(
-  workspaceRoot: string,
+  sandbox: AgentSandbox,
   mcpOptions?: McpBridgeOptions,
 ): ToolRegistry {
   const registry = new ToolRegistry();
 
-  // 注册内置工具
-  registry.registerAll(createBuiltinTools(workspaceRoot));
+  registry.registerAll(createBuiltinTools(sandbox));
 
-  // 注册 MCP 桥接工具（模块间通信）
   if (mcpOptions) {
     const mcpTools = createMcpBridgeTools(mcpOptions);
     registry.registerAll(mcpTools);

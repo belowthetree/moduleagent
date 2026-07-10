@@ -7,6 +7,7 @@
 import { ToolRegistry } from './ToolRegistry.js';
 import { AgentLoop, type LoopEvents } from './AgentLoop.js';
 import { createKernelToolRegistry, type McpBridgeOptions } from './tools/index.js';
+import { AgentSandbox } from './sandbox.js';
 import type { KernelConfig, AgentLoopConfig, PromptBlock } from './types.js';
 import type { Logger } from '../../core/Logger.js';
 import { defaultLogger } from '../../core/Logger.js';
@@ -16,6 +17,7 @@ export interface KernelOptions {
   config: KernelConfig;
   workspaceRoot: string;
   systemPrompt: string;
+  sandbox?: AgentSandbox;
   mcpBridge?: McpBridgeOptions;
   maxToolRounds?: number;
   logger?: Logger;
@@ -53,12 +55,15 @@ export class AgentKernel {
 
   constructor(options: KernelOptions) {
     this.name = options.name;
-    this.workspaceRoot = options.workspaceRoot;
+    this.workspaceRoot = options.sandbox?.rootPath || options.workspaceRoot;
     this.logger = options.logger || defaultLogger;
     this._sessionId = `kernel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     // 注册内置工具 + 可选 MCP 桥接
-    this.registry = createKernelToolRegistry(options.workspaceRoot, options.mcpBridge);
+    this.registry = createKernelToolRegistry(
+      options.sandbox || new AgentSandbox({ allowed: [options.workspaceRoot], excluded: [] }),
+      options.mcpBridge,
+    );
 
     const loopEvents: LoopEvents = {
       onPhaseChange: (phase, data) => {

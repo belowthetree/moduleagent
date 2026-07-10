@@ -1,12 +1,11 @@
 // ---------------------------------------------------------------------------
 // agents/kernel/tools/file-write.ts — 文件写入工具
-// 沙箱限制，仅允许写入工作区内的文件
 // ---------------------------------------------------------------------------
 
-import { safeWriteFile } from '../sandbox.js';
+import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 
-export function createFileWriteTool(workspaceRoot: string): Tool {
+export function createFileWriteTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
     type: 'object',
     properties: {
@@ -24,13 +23,13 @@ export function createFileWriteTool(workspaceRoot: string): Tool {
 
   return {
     name: 'file_write',
-    description: '在工作区内创建新文件或覆盖已有文件。会自动创建所需的父目录。',
+    description: '在可见范围内创建新文件或覆盖已有文件。会自动创建所需的父目录。',
     inputSchema,
     execute: async (input: Record<string, unknown>) => {
       const filePath = input.filePath as string;
       const content = input.content as string;
 
-      await safeWriteFile(workspaceRoot, filePath, content);
+      await sandbox.writeFile(filePath, content);
 
       return {
         content: `文件已成功写入: ${filePath} (${content.length} 个字符)`,

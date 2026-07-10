@@ -18,7 +18,6 @@ import { defaultLogger, type Logger } from '../core/Logger.js';
 import { ExperienceSummarizer } from '../core/ExperienceSummarizer.js';
 import { createPostSendHook } from '../core/PostSendHooks.js';
 import { getPromptConfigDir, ensureConfigFiles } from '../core/ConfigPaths.js';
-import type { DiffSummary } from '../types/shared.js';
 import type { CoreCallbacks, IAgentBridge } from '../core/CoreTypes.js';
 import type { HandlerContext } from './handlers/HandlerContext.js';
 
@@ -32,7 +31,6 @@ import { registerRoleHandlers } from './handlers/roleHandlers.js';
 import { registerWorkflowHandlers } from './handlers/workflowHandlers.js';
 import { registerMigrationHandlers } from './handlers/migrationHandlers.js';
 import { registerKnowledgeHandlers } from './handlers/knowledgeHandlers.js';
-import { registerWorkspaceDiffHandlers } from './handlers/workspaceDiffHandlers.js';
 
 // ============================================================================
 // ElectronBridge — Electron 桥接层（编排层）
@@ -62,7 +60,6 @@ export class ElectronBridge implements IAgentBridge {
   // 保留在 bridge 的共享资源
   private summarizer: ExperienceSummarizer;
   private summarizationEnabled = false;
-  private diffCache = new Map<string, DiffSummary>();
 
   // Handler context — passed to all handler registration functions
   private handlerCtx: HandlerContext;
@@ -77,22 +74,13 @@ export class ElectronBridge implements IAgentBridge {
 
     const callbacks: CoreCallbacks = this._buildCallbacks();
 
-    // 构建 PostSendHook（summarizer + workspace diff）
+    // 构建 PostSendHook（summarizer）
     const onPostSend = createPostSendHook({
       logger: this.logger,
       summarizer: this.summarizer,
       getSummarizationEnabled: () => this.summarizationEnabled,
       configDir: this.configDir,
       getProjectRoot: () => this.core.getProjectRoot(),
-      diffCache: this.diffCache,
-      onDiffReady: (moduleName, summary) => {
-        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-          this.mainWindow.webContents.send(IpcChannel.Push.WorkspaceDiffReady, {
-            moduleName,
-            summary,
-          });
-        }
-      },
     });
 
     this.core = new ModuleAgentCore({
@@ -141,7 +129,6 @@ export class ElectronBridge implements IAgentBridge {
     this.handlerCtx = {
       core: this.core,
       mainWindow: this.mainWindow,
-      diffCache: this.diffCache,
       configDir: this.configDir,
       logger: this.logger,
       _getBasePath: this._getBasePath.bind(this),
@@ -168,7 +155,6 @@ export class ElectronBridge implements IAgentBridge {
     registerWorkflowHandlers(this.handlerCtx);
     registerMigrationHandlers(this.handlerCtx);
     registerKnowledgeHandlers(this.handlerCtx);
-    registerWorkspaceDiffHandlers(this.handlerCtx);
   }
 
   // -----------------------------------------------------------------------

@@ -46,16 +46,6 @@ export async function startTui(projectRoot: string) {
         },
       },
       {
-        name: 'toggle-diff',
-        run() {
-          const opening = !tuiState.showDiffPanel();
-          tuiState.setShowDiffPanel(opening);
-          if (opening) {
-            (globalThis as any).__tuiAgentService?._refreshDiff?.();
-          }
-        },
-      },
-      {
         name: 'toggle-experience',
         run() {
           if (tuiState.showExperiencePanel()) {
@@ -122,19 +112,6 @@ export async function startTui(projectRoot: string) {
       if (tuiState.agentStatus() === 'streaming') {
         tuiState.setAgentStatus('idle');
         (globalThis as any).__tuiCancelStream?.();
-      }
-    }
-    if (key.name === 'tab' && tuiState.showDiffPanel()) {
-      // Tab 在 diff 面板树视图→详情视图（<input> 会吃掉 Tab，走 raw handler）
-      (globalThis as any).__tuiEnterDiffDetail?.();
-      return;
-    }
-    if (key.name === 'g' && key.ctrl) {
-      // Ctrl+G: 切换 diff 面板，打开时刷新 diff
-      const opening = !tuiState.showDiffPanel();
-      tuiState.setShowDiffPanel(opening);
-      if (opening) {
-        (globalThis as any).__tuiAgentService?._refreshDiff?.();
       }
     }
     if (key.name === 'd' && key.ctrl) {

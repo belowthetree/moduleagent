@@ -174,33 +174,6 @@ export interface StepEditData {
   body: string;
 }
 
-// ── 工作区 Diff 类型 ──
-
-export type DiffStatus = 'added' | 'modified' | 'deleted' | 'unchanged';
-
-export interface DiffFile {
-  relativePath: string;       // 相对于模块根目录的路径
-  status: DiffStatus;
-  workspacePath: string;      // 工作区中的绝对路径
-  sourcePath: string;         // 源文件中的绝对路径
-  sizeDiff?: number;          // 字节差异（正=增大）
-}
-
-export interface DiffSummary {
-  moduleName: string;
-  workspaceDir: string;
-  sourceDir: string;
-  files: DiffFile[];
-  addedCount: number;
-  modifiedCount: number;
-  deletedCount: number;
-}
-
-export interface WorkspaceDiffReadyData {
-  moduleName: string;
-  summary: DiffSummary | null;  // null = diff 计算出错
-}
-
 export interface ModuleAgentApi {
   selectDir(title: string): Promise<string | null>;
 
@@ -293,12 +266,6 @@ export interface ModuleAgentApi {
   workflowCancel(name: string): Promise<void>;
   workflowStatus(name: string): Promise<WorkflowStatus | null>;
 
-  // ── 工作区 Diff API ──
-  workspaceDiff(moduleName: string): Promise<DiffSummary | { error: string }>;
-  workspaceDiffFile(moduleName: string, filePath: string): Promise<{ hunks: string } | { error: string }>;
-  workspaceApply(moduleName: string, files?: string[]): Promise<{ applied: number; errors: string[] }>;
-  workspaceDiscard(moduleName: string): Promise<{ success: boolean }>;
-  onWorkspaceDiffReady(callback: (data: WorkspaceDiffReadyData) => void): () => void;
 }
 
 declare global {

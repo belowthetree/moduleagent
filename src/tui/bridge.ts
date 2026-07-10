@@ -11,7 +11,6 @@
 
 import path from 'path';
 import fs from 'fs-extra';
-import nodeFs from 'fs';
 import { ModuleAgentCore } from '../core/ModuleAgentCore.js';
 import { defaultLogger } from '../core/Logger.js';
 import { ExperienceSummarizer } from '../core/ExperienceSummarizer.js';
@@ -26,8 +25,6 @@ import { InputHistoryPersistence } from './persistence.js';
 import { TuiSessionStore } from './TuiSessionStore.js';
 import { getProjectConfigDir, ensureConfigFiles } from '../core/ConfigPaths.js';
 import { createPostSendHook } from '../core/PostSendHooks.js';
-import * as WorkspaceDiff from '../core/WorkspaceDiff.js';
-import type { DiffSummary } from '../types/shared.js';
 
 function findRepoRoot(): string {
   let dir = __dirname || path.resolve(process.argv[1] || process.cwd(), '..');
@@ -48,9 +45,6 @@ export class TuiBridge implements IAgentBridge {
   private summarizer: ExperienceSummarizer;
   private configDir: string;
   private summarizationEnabled = false;
-
-  // 工作区 Diff 缓存（PostSendHooks 填充，workspace diff 方法消费）
-  private diffCache = new Map<string, DiffSummary>();
 
   // 输入历史持久化
   private historyStore: InputHistoryPersistence | null = null;
@@ -93,10 +87,6 @@ export class TuiBridge implements IAgentBridge {
         getSummarizationEnabled: () => self.summarizationEnabled,
         configDir: '',
         getProjectRoot: () => self.core.getProjectRoot(),
-        diffCache: self.diffCache,
-        onDiffReady: (_moduleName, summary) => {
-          tuiState.setDiffPrompt(summary);
-        },
       }),
     });
   }
@@ -337,21 +327,11 @@ export class TuiBridge implements IAgentBridge {
       }
     }
 
-    // 初始检查所有模块的工作区变更
-    const allNames = this.listAgents();
-    for (const name of allNames) {
-      this._triggerWorkspaceDiff(name);
-    }
-
-    // 启动工作区文件监听（变更自动触发 diff）
-    this._startWatchingDiff();
-
     return result;
   }
 
   async dispose(): Promise<void> {
     defaultLogger.info('TuiBridge: disposing');
-    this._stopWatchingDiff();
     await this.core.dispose();
     this.status = 'disconnected';
     this.loadedModules.clear();
@@ -742,269 +722,4 @@ export class TuiBridge implements IAgentBridge {
       workflows: this.core.workflows?.getCurrentWorkflow() ? 1 : 0,
     });
   }
-
-  // -----------------------------------------------------------------------
-  // 工作区 Diff（兼容旧 API）
-  // -----------------------------------------------------------------------
-
-  // ── 文件变更监听 ──
-  private _diffPollTimer: ReturnType<typeof setInterval> | null = null;
-  private _lastDiffHash = '';
-
-  /** 计算工作区文件的最新 mtime（快速判断变更，比全量 hash 更轻量） */
-  private _workspaceLatestMtime(cwd: string): number {
-    let latest = 0;
-    try {
-      this._scanMtime(cwd, cwd, (mtime) => { if (mtime > latest) latest = mtime; });
-    } catch { /* ignore */ }
-    return latest;
-  }
-
-  private _scanMtime(dir: string, base: string, cb: (mtime: number) => void): void {
-    const entries = nodeFs.readdirSync(dir, { withFileTypes: true });
-    for (const e of entries) {
-      if (e.name === '.git' || e.name === 'node_modules') continue;
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) {
-        this._scanMtime(full, base, cb);
-      } else {
-        try { cb(nodeFs.statSync(full).mtimeMs); } catch { /* ignore */ }
-      }
-    }
-  }
-
-  /**
-   * 启动当前模块工作区的文件变更监听（轮询，2 秒间隔）。
-   * 切换模块时自动重新挂载到新模块的工作区。
-   */
-  _startWatchingDiff(): void {
-    this._stopWatchingDiff();
-    const projectRoot = this.core.getProjectRoot();
-    const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
-    if (!nodeFs.existsSync(workspaceBase)) {
-      defaultLogger.info(`Diff poll skipped — workspace dir not found: ${workspaceBase}`);
-      return;
-    }
-
-    this._lastDiffHash = String(this._workspaceLatestMtime(workspaceBase));
-    defaultLogger.info(`Diff poll started: ${workspaceBase}`);
-
-    this._diffPollTimer = setInterval(() => {
-      if (!nodeFs.existsSync(workspaceBase)) return;
-      const mtime = this._workspaceLatestMtime(workspaceBase);
-      if (String(mtime) !== this._lastDiffHash) {
-        this._lastDiffHash = String(mtime);
-        defaultLogger.info('Diff poll: changes detected in workspace');
-        // 对所有子模块触发 diff，同时收集是否有任何变更
-        const graph = this.core.getGraph();
-        let anyChanges = false;
-        if (graph) {
-          for (const [name] of graph.nodes) {
-            this._triggerWorkspaceDiff(name);
-            const cached = this.diffCache.get(name);
-            if (cached && cached.files.length > 0) anyChanges = true;
-          }
-        }
-        // 没有任何模块有变更 → 清除提示
-        if (!anyChanges) {
-          tuiState.setDiffPrompt(null);
-        }
-      }
-    }, 2000);
-  }
-
-  /** 停止文件变更监听 */
-  _stopWatchingDiff(): void {
-    if (this._diffPollTimer) {
-      clearInterval(this._diffPollTimer);
-      this._diffPollTimer = null;
-      defaultLogger.info('Diff poll stopped');
-    }
-    this._lastDiffHash = '';
-  }
-
-  /** 关闭 diff 面板 */
-  _closeDiff(): void {
-    tuiState.setShowDiffPanel(false);
-  }
-
-  /** 刷新所有模块的 diff（异步，不阻塞 UI） */
-  _refreshDiff(): void {
-    tuiState.setDiffLoading(true);
-    setImmediate(() => {
-      try {
-        const graph = this.core.getGraph();
-        if (graph) {
-          for (const [name] of graph.nodes) {
-            this._triggerWorkspaceDiff(name);
-          }
-        }
-      } finally {
-        tuiState.setDiffLoading(false);
-      }
-    });
-  }
-
-  _triggerWorkspaceDiff(moduleName: string): void {
-    const projectRoot = this.core.getProjectRoot();
-    const workspaceCwd = this.core.getAgentCwd(moduleName) || this.core.getWorkspaceCwd(moduleName);
-    if (!workspaceCwd || !projectRoot) {
-      defaultLogger.info(`Diff skip [${moduleName}] — no cwd or projectRoot`);
-      return;
-    }
-
-    // 只处理子模块的工作区隔离目录：.module-agent/workspace/<sanitized_name>
-    const workspaceBase = path.join(projectRoot, '.module-agent', 'workspace');
-    if (!workspaceCwd.startsWith(workspaceBase + path.sep)) {
-      defaultLogger.info(`Diff skip [${moduleName}] — cwd not in workspace: ${workspaceCwd}`);
-      return;
-    }
-
-    // 通过 graph node 获取真实的源码路径
-    const graph = this.core.getGraph();
-    const node = graph?.nodes.get(moduleName);
-    const config = this.core.modules.getConfig();
-    const sourceDir = node && config?.projectPath
-      ? (node.relativePath === '.' ? config.projectPath : path.join(config.projectPath, node.relativePath))
-      : projectRoot;
-
-    if (!fs.existsSync(workspaceCwd)) {
-      defaultLogger.info(`Diff skip [${moduleName}] — workspace dir missing`);
-      return;
-    }
-
-    const excludePaths: string[] = [];
-    if (graph && node) {
-      const parentRelPath = node.relativePath === '.' ? '' : node.relativePath.replace(/\\/g, '/') + '/';
-      for (const childName of node.children) {
-        const child = graph.nodes.get(childName);
-        if (child && child.relativePath !== '.') {
-          const childRel = child.relativePath.replace(/\\/g, '/');
-          excludePaths.push(parentRelPath && childRel.startsWith(parentRelPath)
-            ? childRel.slice(parentRelPath.length)
-            : childRel);
-        }
-      }
-    }
-
-    try {
-      defaultLogger.info(`Diff [${moduleName}]: ${workspaceCwd} vs ${sourceDir} (exclude ${excludePaths.length} paths)`);
-      const summary = WorkspaceDiff.analyze(workspaceCwd, sourceDir, excludePaths);
-      summary.moduleName = moduleName;
-      this.diffCache.set(moduleName, summary);
-      defaultLogger.info(`Diff [${moduleName}]: ${summary.files.length} files (+${summary.addedCount} ~${summary.modifiedCount} -${summary.deletedCount})`);
-      if (summary.files.length > 0) {
-        tuiState.setDiffPrompt(summary);
-        defaultLogger.info(`Diff [${moduleName}]: prompt set`);
-      } else {
-        defaultLogger.info(`Diff [${moduleName}]: no changes, prompt not set`);
-      }
-    } catch (err) {
-      defaultLogger.error(`TuiBridge: diff error [${moduleName}]: ${(err as Error).message}`);
-    }
-  }
-
-  getWorkspaceDiff(moduleName?: string): DiffSummary | null {
-    const name = moduleName || this.core.getCurrentAgent();
-    return this.diffCache.get(name) ?? null;
-  }
-
-  getWorkspaceDiffFile(moduleName: string, filePath: string): string | null {
-    const cached = this.diffCache.get(moduleName);
-    if (!cached) return null;
-    const file = cached.files.find((f: { relativePath: string }) => f.relativePath === filePath);
-    if (!file) return null;
-    return WorkspaceDiff.unifiedDiff(file.workspacePath, file.sourcePath);
-  }
-
-  /** 返回源文件和工作区文件的原始内容，供左右对比视图使用。 */
-  getWorkspaceDiffSplit(moduleName: string, filePath: string): { oldCode: string; newCode: string; language: string } | null {
-    const cached = this.diffCache.get(moduleName);
-    if (!cached) { defaultLogger.info(`getWorkspaceDiffSplit: no cache for ${moduleName}`); return null; }
-    const file = cached.files.find((f: { relativePath: string }) => f.relativePath === filePath);
-    if (!file) { defaultLogger.info(`getWorkspaceDiffSplit: file ${filePath} not in cache`); return null; }
-
-    defaultLogger.info(`getWorkspaceDiffSplit: src=${file.sourcePath} ws=${file.workspacePath}`);
-
-    let oldCode = '';
-    let newCode = '';
-    try {
-      if (file.sourcePath && nodeFs.existsSync(file.sourcePath)) {
-        oldCode = nodeFs.readFileSync(file.sourcePath, 'utf-8');
-        defaultLogger.info(`getWorkspaceDiffSplit: oldCode read ${oldCode.length} chars`);
-      } else {
-        defaultLogger.info(`getWorkspaceDiffSplit: sourcePath missing or not exists: ${file.sourcePath}`);
-      }
-    } catch (err) {
-      defaultLogger.info(`getWorkspaceDiffSplit: error reading source: ${(err as Error).message}`);
-    }
-    try {
-      if (file.workspacePath && nodeFs.existsSync(file.workspacePath)) {
-        newCode = nodeFs.readFileSync(file.workspacePath, 'utf-8');
-        defaultLogger.info(`getWorkspaceDiffSplit: newCode read ${newCode.length} chars`);
-      } else {
-        defaultLogger.info(`getWorkspaceDiffSplit: workspacePath missing or not exists: ${file.workspacePath}`);
-      }
-    } catch (err) {
-      defaultLogger.info(`getWorkspaceDiffSplit: error reading workspace: ${(err as Error).message}`);
-    }
-
-    const language = detectLanguage(filePath);
-    return { oldCode, newCode, language };
-  }
-
-  async applyWorkspaceDiff(moduleName: string, files?: string[]): Promise<{ applied: number; errors: string[] }> {
-    const cached = this.diffCache.get(moduleName);
-    if (!cached) return { applied: 0, errors: ['no diff cache'] };
-    const result = await WorkspaceDiff.apply(cached.workspaceDir, cached.sourceDir, files, cached.files);
-    const newSummary = WorkspaceDiff.analyze(cached.workspaceDir, cached.sourceDir, []);
-    newSummary.moduleName = moduleName;
-    if (newSummary.files.length > 0) {
-      this.diffCache.set(moduleName, newSummary);
-      tuiState.setDiffPrompt(newSummary);
-    } else {
-      this.diffCache.delete(moduleName);
-      tuiState.setDiffPrompt(null);
-    }
-    // 重置 mtime 基准防止旧值残留
-    this._lastDiffHash = '';
-    return result;
-  }
-
-  /** 丢弃指定文件的变更（从源码覆盖），不传 files 则丢弃全部 */
-  async discardWorkspaceDiff(moduleName: string, files?: string[]): Promise<void> {
-    const cached = this.diffCache.get(moduleName);
-    if (!cached) return;
-    await WorkspaceDiff.discardFiles(cached.workspaceDir, cached.sourceDir, files, cached.files);
-    // 刷新缓存
-    const newSummary = WorkspaceDiff.analyze(cached.workspaceDir, cached.sourceDir, []);
-    newSummary.moduleName = moduleName;
-    if (newSummary.files.length > 0) {
-      this.diffCache.set(moduleName, newSummary);
-      tuiState.setDiffPrompt(newSummary);
-    } else {
-      this.diffCache.delete(moduleName);
-      tuiState.setDiffPrompt(null);
-    }
-    this._lastDiffHash = '';
-    setImmediate(() => this._refreshDiff());
-  }
-}
-
-// ── 语言检测 ──
-
-const LANGUAGE_MAP: Record<string, string> = {
-  '.ts': 'typescript', '.tsx': 'typescript', '.js': 'javascript', '.jsx': 'javascript',
-  '.json': 'json', '.md': 'markdown', '.txt': 'plaintext',
-  '.css': 'css', '.scss': 'scss', '.html': 'html', '.xml': 'xml',
-  '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'toml',
-  '.py': 'python', '.rb': 'ruby', '.go': 'go', '.rs': 'rust',
-  '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.h': 'c',
-  '.sh': 'bash', '.bat': 'batch', '.ps1': 'powershell',
-  '.sql': 'sql', '.graphql': 'graphql', '.prisma': 'prisma',
-};
-
-function detectLanguage(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase();
-  return LANGUAGE_MAP[ext] || 'plaintext';
 }

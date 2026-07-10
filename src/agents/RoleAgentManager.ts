@@ -10,7 +10,7 @@ import fs from 'fs';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
 import type { RoleConfig } from '../config/defaults.js';
-import { prepareRoleWorkspace } from './RoleWorkspace.js';
+import { AgentSandbox } from './kernel/sandbox.js';
 
 // ---------------------------------------------------------------------------
 // RoleAgentEntry 接口
@@ -134,16 +134,15 @@ export class RoleAgentManager {
         args: role.agents.default.args,
       };
 
-      // 2. Prepare workspace
-      const workspacePath = await prepareRoleWorkspace({
-        roleName,
-        visibleModulePaths: role.visibleModulePaths,
-        projectPath: this.projectPath,
-        workspaceRoot: this.workspaceRoot,
-      });
+      // 2. Compute visibility from visible module paths
+      const allowed = role.visibleModulePaths.length > 0
+        ? role.visibleModulePaths.map(p => path.resolve(this.projectPath, p))
+        : [this.projectPath];
+
+      const sandbox = new AgentSandbox({ allowed, excluded: [] });
 
       this.logger.info(
-        `startRoleAgent [${roleName}] cmd=${agentConfig.command} args=[${(agentConfig.args || []).join(',')}] cwd=${workspacePath}`,
+        `startRoleAgent [${roleName}] cwd=${this.projectPath} visible=[${allowed.join(', ')}]`,
       );
 
       // 3. Build onNotification callback
@@ -161,9 +160,10 @@ export class RoleAgentManager {
       const agent = await Agent.start({
         name: `workrole:${roleName}`,
         config: agentConfig,
-        cwd: workspacePath,
+        cwd: this.projectPath,
         launcher: this.launcher,
         logger: this.logger,
+        sandbox,
         onNotification,
         onQueue: self.callbacks?.onQueue,
         onSystemMessage: self.callbacks?.onSystemMessage,
@@ -172,7 +172,7 @@ export class RoleAgentManager {
       // 6. Build and store entry
       const entry: RoleAgentEntry = {
         agent,
-        workspacePath,
+        workspacePath: this.projectPath,
         roleConfig: role,
       };
       this.agents.set(roleName, entry);

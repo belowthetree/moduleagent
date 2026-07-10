@@ -11,7 +11,6 @@
 import type { BrowserWindow } from 'electron';
 import type { ModuleAgentCore } from '../../core/ModuleAgentCore.js';
 import type { Logger } from '../../core/Logger.js';
-import type { DiffSummary } from '../../types/shared.js';
 
 /** 所有 IPC handler 注册函数共享的上下文。ElectronBridge 构造时创建，handler 文件通过此接口访问主进程资源。 */
 export interface HandlerContext {
@@ -19,8 +18,6 @@ export interface HandlerContext {
   core: ModuleAgentCore;
   /** Electron 主窗口引用 */
   mainWindow: BrowserWindow;
-  /** 工作区 diff 结果缓存，按模块名索引（由 PostSendHooks 填充，workspaceDiffHandlers 消费） */
-  diffCache: Map<string, DiffSummary>;
   /** 配置文件目录 */
   configDir: string;
   /** 日志实例 */

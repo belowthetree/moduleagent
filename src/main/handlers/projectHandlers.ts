@@ -21,7 +21,6 @@ import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { writeMcpGraphFile } from '../../agents/McpServerBuilder.js';
 import { buildPromptBlocks } from '../../agents/PromptBuilder.js';
 import { AgentLauncher } from '../../agents/AgentLauncher.js';
-import { workspacePathForModule, getSubModuleDirs, prepareModuleWorkspace } from '../../agents/WorkspaceIsolator.js';
 import type { ModuleGraphNode } from '../../types/module.js';
 import type { ChatMsg, TreeNode } from '../../types/shared.js';
 
@@ -160,7 +159,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
         if (node.relativePath === '.') {
           cwd = path.join(projectRoot, '.module-agent', 'module');
         } else {
-          cwd = workspacePathForModule(node, workspaceRoot, projectRoot);
+          cwd = path.join(workspaceRoot, node.name);
         }
       } else {
         cwd = node.absolutePath || projectRoot;
@@ -221,16 +220,10 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
       if (rootNode.relativePath === '.') {
         cwd = path.join(projectRoot, '.module-agent', 'module');
       } else {
-        cwd = await prepareModuleWorkspace(rootNode, {
-          workspaceRoot,
-          projectPath: config.projectPath,
-          graph,
-        });
+        cwd = path.join(projectRoot, '.module-agent', 'module');
       }
 
-      const subModuleDirs = getSubModuleDirs(rootNode, graph, (n) =>
-        workspacePathForModule(n, workspaceRoot, projectRoot),
-      );
+      const subModuleDirs: string[] = [];
 
       const launcher = new AgentLauncher();
       const launched = await launcher.launch(

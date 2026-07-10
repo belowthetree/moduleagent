@@ -1,18 +1,17 @@
 // ---------------------------------------------------------------------------
 // agents/kernel/tools/git-operations.ts — Git 操作工具
-// 在工作区内执行常用 git 命令
 // ---------------------------------------------------------------------------
 
 import { execFile, type ChildProcess } from 'child_process';
+import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
-import { resolveSandboxPath } from '../sandbox.js';
 
 const ALLOWED_OPERATIONS = [
   'status', 'diff', 'log', 'add', 'commit',
   'branch', 'checkout', 'show', 'stash',
 ];
 
-export function createGitOperationsTool(workspaceRoot: string): Tool {
+export function createGitOperationsTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
     type: 'object',
     properties: {
@@ -32,7 +31,7 @@ export function createGitOperationsTool(workspaceRoot: string): Tool {
       files: {
         type: 'array',
         items: { type: 'string' },
-        description: '要操作的文件列表（相对于工作区根目录，如 git add 时使用）',
+        description: '要操作的文件列表（相对于工作区根目录）',
       },
       repoPath: {
         type: 'string',
@@ -44,7 +43,7 @@ export function createGitOperationsTool(workspaceRoot: string): Tool {
 
   return {
     name: 'git_operations',
-    description: `在工作区的 Git 仓库中执行常用 git 操作。支持的操作：${ALLOWED_OPERATIONS.join(', ')}。`,
+    description: `在可见范围内的 Git 仓库中执行常用 git 操作。支持：${ALLOWED_OPERATIONS.join(', ')}。`,
     inputSchema,
     execute: async (input: Record<string, unknown>) => {
       const operation = input.operation as string;
@@ -62,21 +61,14 @@ export function createGitOperationsTool(workspaceRoot: string): Tool {
         };
       }
 
-      const cwd = repoPath ? resolveSandboxPath(workspaceRoot, repoPath) : workspaceRoot;
+      const cwd = repoPath ? sandbox.resolvePath(repoPath) : sandbox.rootPath;
 
       const cmdArgs: string[] = [operation];
-
-      if (message && operation === 'commit') {
-        cmdArgs.push('-m', message);
+      if (message && operation === 'commit') cmdArgs.push('-m', message);
+      for (const f of files) {
+        sandbox.resolvePath(f);
+        cmdArgs.push(f);
       }
-
-      if (files.length > 0 && (operation === 'add' || operation === 'commit')) {
-        for (const f of files) {
-          resolveSandboxPath(workspaceRoot, f);
-          cmdArgs.push(f);
-        }
-      }
-
       cmdArgs.push(...args);
 
       return new Promise((resolve) => {
@@ -91,13 +83,8 @@ export function createGitOperationsTool(workspaceRoot: string): Tool {
           maxBuffer: 10 * 1024 * 1024,
         });
 
-        proc.stdout?.on('data', (data: Buffer) => {
-          stdout += data.toString();
-        });
-
-        proc.stderr?.on('data', (data: Buffer) => {
-          stderr += data.toString();
-        });
+        proc.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
+        proc.stderr?.on('data', (data: Buffer) => { stderr += data.toString(); });
 
         proc.on('close', (code: number | null) => {
           const output = stdout.slice(0, 10000);
@@ -105,22 +92,12 @@ export function createGitOperationsTool(workspaceRoot: string): Tool {
 
           if (code !== 0 && stderr) {
             resolve({
-              content: JSON.stringify({
-                success: false,
-                operation,
-                output,
-                error: stderr.slice(0, 5000),
-              }),
+              content: JSON.stringify({ success: false, operation, output, error: stderr.slice(0, 5000) }),
               metadata: { operation, success: false, exitCode: code ?? -1 },
             });
           } else {
             resolve({
-              content: JSON.stringify({
-                success: true,
-                operation,
-                output,
-                truncated,
-              }),
+              content: JSON.stringify({ success: true, operation, output, truncated }),
               metadata: { operation, success: true, exitCode: code ?? 0 },
             });
           }
@@ -128,12 +105,7 @@ export function createGitOperationsTool(workspaceRoot: string): Tool {
 
         proc.on('error', (err: Error) => {
           resolve({
-            content: JSON.stringify({
-              success: false,
-              operation,
-              output: '',
-              error: err.message,
-            }),
+            content: JSON.stringify({ success: false, operation, output: '', error: err.message }),
             metadata: { operation, success: false, exitCode: -1 },
           });
         });

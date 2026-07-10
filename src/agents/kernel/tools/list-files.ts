@@ -1,18 +1,17 @@
 // ---------------------------------------------------------------------------
 // agents/kernel/tools/list-files.ts — 目录列表工具
-// 在工作区内列出文件和子目录
 // ---------------------------------------------------------------------------
 
-import { safeListDir } from '../sandbox.js';
+import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 
-export function createListFilesTool(workspaceRoot: string): Tool {
+export function createListFilesTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
     type: 'object',
     properties: {
       path: {
         type: 'string',
-        description: '要列出的目录路径（相对于工作区根目录，可选，默认为工作区根目录）',
+        description: '要列出的目录路径（相对于工作区根目录，可选）',
       },
       recursive: {
         type: 'boolean',
@@ -20,7 +19,7 @@ export function createListFilesTool(workspaceRoot: string): Tool {
       },
       maxDepth: {
         type: 'number',
-        description: '最大递归深度（默认为 3，仅在 recursive 为 true 时有效）',
+        description: '最大递归深度（默认为 3）',
       },
     },
     required: [],
@@ -28,21 +27,17 @@ export function createListFilesTool(workspaceRoot: string): Tool {
 
   return {
     name: 'list_files',
-    description: '列出工作区内的文件和目录。支持递归浏览和深度控制。',
+    description: '列出可见范围内的文件和目录。支持递归浏览和深度控制。',
     inputSchema,
     execute: async (input: Record<string, unknown>) => {
       const dirPath = (input.path as string) || '.';
       const recursive = (input.recursive as boolean) ?? false;
       const maxDepth = (input.maxDepth as number) ?? 3;
 
-      const entries = await safeListDir(workspaceRoot, dirPath, { recursive, maxDepth });
+      const entries = await sandbox.listDir(dirPath, { recursive, maxDepth });
 
       return {
-        content: JSON.stringify({
-          path: dirPath,
-          entryCount: entries.length,
-          entries,
-        }),
+        content: JSON.stringify({ path: dirPath, entryCount: entries.length, entries }),
         metadata: { path: dirPath, entryCount: entries.length },
       };
     },

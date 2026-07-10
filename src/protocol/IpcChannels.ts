@@ -84,14 +84,6 @@ export const IpcChannel = {
     Delete: 'knowledge:delete',
   },
 
-  // ── 工作区 Diff ──
-  WorkspaceDiff: {
-    Diff: 'workspace:diff',
-    DiffFile: 'workspace:diff-file',
-    Apply: 'workspace:apply',
-    Discard: 'workspace:discard',
-  },
-
   // ── Push 通道（webContents.send → ipcRenderer.on） ──
   Push: {
     AgentStream: 'agent:stream',
@@ -99,6 +91,5 @@ export const IpcChannel = {
     CrossContext: 'agent:cross-context',
     AgentStatus: 'agent:status',
     RoleStatus: 'role:status',
-    WorkspaceDiffReady: 'workspace:diff-ready',
   },
 } as const;

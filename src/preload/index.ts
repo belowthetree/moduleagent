@@ -5,7 +5,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 import { IpcChannel } from '../protocol/IpcChannels.js';
-import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus, DiffSummary, WorkspaceDiffReadyData } from '../types/shared.js';
+import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus } from '../types/shared.js';
 
 const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke(IpcChannel.Dialog.SelectDir, title) as Promise<string | null>,
@@ -159,25 +159,6 @@ const api: ModuleAgentApi = {
 
   workflowStatus: (name: string) =>
     ipcRenderer.invoke(IpcChannel.Workflow.Status, name) as Promise<WorkflowStatus | null>,
-
-  // ── 工作区 Diff API ──
-  workspaceDiff: (moduleName: string) =>
-    ipcRenderer.invoke(IpcChannel.WorkspaceDiff.Diff, moduleName) as Promise<DiffSummary | { error: string }>,
-
-  workspaceDiffFile: (moduleName: string, filePath: string) =>
-    ipcRenderer.invoke(IpcChannel.WorkspaceDiff.DiffFile, moduleName, filePath) as Promise<{ hunks: string } | { error: string }>,
-
-  workspaceApply: (moduleName: string, files?: string[]) =>
-    ipcRenderer.invoke(IpcChannel.WorkspaceDiff.Apply, moduleName, files) as Promise<{ applied: number; errors: string[] }>,
-
-  workspaceDiscard: (moduleName: string) =>
-    ipcRenderer.invoke(IpcChannel.WorkspaceDiff.Discard, moduleName) as Promise<{ success: boolean }>,
-
-  onWorkspaceDiffReady: (callback: (data: WorkspaceDiffReadyData) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: WorkspaceDiffReadyData) => callback(data);
-    ipcRenderer.on(IpcChannel.Push.WorkspaceDiffReady, handler);
-    return () => ipcRenderer.removeListener(IpcChannel.Push.WorkspaceDiffReady, handler);
-  },
 };
 
 contextBridge.exposeInMainWorld('moduleAgent', api);

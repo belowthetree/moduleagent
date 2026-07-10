@@ -104,6 +104,11 @@ export interface KernelConfig {
   allowStreaming?: boolean;
 }
 
+export interface VisibilityConfig {
+  allowed: string[];
+  excluded: string[];
+}
+
 export interface AgentLoopConfig {
   kernelConfig: KernelConfig;
   systemPrompt: string;

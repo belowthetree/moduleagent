@@ -8,7 +8,7 @@
 import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
-import { AgentKernel, type KernelNotification, type PromptBlock } from './kernel/index.js';
+import { AgentKernel, type KernelNotification, type PromptBlock, AgentSandbox } from './kernel/index.js';
 
 // ---------------------------------------------------------------------------
 // AgentState — Agent 运行状态枚举
@@ -34,6 +34,7 @@ export interface AgentStartOptions {
   launcher: AgentLauncher;
   logger?: Logger;
   subModuleDirs?: string[];
+  sandbox?: AgentSandbox;
   onNotification: (sessionId: string, notification: any) => void;
   onStateChange?: (newState: AgentState, oldState: AgentState) => void;
   onQueue?: (queueLength: number) => void;
@@ -131,13 +132,14 @@ export class Agent {
 
     const kernel = await launcher.launchKernel(config, name, cwd, systemPrompt, log, {
       moduleName: options.kernelModuleName || name,
+      sandbox: options.sandbox,
     });
 
     const sessionId = kernel.sessionId;
 
     const sessionResult: any = {
       sessionId,
-      configOptions: {},
+      configOptions: [],
     };
 
     const agent = new Agent(

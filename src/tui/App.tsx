@@ -14,8 +14,6 @@ import ContextArea from './components/ContextArea.js';
 import CommandPalette from './components/CommandPalette.js';
 import SetupWizard from './components/SetupWizard.js';
 import ModuleTree from './components/ModuleTree.js';
-import DiffBar from './components/DiffBar.js';
-import DiffPanel from './components/DiffPanel.js';
 import ExperiencePanel from './components/ExperiencePanel.js';
 import QuickPanel from './components/QuickPanel.js';
 
@@ -79,36 +77,6 @@ export default function App() {
     }
   });
 
-  // Diff 快捷键（全局）— Y/R/N 操作（仅在输入框为空时生效）
-  useKeyboard((key: KeyEvent) => {
-    const diff = tuiState.diffPrompt();
-    // 输入框有文字时跳过，避免干扰正常打字
-    if (!diff || tuiState.showDiffPanel() || screen() !== 'chat' || tuiState.inputValue().length > 0) return;
-
-    const service = (globalThis as any).__tuiAgentService;
-    const moduleName = diff.moduleName;
-
-    if (key.name === 'y') {
-      service?.applyWorkspaceDiff?.(moduleName).then(() => {
-        tuiState.setDiffPrompt(null);
-      }).catch(() => {});
-      key.preventDefault();
-    } else if (key.name === 'r') {
-      tuiState.setShowDiffPanel(true);
-      key.preventDefault();
-    } else if (key.name === 'n') {
-      defaultLogger.info(`[App] N key pressed, discarding all for [${moduleName}]`);
-      service?.discardWorkspaceDiff?.(moduleName).then(() => {
-        tuiState.setDiffPrompt(null);
-        defaultLogger.info(`[App] discard done, prompt cleared`);
-      }).catch((err: Error) => {
-        tuiState.setDiffPrompt(null);
-        defaultLogger.info(`[App] discard failed: ${err.message}`);
-      });
-      key.preventDefault();
-    }
-  });
-
   const handleSend = (text: string) => {
     // 用户消息现在由 __tuiSendMessage 在 Agent 占位消息之前推送，
     // 这样流数据块会追加到 Agent 消息而非用户消息。
@@ -167,12 +135,9 @@ export default function App() {
             tuiState.setShowCommands(false);
           }}
         />
-      ) : tuiState.showDiffPanel() ? (
-        <DiffPanel />
       ) : (
         <>
           <ContextArea />
-          {tuiState.diffPrompt() ? <DiffBar /> : null}
           <CommandPalette />
           <box flexDirection="column" flexShrink={0}>
             <InputBox onSend={handleSend} onCommand={handleCommand} />

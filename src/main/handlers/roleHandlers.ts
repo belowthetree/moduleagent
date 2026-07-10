@@ -12,7 +12,6 @@ import fs from 'fs-extra';
 import { IpcChannel } from '../../protocol/IpcChannels.js';
 import type { HandlerContext } from './HandlerContext.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';
-import { cleanupRoleWorkspace } from '../../agents/RoleWorkspace.js';
 import { configExplorer } from '../../core/ConfigPaths.js';
 import type { RoleConfig } from '../../config/defaults.js';
 
@@ -61,8 +60,6 @@ export function registerRoleHandlers(ctx: HandlerContext): void {
       await fs.promises.writeFile(configPath, JSON.stringify(workspaceConfig, null, 2), 'utf-8');
       configExplorer.clearCaches();
 
-      const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
-      await cleanupRoleWorkspace(name, workspaceRoot);
       await ctx.core.roles?.stopRole(name);
       return { success: true };
     } catch (err) {
