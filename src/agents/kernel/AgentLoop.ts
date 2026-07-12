@@ -105,13 +105,20 @@ export class AgentLoop {
           if (event.toolResults) {
             for (const tr of event.toolResults) {
               const tcid = (tr as any).toolCallId || '';
-              this.logger.info(`[AgentLoop] tool_result: ${tr.toolName} id=${tcid}`);
+              const isError = !!(tr as any).error;
+              this.logger.info(`[AgentLoop] tool_result: ${tr.toolName} id=${tcid}` + (isError ? ` error="${(tr as any).error}"` : ''));
               this.events.onToolCall(
                 tr.toolName,
                 tcid,
-                (tr as any).error ? 'error' : 'completed',
+                isError ? 'error' : 'completed',
                 JSON.stringify((tr as any).output || '').slice(0, 500),
               );
+            }
+          }
+          const content = (event as any).content || [];
+          for (const part of content) {
+            if (part.type === 'tool-error') {
+              this.logger.error(`[AgentLoop] tool_error in content: ${part.toolName} id=${part.toolCallId} error="${part.error}"`);
             }
           }
         },

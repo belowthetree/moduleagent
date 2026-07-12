@@ -6,6 +6,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
+import { defaultLogger } from '../../../core/Logger.js';
 
 export function createSearchTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
@@ -46,64 +47,72 @@ export function createSearchTool(sandbox: AgentSandbox): Tool {
       const caseSensitive = (input.caseSensitive as boolean) ?? false;
       const maxResults = (input.maxResults as number) ?? 50;
 
-      const searchDir = searchPath ? sandbox.resolvePath(searchPath) : sandbox.rootPath;
-
-      let regex: RegExp;
       try {
-        regex = new RegExp(pattern, caseSensitive ? 'g' : 'gi');
-      } catch {
-        return {
-          content: JSON.stringify({ error: `无效的正则表达式: ${pattern}` }),
-          metadata: { error: true, code: 'invalid_pattern' },
-        };
-      }
+        const searchDir = searchPath ? sandbox.resolvePath(searchPath) : sandbox.rootPath;
 
-      const results: { file: string; line: number; content: string }[] = [];
-      const fileRegex = filePattern
-        ? new RegExp('^' + filePattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$')
-        : null;
+        let regex: RegExp;
+        try {
+          regex = new RegExp(pattern, caseSensitive ? 'g' : 'gi');
+        } catch {
+          defaultLogger.warn(`[search] invalid_pattern="${pattern}"`);
+          return {
+            content: JSON.stringify({ error: `无效的正则表达式: ${pattern}` }),
+            metadata: { error: true, code: 'invalid_pattern' },
+          };
+        }
 
-      async function walk(dir: string): Promise<void> {
-        if (results.length >= maxResults) return;
+        const results: { file: string; line: number; content: string }[] = [];
+        const fileRegex = filePattern
+          ? new RegExp('^' + filePattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$')
+          : null;
 
-        const entries = await fs.readdir(dir, { withFileTypes: true });
-        for (const entry of entries) {
-          if (results.length >= maxResults) break;
-          if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+        async function walk(dir: string): Promise<void> {
+          if (results.length >= maxResults) return;
 
-          const fullPath = path.join(dir, entry.name);
+          const entries = await fs.readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (results.length >= maxResults) break;
+            if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
 
-          if (entry.isDirectory()) {
-            if (!sandbox.isPathVisible(fullPath)) continue;
-            await walk(fullPath);
-          } else if (entry.isFile()) {
-            if (!sandbox.isPathVisible(fullPath)) continue;
-            if (fileRegex && !fileRegex.test(entry.name)) continue;
+            const fullPath = path.join(dir, entry.name);
 
-            try {
-              const content = await fs.readFile(fullPath, 'utf-8');
-              const lines = content.split('\n');
-              for (let i = 0; i < lines.length && results.length < maxResults; i++) {
-                if (regex.test(lines[i]!)) {
-                  const relPath = path.relative(sandbox.rootPath, fullPath).replace(/\\/g, '/');
-                  results.push({
-                    file: relPath,
-                    line: i + 1,
-                    content: lines[i]!.trim().slice(0, 200),
-                  });
+            if (entry.isDirectory()) {
+              if (!sandbox.isPathVisible(fullPath)) continue;
+              await walk(fullPath);
+            } else if (entry.isFile()) {
+              if (!sandbox.isPathVisible(fullPath)) continue;
+              if (fileRegex && !fileRegex.test(entry.name)) continue;
+
+              try {
+                const content = await fs.readFile(fullPath, 'utf-8');
+                const lines = content.split('\n');
+                for (let i = 0; i < lines.length && results.length < maxResults; i++) {
+                  if (regex.test(lines[i]!)) {
+                    const relPath = path.relative(sandbox.rootPath, fullPath).replace(/\\/g, '/');
+                    results.push({
+                      file: relPath,
+                      line: i + 1,
+                      content: lines[i]!.trim().slice(0, 200),
+                    });
+                  }
                 }
-              }
-            } catch { /* skip */ }
+              } catch { /* skip */ }
+            }
           }
         }
+
+        await walk(searchDir);
+
+        defaultLogger.info(`[search] pattern="${pattern}" filePattern=${filePattern ?? '-'} found=${results.length} truncated=${results.length >= maxResults}`);
+
+        return {
+          content: JSON.stringify({ pattern, matchCount: results.length, truncated: results.length >= maxResults, results }),
+          metadata: { matchCount: results.length, truncated: results.length >= maxResults },
+        };
+      } catch (err) {
+        defaultLogger.error(`[search] FAILED pattern="${pattern}" searchPath="${searchPath ?? '.'}" filePattern=${filePattern ?? '-'} error="${(err as Error).message}"`);
+        throw err;
       }
-
-      await walk(searchDir);
-
-      return {
-        content: JSON.stringify({ pattern, matchCount: results.length, truncated: results.length >= maxResults, results }),
-        metadata: { matchCount: results.length, truncated: results.length >= maxResults },
-      };
     },
   };
 }

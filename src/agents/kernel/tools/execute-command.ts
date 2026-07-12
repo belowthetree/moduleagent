@@ -5,6 +5,7 @@
 import { execFile, type ChildProcess } from 'child_process';
 import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
+import { defaultLogger } from '../../../core/Logger.js';
 
 export function createExecuteCommandTool(sandbox: AgentSandbox): Tool {
   const isWindows = process.platform === 'win32';
@@ -37,7 +38,19 @@ export function createExecuteCommandTool(sandbox: AgentSandbox): Tool {
       const cwdRel = input.cwd as string | undefined;
       const timeoutMs = (input.timeout as number) || 60000;
 
-      const cwd = sandbox.resolveCommandCwd(cwdRel);
+      defaultLogger.info(`[execute_command] command="${command}" cwd=${cwdRel ?? '.'} timeout=${timeoutMs}`);
+
+      let cwd: string;
+      try {
+        cwd = sandbox.resolveCommandCwd(cwdRel);
+      } catch (err) {
+        defaultLogger.error(`[execute_command] FAILED (resolveCwd) command="${command}" error="${(err as Error).message}"`);
+        return {
+          content: JSON.stringify({ success: false, exitCode: -1, output: '', error: (err as Error).message }),
+          metadata: { exitCode: -1, success: false },
+        };
+      }
+
       const shell = isWindows ? 'cmd.exe' : '/bin/sh';
       const shellArgs = isWindows ? ['/C', command] : ['-c', command];
 
@@ -68,6 +81,7 @@ export function createExecuteCommandTool(sandbox: AgentSandbox): Tool {
           const truncated = output.length > 10000;
 
           if (timedOut) {
+            defaultLogger.warn(`[execute_command] TIMED_OUT command="${command}" timeout=${timeoutMs}`);
             resolve({
               content: JSON.stringify({
                 success: false, exitCode: -1,
@@ -78,6 +92,8 @@ export function createExecuteCommandTool(sandbox: AgentSandbox): Tool {
             });
             return;
           }
+
+          defaultLogger.info(`[execute_command] done exitCode=${code} stdout_len=${stdout.length} stderr_len=${stderr.length}`);
 
           resolve({
             content: JSON.stringify({
@@ -90,6 +106,7 @@ export function createExecuteCommandTool(sandbox: AgentSandbox): Tool {
 
         proc.on('error', (err: Error) => {
           clearTimeout(timer);
+          defaultLogger.error(`[execute_command] FAILED command="${command}" error="${err.message}"`);
           resolve({
             content: JSON.stringify({ success: false, exitCode: -1, output: '', error: err.message }),
             metadata: { exitCode: -1, success: false },

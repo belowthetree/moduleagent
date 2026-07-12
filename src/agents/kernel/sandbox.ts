@@ -44,7 +44,7 @@ export class AgentSandbox {
     }
 
     throw new Error(
-      `访问被拒绝: "${filePath}" 不在可见范围内。可见根路径: ${this.allowed.join(', ')}`,
+      `访问被拒绝: "${filePath}" (resolved="${normalized}") 不在可见范围内。可见根路径: ${this.allowed.join(', ')}，排除路径: ${this.excluded.join(', ')}`,
     );
   }
 

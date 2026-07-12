@@ -35,20 +35,25 @@ export function createListFilesTool(sandbox: AgentSandbox): Tool {
       const recursive = (input.recursive as boolean) ?? false;
       const maxDepth = (input.maxDepth as number) ?? 3;
 
-      const entries = await sandbox.listDir(dirPath, { recursive, maxDepth });
+      try {
+        const entries = await sandbox.listDir(dirPath, { recursive, maxDepth });
 
-      defaultLogger.info(`[list_files] path="${dirPath}" recursive=${recursive} maxDepth=${maxDepth} found=${entries.length}`);
-      for (const e of entries.slice(0, 30)) {
-        defaultLogger.info(`[list_files]   ${e}`);
-      }
-      if (entries.length > 30) {
-        defaultLogger.info(`[list_files]   ... and ${entries.length - 30} more`);
-      }
+        defaultLogger.info(`[list_files] path="${dirPath}" recursive=${recursive} maxDepth=${maxDepth} found=${entries.length}`);
+        for (const e of entries.slice(0, 30)) {
+          defaultLogger.info(`[list_files]   ${e}`);
+        }
+        if (entries.length > 30) {
+          defaultLogger.info(`[list_files]   ... and ${entries.length - 30} more`);
+        }
 
-      return {
-        content: JSON.stringify({ path: dirPath, entryCount: entries.length, entries }),
-        metadata: { path: dirPath, entryCount: entries.length },
-      };
+        return {
+          content: JSON.stringify({ path: dirPath, entryCount: entries.length, entries }),
+          metadata: { path: dirPath, entryCount: entries.length },
+        };
+      } catch (err) {
+        defaultLogger.error(`[list_files] FAILED path="${dirPath}" recursive=${recursive} maxDepth=${maxDepth} error="${(err as Error).message}"`);
+        throw err;
+      }
     },
   };
 }

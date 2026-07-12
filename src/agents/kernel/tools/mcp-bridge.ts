@@ -6,6 +6,7 @@
 
 import type { CrossModuleRouter } from '../../McpBackend.js';
 import type { Tool, ToolInputSchema } from '../types.js';
+import { defaultLogger } from '../../../core/Logger.js';
 
 export function createMcpBridgeTools(router: CrossModuleRouter, requestingModule: string): Tool[] {
   const tools: Tool[] = [];
@@ -28,20 +29,28 @@ export function createMcpBridgeTools(router: CrossModuleRouter, requestingModule
     description: '将子任务委托给目标模块的代理执行，等待并接收完整的执行结果。',
     inputSchema: moduleCallSchema,
     execute: async (input: Record<string, unknown>) => {
-      const result = await router.routeCall({
-        targetModule: input.targetModule as string,
-        requestingModule,
-        task: formatTaskInput(input),
-      });
+      const targetModule = input.targetModule as string;
+      try {
+        const result = await router.routeCall({
+          targetModule,
+          requestingModule,
+          task: formatTaskInput(input),
+        });
 
-      if (!result.success) {
-        return { content: JSON.stringify({ error: result.error }), metadata: { error: true } };
+        if (!result.success) {
+          defaultLogger.warn(`[module_call] failed targetModule="${targetModule}" error="${result.error}"`);
+          return { content: JSON.stringify({ error: result.error }), metadata: { error: true } };
+        }
+
+        defaultLogger.info(`[module_call] success targetModule="${targetModule}"`);
+        return {
+          content: result.result || JSON.stringify(result),
+          metadata: { tool: 'module_call', targetModule },
+        };
+      } catch (err) {
+        defaultLogger.error(`[module_call] FAILED targetModule="${targetModule}" error="${(err as Error).message}"`);
+        return { content: JSON.stringify({ error: (err as Error).message }), metadata: { error: true } };
       }
-
-      return {
-        content: result.result || JSON.stringify(result),
-        metadata: { tool: 'module_call', targetModule: input.targetModule as string },
-      };
     },
   });
 
@@ -61,20 +70,28 @@ export function createMcpBridgeTools(router: CrossModuleRouter, requestingModule
     description: '向目标模块的代理查询信息，获取模块状态、结构等信息。',
     inputSchema: moduleQuerySchema,
     execute: async (input: Record<string, unknown>) => {
-      const result = await router.routeCall({
-        targetModule: input.targetModule as string,
-        requestingModule,
-        query: input.query as string,
-      });
+      const targetModule = input.targetModule as string;
+      try {
+        const result = await router.routeCall({
+          targetModule,
+          requestingModule,
+          query: input.query as string,
+        });
 
-      if (!result.success) {
-        return { content: JSON.stringify({ error: result.error }), metadata: { error: true } };
+        if (!result.success) {
+          defaultLogger.warn(`[module_query] failed targetModule="${targetModule}" error="${result.error}"`);
+          return { content: JSON.stringify({ error: result.error }), metadata: { error: true } };
+        }
+
+        defaultLogger.info(`[module_query] success targetModule="${targetModule}"`);
+        return {
+          content: result.answer || JSON.stringify(result),
+          metadata: { tool: 'module_query', targetModule },
+        };
+      } catch (err) {
+        defaultLogger.error(`[module_query] FAILED targetModule="${targetModule}" error="${(err as Error).message}"`);
+        return { content: JSON.stringify({ error: (err as Error).message }), metadata: { error: true } };
       }
-
-      return {
-        content: result.answer || JSON.stringify(result),
-        metadata: { tool: 'module_query', targetModule: input.targetModule as string },
-      };
     },
   });
 
@@ -90,11 +107,17 @@ export function createMcpBridgeTools(router: CrossModuleRouter, requestingModule
     description: '列出所有可访问的模块及其描述信息。',
     inputSchema: moduleListSchema,
     execute: async () => {
-      const list = router.listModules(requestingModule);
-      return {
-        content: list,
-        metadata: { tool: 'module_list' },
-      };
+      try {
+        const list = router.listModules(requestingModule);
+        defaultLogger.info(`[module_list] count=${typeof list === 'string' ? list.length : '?'}`);
+        return {
+          content: list,
+          metadata: { tool: 'module_list' },
+        };
+      } catch (err) {
+        defaultLogger.error(`[module_list] FAILED error="${(err as Error).message}"`);
+        return { content: JSON.stringify({ error: (err as Error).message }), metadata: { error: true } };
+      }
     },
   });
 

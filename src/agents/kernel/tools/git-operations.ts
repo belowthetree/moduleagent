@@ -5,6 +5,7 @@
 import { execFile, type ChildProcess } from 'child_process';
 import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
+import { defaultLogger } from '../../../core/Logger.js';
 
 const ALLOWED_OPERATIONS = [
   'status', 'diff', 'log', 'add', 'commit',
@@ -53,6 +54,7 @@ export function createGitOperationsTool(sandbox: AgentSandbox): Tool {
       const repoPath = input.repoPath as string | undefined;
 
       if (!ALLOWED_OPERATIONS.includes(operation)) {
+        defaultLogger.warn(`[git_operations] invalid_operation="${operation}"`);
         return {
           content: JSON.stringify({
             error: `不支持的 git 操作: ${operation}。允许的操作：${ALLOWED_OPERATIONS.join(', ')}`,
@@ -61,15 +63,34 @@ export function createGitOperationsTool(sandbox: AgentSandbox): Tool {
         };
       }
 
-      const cwd = repoPath ? sandbox.resolvePath(repoPath) : sandbox.rootPath;
+      let cwd: string;
+      try {
+        cwd = repoPath ? sandbox.resolvePath(repoPath) : sandbox.rootPath;
+      } catch (err) {
+        defaultLogger.error(`[git_operations] FAILED (resolveRepoPath) operation="${operation}" repoPath="${repoPath}" error="${(err as Error).message}"`);
+        return {
+          content: JSON.stringify({ success: false, operation, output: '', error: (err as Error).message }),
+          metadata: { operation, success: false, exitCode: -1 },
+        };
+      }
 
       const cmdArgs: string[] = [operation];
       if (message && operation === 'commit') cmdArgs.push('-m', message);
-      for (const f of files) {
-        sandbox.resolvePath(f);
-        cmdArgs.push(f);
+      try {
+        for (const f of files) {
+          sandbox.resolvePath(f);
+          cmdArgs.push(f);
+        }
+      } catch (err) {
+        defaultLogger.error(`[git_operations] FAILED (resolveFile) operation="${operation}" error="${(err as Error).message}"`);
+        return {
+          content: JSON.stringify({ success: false, operation, output: '', error: `文件路径不可见: ${(err as Error).message}` }),
+          metadata: { operation, success: false, exitCode: -1 },
+        };
       }
       cmdArgs.push(...args);
+
+      defaultLogger.info(`[git_operations] operation="${operation}" args=${JSON.stringify(cmdArgs.slice(1))} cwd="${cwd}"`);
 
       return new Promise((resolve) => {
         let stdout = '';
@@ -91,11 +112,13 @@ export function createGitOperationsTool(sandbox: AgentSandbox): Tool {
           const truncated = stdout.length > 10000;
 
           if (code !== 0 && stderr) {
+            defaultLogger.warn(`[git_operations] failed operation="${operation}" exitCode=${code} stderr="${stderr.slice(0, 200)}"`);
             resolve({
               content: JSON.stringify({ success: false, operation, output, error: stderr.slice(0, 5000) }),
               metadata: { operation, success: false, exitCode: code ?? -1 },
             });
           } else {
+            defaultLogger.info(`[git_operations] done operation="${operation}" exitCode=${code}`);
             resolve({
               content: JSON.stringify({ success: true, operation, output, truncated }),
               metadata: { operation, success: true, exitCode: code ?? 0 },
@@ -104,6 +127,7 @@ export function createGitOperationsTool(sandbox: AgentSandbox): Tool {
         });
 
         proc.on('error', (err: Error) => {
+          defaultLogger.error(`[git_operations] FAILED operation="${operation}" error="${err.message}"`);
           resolve({
             content: JSON.stringify({ success: false, operation, output: '', error: err.message }),
             metadata: { operation, success: false, exitCode: -1 },

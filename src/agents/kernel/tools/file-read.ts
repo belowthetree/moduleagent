@@ -4,6 +4,7 @@
 
 import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
+import { defaultLogger } from '../../../core/Logger.js';
 
 export function createFileReadTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
@@ -34,12 +35,19 @@ export function createFileReadTool(sandbox: AgentSandbox): Tool {
       const offset = input.offset as number | undefined;
       const limit = input.limit as number | undefined;
 
-      const content = await sandbox.readFile(filePath, { offset, limit });
+      try {
+        const content = await sandbox.readFile(filePath, { offset, limit });
 
-      return {
-        content: content,
-        metadata: { filePath, size: content.length },
-      };
+        defaultLogger.info(`[file_read] filePath="${filePath}" offset=${offset ?? '-'} limit=${limit ?? '-'} size=${content.length}`);
+
+        return {
+          content: content,
+          metadata: { filePath, size: content.length },
+        };
+      } catch (err) {
+        defaultLogger.error(`[file_read] FAILED filePath="${filePath}" offset=${offset ?? '-'} limit=${limit ?? '-'} error="${(err as Error).message}"`);
+        throw err;
+      }
     },
   };
 }

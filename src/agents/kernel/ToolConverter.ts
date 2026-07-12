@@ -4,6 +4,7 @@
 
 import { tool, jsonSchema } from 'ai';
 import type { Tool, ToolInputSchema } from './types.js';
+import { defaultLogger } from '../../core/Logger.js';
 
 export function convertToolToAISDK(t: Tool): Record<string, unknown> {
   const schema = t.inputSchema as ToolInputSchema;
@@ -20,11 +21,17 @@ export function convertToolToAISDK(t: Tool): Record<string, unknown> {
         if (typeof input !== 'object' || input === null) {
           input = {};
         }
-        const result = await t.execute(input as Record<string, unknown>);
-        if (result.metadata?.error) {
-          throw new Error(result.content);
+        try {
+          const result = await t.execute(input as Record<string, unknown>);
+          if (result.metadata?.error) {
+            defaultLogger.warn(`[${t.name}] returned metadata.error code=${result.metadata.code}`);
+            throw new Error(result.content);
+          }
+          return result.content;
+        } catch (err) {
+          defaultLogger.error(`[${t.name}] EXCEPTION in execute: ${(err as Error).message}`);
+          throw err;
         }
-        return result.content;
       },
     }),
   };

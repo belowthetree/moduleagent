@@ -4,6 +4,7 @@
 
 import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
+import { defaultLogger } from '../../../core/Logger.js';
 
 export function createFileWriteTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
@@ -29,12 +30,19 @@ export function createFileWriteTool(sandbox: AgentSandbox): Tool {
       const filePath = input.filePath as string;
       const content = input.content as string;
 
-      await sandbox.writeFile(filePath, content);
+      try {
+        await sandbox.writeFile(filePath, content);
 
-      return {
-        content: `文件已成功写入: ${filePath} (${content.length} 个字符)`,
-        metadata: { filePath, size: content.length },
-      };
+        defaultLogger.info(`[file_write] filePath="${filePath}" size=${content.length}`);
+
+        return {
+          content: `文件已成功写入: ${filePath} (${content.length} 个字符)`,
+          metadata: { filePath, size: content.length },
+        };
+      } catch (err) {
+        defaultLogger.error(`[file_write] FAILED filePath="${filePath}" size=${content.length} error="${(err as Error).message}"`);
+        throw err;
+      }
     },
   };
 }

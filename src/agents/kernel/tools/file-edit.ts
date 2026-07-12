@@ -4,6 +4,7 @@
 
 import type { AgentSandbox } from '../sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
+import { defaultLogger } from '../../../core/Logger.js';
 
 export function createFileEditTool(sandbox: AgentSandbox): Tool {
   const inputSchema: ToolInputSchema = {
@@ -34,37 +35,46 @@ export function createFileEditTool(sandbox: AgentSandbox): Tool {
       const oldText = input.oldText as string;
       const newText = input.newText as string;
 
-      const content = await sandbox.readFile(filePath);
+      try {
+        const content = await sandbox.readFile(filePath);
 
-      const count = content.split(oldText).length - 1;
-      if (count === 0) {
+        const count = content.split(oldText).length - 1;
+        if (count === 0) {
+          defaultLogger.warn(`[file_edit] text_not_found filePath="${filePath}" oldText_len=${oldText.length}`);
+          return {
+            content: JSON.stringify({
+              error: `在 ${filePath} 中未找到指定文本。请验证文本完全匹配（包括空白字符），然后重试。`,
+              filePath,
+            }),
+            metadata: { error: true, code: 'text_not_found' },
+          };
+        }
+
+        if (count > 1) {
+          defaultLogger.warn(`[file_edit] multiple_matches filePath="${filePath}" count=${count}`);
+          return {
+            content: JSON.stringify({
+              error: `在 ${filePath} 中找到多个匹配（${count} 处）。请提供更多上下文以唯一标识要替换的部分。`,
+              filePath,
+              matchCount: count,
+            }),
+            metadata: { error: true, code: 'multiple_matches' },
+          };
+        }
+
+        const newContent = content.replace(oldText, newText);
+        await sandbox.writeFile(filePath, newContent);
+
+        defaultLogger.info(`[file_edit] filePath="${filePath}" old_len=${content.length} new_len=${newContent.length}`);
+
         return {
-          content: JSON.stringify({
-            error: `在 ${filePath} 中未找到指定文本。请验证文本完全匹配（包括空白字符），然后重试。`,
-            filePath,
-          }),
-          metadata: { error: true, code: 'text_not_found' },
+          content: `文件已成功编辑: ${filePath}`,
+          metadata: { filePath, oldSize: content.length, newSize: newContent.length },
         };
+      } catch (err) {
+        defaultLogger.error(`[file_edit] FAILED filePath="${filePath}" oldText_len=${oldText.length} newText_len=${newText.length} error="${(err as Error).message}"`);
+        throw err;
       }
-
-      if (count > 1) {
-        return {
-          content: JSON.stringify({
-            error: `在 ${filePath} 中找到多个匹配（${count} 处）。请提供更多上下文以唯一标识要替换的部分。`,
-            filePath,
-            matchCount: count,
-          }),
-          metadata: { error: true, code: 'multiple_matches' },
-        };
-      }
-
-      const newContent = content.replace(oldText, newText);
-      await sandbox.writeFile(filePath, newContent);
-
-      return {
-        content: `文件已成功编辑: ${filePath}`,
-        metadata: { filePath, oldSize: content.length, newSize: newContent.length },
-      };
     },
   };
 }
