@@ -5,9 +5,9 @@
 
 import path from 'path';
 import fs from 'fs';
-import { AgentLauncher } from '../agents/AgentLauncher.js';
-import { RoleAgentManager, type RoleAgentEntry } from '../agents/RoleAgentManager.js';
-import { AgentStateManager } from '../agents/AgentStateManager.js';
+import { KernelFactory } from '../agents/KernelFactory.js';
+import { RoleAgentManager, type RoleAgentEntry } from '../agents/lifecycle/RoleAgentManager.js';
+import { SessionStore } from '../agents/StreamAccumulator.js';
 import type { RoleConfig } from '../config/defaults.js';
 import type { PromptBlock } from '../agents/kernel/types.js';
 import { defaultLogger, type Logger } from './Logger.js';
@@ -26,10 +26,10 @@ export interface RoleAgentSubsystemOptions {
   projectPath: string;
   workspaceRoot: string;
   logger?: Logger;
-  /** 可选的外部会话更新监听器（如 AgentStateManager） */
+  /** 可选的外部会话更新监听器（如 SessionStore） */
   onSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
-  /** Shared AgentStateManager for stream accumulation + context persistence */
-  stateManager?: AgentStateManager;
+  /** Shared SessionStore for stream accumulation + context persistence */
+  stateManager?: SessionStore;
   /** Post-send hook (summarizer + workspace diff) */
   onPostSend?: (roleName: string, msgs: ChatMsg[], entry: RoleAgentEntry) => void;
 }
@@ -47,7 +47,7 @@ export class RoleAgentSubsystem {
   private sessionPrompted = new Set<string>();
   private sendGuard = new SendGuard();
   private _onSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
-  private _stateManager: AgentStateManager | null = null;
+  private _stateManager: SessionStore | null = null;
   private _onPostSend?: (roleName: string, msgs: ChatMsg[], entry: RoleAgentEntry) => void;
 
   constructor(options: RoleAgentSubsystemOptions) {
@@ -69,7 +69,7 @@ export class RoleAgentSubsystem {
       this.logger.warn('Failed to read role agent prompt');
     }
 
-    const launcher = new AgentLauncher();
+    const launcher = new KernelFactory();
     const self = this;
 
     this.manager = new RoleAgentManager({
@@ -106,7 +106,7 @@ export class RoleAgentSubsystem {
             }
           }
 
-          // 流累积：将通知路由到 AgentStateManager
+          // 流累积：将通知路由到 SessionStore
           if (update) {
             self._stateManager?.appendChunk(`workrole:${roleName}`, update, data);
           }

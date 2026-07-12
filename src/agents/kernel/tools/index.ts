@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { ToolRegistry } from '../ToolRegistry.js';
-import type { AgentSandbox } from '../sandbox.js';
+import type { AgentSandbox } from '../Sandbox.js';
 import { createFileReadTool } from './file-read.js';
 import { createFileWriteTool } from './file-write.js';
 import { createFileEditTool } from './file-edit.js';
@@ -12,7 +12,7 @@ import { createSearchTool } from './search.js';
 import { createListFilesTool } from './list-files.js';
 import { createGitOperationsTool } from './git-operations.js';
 import { createMcpBridgeTools } from './mcp-bridge.js';
-import type { CrossModuleRouter } from '../../McpBackend.js';
+import type { CrossModuleRouter } from '../../mcp/McpBackend.js';
 import type { Tool } from '../types.js';
 
 export function createBuiltinTools(sandbox: AgentSandbox): Tool[] {

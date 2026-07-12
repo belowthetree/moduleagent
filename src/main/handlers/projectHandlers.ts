@@ -14,12 +14,12 @@ import { IpcChannel } from '../../protocol/IpcChannels.js';
 import type { HandlerContext } from './HandlerContext.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';
 import { DEFAULT_CONFIG, DEFAULT_MODULE_GEN_ROLE, type RoleConfig } from '../../config/defaults.js';
-import { CrossModuleRouter } from '../../agents/McpBackend.js';
+import { CrossModuleRouter } from '../../agents/mcp/McpBackend.js';
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
-import { writeMcpGraphFile } from '../../agents/McpServerBuilder.js';
-import { buildPromptBlocks } from '../../agents/PromptBuilder.js';
-import { AgentLauncher } from '../../agents/AgentLauncher.js';
+import { writeMcpGraphFile } from '../../agents/mcp/McpServerBuilder.js';
+import { buildPromptBlocks } from '../../agents/prompts/PromptBuilder.js';
+import { KernelFactory } from '../../agents/KernelFactory.js';
 import type { ModuleGraphNode } from '../../types/module.js';
 import type { ChatMsg, TreeNode } from '../../types/shared.js';
 
@@ -215,8 +215,8 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
 
       const subModuleDirs: string[] = [];
 
-      const launcher = new AgentLauncher();
-      const launched = await launcher.launch(
+      const launcher = new KernelFactory();
+      const launched = await launcher.create(
         { command: agentCommand, args: agentArgs },
         rootNode.name,
         cwd,

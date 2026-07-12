@@ -2,7 +2,7 @@
 // agents/kernel/tools/file-read.ts — 文件读取工具
 // ---------------------------------------------------------------------------
 
-import type { AgentSandbox } from '../sandbox.js';
+import type { AgentSandbox } from '../Sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 import { defaultLogger } from '../../../core/Logger.js';
 

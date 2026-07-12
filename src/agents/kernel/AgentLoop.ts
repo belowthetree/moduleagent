@@ -5,7 +5,7 @@
 
 import { generateText, stepCountIs } from 'ai';
 import { resolveLanguageModel } from './ProviderResolver.js';
-import { convertToolsToAISDK } from './ToolConverter.js';
+import { convertToolsToAISDK } from './ToolAdapter.js';
 import type {
   AgentLoopConfig,
   LoopPhase,

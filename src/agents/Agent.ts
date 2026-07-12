@@ -5,7 +5,7 @@
 // 内置状态机 + 对话队列：busy 时自动排队，idle 后自动消费
 // ---------------------------------------------------------------------------
 
-import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
+import { KernelFactory, type AgentConfig } from './KernelFactory.js';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
 import { AgentKernel, type KernelNotification, type PromptBlock, AgentSandbox } from './kernel/index.js';
@@ -31,7 +31,7 @@ export interface AgentStartOptions {
   name: string;
   config: AgentConfig;
   cwd: string;
-  launcher: AgentLauncher;
+  launcher: KernelFactory;
   logger?: Logger;
   subModuleDirs?: string[];
   sandbox?: AgentSandbox;
@@ -45,7 +45,7 @@ export interface AgentStartOptions {
   };
   systemPrompt?: string;
   kernelModuleName?: string;
-  crossModuleRouter?: import('./McpBackend.js').CrossModuleRouter;
+  crossModuleRouter?: import('./mcp/McpBackend.js').CrossModuleRouter;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ export class Agent {
 
     const systemPrompt = options.systemPrompt || '';
 
-    const kernel = await launcher.launch(config, name, cwd, systemPrompt, log, {
+    const kernel = await launcher.create(config, name, cwd, systemPrompt, log, {
       crossModuleRouter: options.crossModuleRouter,
       requestingModule: options.kernelModuleName || name,
       sandbox: options.sandbox,

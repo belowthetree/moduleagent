@@ -8,18 +8,18 @@ export type { KernelOptions, KernelNotification, NotificationCallback, KernelSen
 export { AgentLoop } from './AgentLoop.js';
 export type { LoopEvents } from './AgentLoop.js';
 
-export { AgentSandbox } from './sandbox.js';
-export type { VisibilityConfig } from './sandbox.js';
+export { AgentSandbox } from './Sandbox.js';
+export type { VisibilityConfig } from './Sandbox.js';
 
 export { resolveLanguageModel } from './ProviderResolver.js';
 export type { ProviderType, ResolvedProvider } from './ProviderResolver.js';
-export { convertToolToAISDK, convertToolDefinitionToAISDK, convertToolsToAISDK } from './ToolConverter.js';
+export { convertToolToAISDK, convertToolDefinitionToAISDK, convertToolsToAISDK } from './ToolAdapter.js';
 export { ToolRegistry } from './ToolRegistry.js';
 export { createKernelToolRegistry, createBuiltinTools } from './tools/index.js';
 
-export { buildSystemPrompt, loadPromptTemplates } from './prompts/system.js';
-export type { SystemPromptContext } from './prompts/system.js';
-export { loadModuleBody, loadPatternsContent, loadExperienceContent } from './prompts/context.js';
+export { buildSystemPrompt, loadPromptTemplates } from '../prompts/system.js';
+export type { SystemPromptContext } from '../prompts/system.js';
+export { loadModuleBody, loadPatternsContent, loadExperienceContent } from '../prompts/context.js';
 
 export type {
   Tool,

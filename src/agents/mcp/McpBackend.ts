@@ -3,10 +3,10 @@
 // 进程内路由模块间调用（module_call / module_query），直接调用目标 Agent kernel
 // ---------------------------------------------------------------------------
 
-import type { PromptBlock } from './kernel/types.js';
-import { defaultLogger } from '../core/Logger.js';
-import type { Agent } from './Agent.js';
-import type { ChatMsg } from '../types/shared.js';
+import type { PromptBlock } from '../kernel/types.js';
+import { defaultLogger } from '../../core/Logger.js';
+import type { Agent } from '../Agent.js';
+import type { ChatMsg } from '../../types/shared.js';
 
 export interface CrossModuleRouterCallbacks {
   getAgentEntry(moduleName: string): Agent | undefined;

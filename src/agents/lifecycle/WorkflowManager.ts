@@ -3,10 +3,10 @@
 // 管理工作流步骤 Agent 的启动/停止，构建工作流 MCP 服务器与 ACP 会话
 // ---------------------------------------------------------------------------
 
-import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
-import { Agent } from './Agent.js';
-import type { Logger } from '../core/Logger.js';
-import { defaultLogger } from '../core/Logger.js';
+import { KernelFactory, type AgentConfig } from '../KernelFactory.js';
+import { Agent } from '../Agent.js';
+import type { Logger } from '../../core/Logger.js';
+import { defaultLogger } from '../../core/Logger.js';
 
 // ---------------------------------------------------------------------------
 // WorkflowStepAgentEntry
@@ -22,7 +22,7 @@ export interface WorkflowStepAgentEntry {
 // ---------------------------------------------------------------------------
 
 export interface WorkflowManagerOptions {
-  launcher: AgentLauncher;
+  launcher: KernelFactory;
   basePath: string;
   projectPath: string;
   workspaceRoot: string;
@@ -39,7 +39,7 @@ export interface WorkflowManagerOptions {
 // ---------------------------------------------------------------------------
 
 export class WorkflowManager {
-  private launcher: AgentLauncher;
+  private launcher: KernelFactory;
   private basePath: string;
   private projectPath: string;
   private workspaceRoot: string;

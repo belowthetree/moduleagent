@@ -5,19 +5,19 @@
 
 import path from 'path';
 import fs from 'fs-extra';
-import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';
+import { KernelFactory, type AgentConfig } from '../agents/KernelFactory.js';
 import { Agent } from '../agents/Agent.js';
-import { AgentStateManager } from '../agents/AgentStateManager.js';
+import { SessionStore } from '../agents/StreamAccumulator.js';
 import { ConfigLoader } from '../config/ConfigLoader.js';
 import { ModuleScanner } from './ModuleScanner.js';
 import { ModuleGraph } from './ModuleGraph.js';
 import { defaultLogger, type Logger } from './Logger.js';
-import { AgentSandbox } from '../agents/kernel/sandbox.js';
+import { AgentSandbox } from '../agents/kernel/Sandbox.js';
 import {
   loadSystemPrompts,
   buildPromptBlocks,
   dedupMessage,
-} from '../agents/PromptBuilder.js';
+} from '../agents/prompts/PromptBuilder.js';
 import { SendGuard } from './AgentSubsystemUtils.js';
 import type { PromptBlock } from '../agents/kernel/types.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
@@ -49,7 +49,7 @@ export interface ModuleAgentSubsystemOptions {
   configDir?: string;
   logger?: Logger;
   contextDir?: string;
-  /** Optional external session-update listener (e.g. AgentStateManager in Electron) */
+  /** Optional external session-update listener (e.g. SessionStore in Electron) */
   onSessionUpdate?: (moduleName: string, sessionId: string, notification: any) => void;
   /** Optional cross-context notification callback (for UI) */
   onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
@@ -66,7 +66,7 @@ export class ModuleAgentSubsystem {
   private basePath: string;
   private configDir: string;
   private logger: Logger;
-  private launcher = new AgentLauncher();
+  private launcher = new KernelFactory();
 
   // 配置/图谱状态
   private projectRoot = '';
@@ -84,13 +84,13 @@ export class ModuleAgentSubsystem {
   private toolNameById = new Map<string, string>(); // toolCallId → 真实工具名
 
   // Agent 状态管理（流累积 + 上下文持久化）
-  private _stateManager: AgentStateManager | null = null;
+  private _stateManager: SessionStore | null = null;
 
   // 每个模块的 Agent 运行状态
   private _agentStatus = new Map<string, 'idle' | 'streaming' | 'error'>();
 
   // 跨模块路由
-  crossModuleRouter: import('../agents/McpBackend.js').CrossModuleRouter | null = null;
+  crossModuleRouter: import('../agents/mcp/McpBackend.js').CrossModuleRouter | null = null;
 
   // 外部钩子
   private _onSessionUpdate?: (moduleName: string, sessionId: string, notification: any) => void;
@@ -133,7 +133,7 @@ export class ModuleAgentSubsystem {
     this.graph = new ModuleGraph().build(descriptors, projectRoot);
 
     this.prompts = loadSystemPrompts(this.configDir);
-    this._stateManager = new AgentStateManager(
+    this._stateManager = new SessionStore(
       path.join(projectRoot, '.module-agent', 'context'),
     );
     this.currentModule = this.graph.root;
@@ -487,11 +487,11 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Stream & context API（委托给 AgentStateManager）
+  // Stream & context API（委托给 SessionStore）
   // -----------------------------------------------------------------------
 
-  /** 获取 AgentStateManager 实例（供外部消费者如 bridge 使用） */
-  get stateManager(): AgentStateManager | null {
+  /** 获取 SessionStore 实例（供外部消费者如 bridge 使用） */
+  get stateManager(): SessionStore | null {
     return this._stateManager;
   }
 
@@ -700,7 +700,7 @@ export class ModuleAgentSubsystem {
           }
         }
 
-        // 流累积：将通知路由到 AgentStateManager
+        // 流累积：将通知路由到 SessionStore
         if (update) {
           self._stateManager?.appendChunk(moduleName, update, data);
         }

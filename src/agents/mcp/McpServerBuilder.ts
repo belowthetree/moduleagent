@@ -5,8 +5,8 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import type { ModuleGraphNode, ModuleGraph as ModuleGraphType } from '../types/module.js';
-import { defaultLogger } from '../core/Logger.js';
+import type { ModuleGraphNode, ModuleGraph as ModuleGraphType } from '../../types/module.js';
+import { defaultLogger } from '../../core/Logger.js';
 
 export function writeMcpGraphFile(graph: ModuleGraphType, tempDir?: string): string {
   const nodesObj: Record<string, ModuleGraphNode> = {};

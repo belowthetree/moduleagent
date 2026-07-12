@@ -2,7 +2,7 @@
 // agents/kernel/tools/list-files.ts — 目录列表工具
 // ---------------------------------------------------------------------------
 
-import type { AgentSandbox } from '../sandbox.js';
+import type { AgentSandbox } from '../Sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 import { defaultLogger } from '../../../core/Logger.js';
 

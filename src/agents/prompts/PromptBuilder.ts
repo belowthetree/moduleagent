@@ -5,9 +5,9 @@
 
 import fs from 'fs';
 import path from 'path';
-import type { PromptBlock } from './kernel/types.js';
-import type { ModuleGraph } from '../types/module.js';
-import { defaultLogger } from '../core/Logger.js';
+import type { PromptBlock } from '../kernel/types.js';
+import type { ModuleGraph } from '../../types/module.js';
+import { defaultLogger } from '../../core/Logger.js';
 
 /**
  * 从 config/ 目录加载系统提示文件。

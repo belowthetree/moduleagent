@@ -5,9 +5,9 @@
 
 import path from 'path';
 import fs from 'fs';
-import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';
-import { WorkflowManager } from '../agents/WorkflowManager.js';
-import { prepareStepWorkspace, collectStepOutput, cleanupStepWorkspace } from '../agents/WorkflowWorkspace.js';
+import { KernelFactory, type AgentConfig } from '../agents/KernelFactory.js';
+import { WorkflowManager } from '../agents/lifecycle/WorkflowManager.js';
+import { prepareStepWorkspace, collectStepOutput, cleanupStepWorkspace } from '../agents/lifecycle/WorkflowWorkspace.js';
 import { WorkflowScanner } from './WorkflowScanner.js';
 import { defaultLogger, type Logger } from './Logger.js';
 import type { CoreCallbacks } from './CoreTypes.js';
@@ -72,7 +72,7 @@ export class WorkflowSubsystem {
       this.logger.warn('Workflow: failed to load subagent prompt');
     }
 
-    const launcher = new AgentLauncher();
+    const launcher = new KernelFactory();
     this.scanner = new WorkflowScanner(this.logger);
 
     const self = this;

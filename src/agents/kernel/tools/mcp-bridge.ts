@@ -4,7 +4,7 @@
 // 通过 CrossModuleRouter 在进程内直接调用目标 Agent
 // ---------------------------------------------------------------------------
 
-import type { CrossModuleRouter } from '../../McpBackend.js';
+import type { CrossModuleRouter } from '../../mcp/McpBackend.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 import { defaultLogger } from '../../../core/Logger.js';
 

@@ -6,7 +6,7 @@
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import type { AgentStateManager } from '../agents/AgentStateManager.js';
+import type { SessionStore } from '../agents/StreamAccumulator.js';
 import type { ChatMsg, TimelineEvent } from '../types/shared.js';
 
 export interface StreamAccumulator {
@@ -38,7 +38,7 @@ export class SendGuard {
 }
 
 export async function persistContext(
-  stateManager: AgentStateManager | null,
+  stateManager: SessionStore | null,
   key: string,
   userText: string,
   acc: StreamAccumulator,

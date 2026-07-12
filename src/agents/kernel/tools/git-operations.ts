@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { execFile, type ChildProcess } from 'child_process';
-import type { AgentSandbox } from '../sandbox.js';
+import type { AgentSandbox } from '../Sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 import { defaultLogger } from '../../../core/Logger.js';
 

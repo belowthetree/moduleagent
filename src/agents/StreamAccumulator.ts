@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
-// AgentStateManager.ts — Agent 流式响应状态管理器
-// 管理流累加器（回复/思考/工具调用）、时间线、对话上下文持久化
+// StreamAccumulator.ts — Agent 会话存储
+// 管理流累积器（回复/思考/工具调用）、时间线、对话上下文持久化
 // ---------------------------------------------------------------------------
 
 import fs from 'fs/promises';
@@ -38,9 +38,9 @@ function createStreamAccumulator(): StreamAccumulator {
   };
 }
 
-// ── AgentStateManager ──
+// ── SessionStore ──
 
-export class AgentStateManager {
+export class SessionStore {
   private readonly contextBaseDir: string;
   private readonly streamState: Map<string, StreamAccumulator>;
   private readonly contextMap: Map<string, ChatMsg[]>;
@@ -185,7 +185,7 @@ export class AgentStateManager {
       const finalPath = path.join(this.contextBaseDir, `${this._safeName(moduleName)}.json`);
       await fs.writeFile(finalPath, json, 'utf-8');
     } catch (err) {
-      defaultLogger.warn(`[AgentStateManager] saveContext failed for [${moduleName}]: ${(err as Error).message}`);
+      defaultLogger.warn(`[SessionStore] saveContext failed for [${moduleName}]: ${(err as Error).message}`);
     }
   }
 
@@ -195,12 +195,12 @@ export class AgentStateManager {
       const raw = await fs.readFile(filePath, 'utf-8');
       const result = JSON.parse(raw) as ChatMsg[];
       if (result.length > 0) {
-        defaultLogger.info(`[AgentStateManager] loaded ${result.length} msgs for [${moduleName}]`);
+        defaultLogger.info(`[SessionStore] loaded ${result.length} msgs for [${moduleName}]`);
       }
       return result;
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        defaultLogger.warn(`[AgentStateManager] loadContext failed for [${moduleName}]: ${(err as Error).message}`);
+        defaultLogger.warn(`[SessionStore] loadContext failed for [${moduleName}]: ${(err as Error).message}`);
       }
       return [];
     }
@@ -212,7 +212,7 @@ export class AgentStateManager {
       await fs.unlink(filePath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        defaultLogger.warn(`[AgentStateManager] clearContext failed for [${moduleName}]: ${(err as Error).message}`);
+        defaultLogger.warn(`[SessionStore] clearContext failed for [${moduleName}]: ${(err as Error).message}`);
       }
     }
   }
@@ -223,7 +223,7 @@ export class AgentStateManager {
       const jsonFiles = entries.filter(e => e.endsWith('.json'));
       await Promise.all(jsonFiles.map(f => fs.unlink(path.join(this.contextBaseDir, f)).catch(() => {})));
     } catch (err) {
-      defaultLogger.warn(`[AgentStateManager] clearAllContexts failed: ${(err as Error).message}`);
+      defaultLogger.warn(`[SessionStore] clearAllContexts failed: ${(err as Error).message}`);
     }
   }
 }

@@ -5,7 +5,7 @@
 
 import path from 'path';
 import fs from 'fs';
-import { AgentLauncher, type AgentConfig } from '../agents/AgentLauncher.js';
+import { KernelFactory, type AgentConfig } from '../agents/KernelFactory.js';
 import { defaultLogger, type Logger } from './Logger.js';
 import type { ChatMsg } from '../types/shared.js';
 import type { PromptBlock } from '../agents/kernel/types.js';
@@ -41,14 +41,14 @@ export class ExperienceSummarizer {
 
     this.logger.info(`ExperienceSummarizer: starting for [${moduleName}] (${chatMsgs.length} msgs)`);
 
-    const launcher = new AgentLauncher();
-    let launched: Awaited<ReturnType<typeof launcher.launch>> | null = null;
+    const launcher = new KernelFactory();
+    let launched: Awaited<ReturnType<typeof launcher.create>> | null = null;
 
     try {
       const cwd = params.agentCwd || path.join(projectRoot, '.module-agent', 'module');
       this._ensureGitAnchor(cwd);
 
-      launched = await launcher.launch(
+      launched = await launcher.create(
         agentConfig,
         `summarizer-${moduleName}`,
         cwd,

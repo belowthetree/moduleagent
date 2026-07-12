@@ -3,13 +3,13 @@
 // 负责角色 Agent 的启动/停止，管理工作空间、MCP 服务器和 ACP 会话
 // ---------------------------------------------------------------------------
 
-import { AgentLauncher, type AgentConfig } from './AgentLauncher.js';
-import { Agent } from './Agent.js';
+import { KernelFactory, type AgentConfig } from '../KernelFactory.js';
+import { Agent } from '../Agent.js';
 import path from 'path';
-import type { Logger } from '../core/Logger.js';
-import { defaultLogger } from '../core/Logger.js';
-import type { RoleConfig } from '../config/defaults.js';
-import { AgentSandbox } from './kernel/sandbox.js';
+import type { Logger } from '../../core/Logger.js';
+import { defaultLogger } from '../../core/Logger.js';
+import type { RoleConfig } from '../../config/defaults.js';
+import { AgentSandbox } from '../kernel/Sandbox.js';
 
 // ---------------------------------------------------------------------------
 // RoleAgentEntry 接口
@@ -26,7 +26,7 @@ export interface RoleAgentEntry {
 // ---------------------------------------------------------------------------
 
 export interface RoleAgentManagerOptions {
-  launcher: AgentLauncher;
+  launcher: KernelFactory;
   basePath: string;
   projectPath: string;
   workspaceRoot: string;
@@ -43,7 +43,7 @@ export interface RoleAgentManagerOptions {
 // ---------------------------------------------------------------------------
 
 export class RoleAgentManager {
-  private launcher: AgentLauncher;
+  private launcher: KernelFactory;
   private basePath: string;
   private projectPath: string;
   private workspaceRoot: string;

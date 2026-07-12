@@ -7,11 +7,11 @@
 import { ToolRegistry } from './ToolRegistry.js';
 import { AgentLoop, type LoopEvents } from './AgentLoop.js';
 import { createKernelToolRegistry } from './tools/index.js';
-import { AgentSandbox } from './sandbox.js';
+import { AgentSandbox } from './Sandbox.js';
 import type { KernelConfig, AgentLoopConfig, PromptBlock } from './types.js';
 import type { Logger } from '../../core/Logger.js';
 import { defaultLogger } from '../../core/Logger.js';
-import type { CrossModuleRouter } from '../McpBackend.js';
+import type { CrossModuleRouter } from '../mcp/McpBackend.js';
 
 export interface KernelOptions {
   name: string;

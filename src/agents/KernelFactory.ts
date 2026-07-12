@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
-// AgentLauncher.ts — Agent 内核启动器
-// 使用 AgentKernel（进程内 LLM 代理）启动 agent
+// KernelFactory.ts — AgentKernel 工厂
+// 使用 AgentKernel（进程内 LLM 代理）创建 agent 内核实例
 // ---------------------------------------------------------------------------
 
 import path from 'path';
@@ -22,15 +22,15 @@ export interface AgentConfig {
   fastModel?: string;
 }
 
-export class AgentLauncher {
-  async launch(
+export class KernelFactory {
+  async create(
     config: AgentConfig,
     name: string,
     cwd: string,
     systemPrompt: string,
     logger?: Logger,
     kernelOptions?: {
-      crossModuleRouter?: import('./McpBackend.js').CrossModuleRouter;
+      crossModuleRouter?: import('./mcp/McpBackend.js').CrossModuleRouter;
       requestingModule?: string;
       maxToolRounds?: number;
       sandbox?: AgentSandbox;

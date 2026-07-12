@@ -6,7 +6,7 @@
 import path from 'path';
 import fs from 'fs';
 import fse from 'fs-extra';
-import { defaultLogger } from '../core/Logger.js';
+import { defaultLogger } from '../../core/Logger.js';
 
 /**
  * Prepare an isolated workspace for a workflow step agent.

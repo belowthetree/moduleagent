@@ -8,7 +8,7 @@ import { defaultLogger, type Logger } from './Logger.js';
 import { ModuleAgentSubsystem } from './ModuleAgentSubsystem.js';
 import { RoleAgentSubsystem } from './RoleAgentSubsystem.js';
 import { WorkflowSubsystem } from './WorkflowSubsystem.js';
-import { CrossModuleRouter, type CrossModuleRouterCallbacks } from '../agents/McpBackend.js';
+import { CrossModuleRouter, type CrossModuleRouterCallbacks } from '../agents/mcp/McpBackend.js';
 import type {
   CoreCallbacks,
   CoreStatus,
