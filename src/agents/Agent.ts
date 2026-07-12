@@ -35,6 +35,7 @@ export interface AgentStartOptions {
   logger?: Logger;
   subModuleDirs?: string[];
   sandbox?: AgentSandbox;
+  isRoot?: boolean;
   onNotification: (sessionId: string, notification: any) => void;
   onStateChange?: (newState: AgentState, oldState: AgentState) => void;
   onQueue?: (queueLength: number) => void;
@@ -135,6 +136,7 @@ export class Agent {
       crossModuleRouter: options.crossModuleRouter,
       requestingModule: options.kernelModuleName || name,
       sandbox: options.sandbox,
+      isRoot: options.isRoot,
     });
 
     const sessionId = kernel.sessionId;

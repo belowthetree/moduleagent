@@ -27,7 +27,9 @@ export class AgentSandbox {
   // ── 路径校验 ──────────────────────────────────────────
 
   resolvePath(filePath: string): string {
-    const resolved = path.resolve(filePath);
+    const resolved = path.isAbsolute(filePath)
+      ? path.resolve(filePath)
+      : path.resolve(this.rootPath, filePath);
     const normalized = resolved.replace(/\\/g, '/');
 
     for (const a of this.allowed) {

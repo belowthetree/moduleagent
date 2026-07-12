@@ -647,10 +647,9 @@ export class ModuleAgentSubsystem {
         : sourcePath;
 
       // visiblePaths: 自身 + 直接子模块
+      // 根模块：仅限定 .module-agent/module/ 目录，不可访问项目源码
       const allowed = isRoot
-        ? (this.graph ? [...this.graph.nodes.values()]
-            .filter(n => n.relativePath !== '.')
-            .map(n => path.resolve(projectPath, n.relativePath)) : [])
+        ? [path.join(this.projectRoot, '.module-agent', 'module')]
         : [path.resolve(sourcePath)];
 
       const excluded = (!isRoot && node && this.graph)
@@ -718,6 +717,7 @@ export class ModuleAgentSubsystem {
         launcher: this.launcher,
         logger: this.logger,
         sandbox,
+        isRoot,
         onNotification,
         crossModuleRouter: this.crossModuleRouter ?? undefined,
         kernelModuleName: moduleName,

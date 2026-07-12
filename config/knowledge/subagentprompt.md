@@ -88,6 +88,7 @@ Step 3: 检查 & 上报
 
 向子模块发起 `module_call` 时：
 
+- **targetModule 使用路径名** — `module_list` 显示的模块名就是 `targetModule`，直接复制，不要缩写。例如 `packages/agent/config`。
 - `goal` 要具体可执行，子模块应能直接开始工作
 - `background` 包含足够上下文，说明为什么要做这个变更
 - `expectedOutput` 明确格式要求

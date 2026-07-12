@@ -29,7 +29,7 @@ export function convertToolToAISDK(t: Tool): Record<string, unknown> {
           }
           return result.content;
         } catch (err) {
-          defaultLogger.error(`[${t.name}] EXCEPTION in execute: ${(err as Error).message}`);
+          defaultLogger.error(`[${t.name}] EXCEPTION in execute: ${(err as Error).message} | params=${JSON.stringify(input)}`);
           throw err;
         }
       },

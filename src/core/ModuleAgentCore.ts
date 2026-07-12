@@ -126,11 +126,12 @@ export class ModuleAgentCore {
 
       this.initWorkflows(resolvedProjectPath, workspaceRoot);
       this.logger.info('ModuleAgentCore: auto-initialised workflow subsystem');
-
-      // 启动 MCP 后端（跨模块通信�?      await this.startMcpBackend();
     } catch (err) {
       this.logger.warn(`ModuleAgentCore: role/workflow init skipped: ${(err as Error).message}`);
     }
+
+    // MCP 后端必须初始化，与 role/workflow 无关
+    await this.startMcpBackend();
 
     return result;
   }

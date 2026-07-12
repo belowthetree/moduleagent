@@ -3,10 +3,12 @@
 // 渲染消息列表、思考内容、工具调用时间线
 // ---------------------------------------------------------------------------
 
-import { createMemo } from "solid-js";
-import { useRenderer } from "@opentui/solid";
+import { createMemo, createSignal, onCleanup } from "solid-js";
+import { useKeyboard, useRenderer } from "@opentui/solid";
 import { tuiState } from "../state.js";
 import type { ChatMessage, MessageType } from "../types.js";
+
+const SCROLL_LINE_STEP = 4;
 
 // ── 消息类型 → 标签 ──
 
@@ -34,6 +36,16 @@ export default function ContextArea() {
   // 屏幕宽度（用于绘制分隔线）
   const termWidth = () => renderer?.width ?? 80;
 
+  // 粘性滚动状态：用户手动上滚时关闭，回到底部或新消息时恢复
+  const [sticky, setSticky] = createSignal(true);
+
+  let scrollEl: {
+    scrollTo?: (y: number) => void;
+    scrollBy?: (delta: number) => void;
+    scrollToBottom?: () => void;
+    scrollTop?: number;
+  } | null = null;
+
   // 合并 messages + collapsedThoughts → 提取 _collapsed 标记
   const renderedMessages = createMemo(() => {
     const msgs = tuiState.messages();
@@ -44,8 +56,73 @@ export default function ContextArea() {
     }));
   });
 
+  // ── 翻页/滚轮键盘事件 ──
+
+  useKeyboard((key) => {
+    if (!scrollEl) return;
+
+    if (key.name === 'pageup') {
+      const height = renderer?.height ?? 40;
+      scrollEl.scrollBy?.(height);
+      setSticky(false);
+      key.preventDefault();
+    } else if (key.name === 'pagedown') {
+      const height = renderer?.height ?? 40;
+      scrollEl.scrollBy?.(-height);
+      key.preventDefault();
+    } else if (key.ctrl && key.name === 'home') {
+      scrollEl.scrollTo?.(0);
+      setSticky(false);
+      key.preventDefault();
+    } else if (key.ctrl && key.name === 'end') {
+      scrollEl.scrollToBottom?.();
+      setSticky(true);
+      key.preventDefault();
+    }
+  });
+
+  // ── 新消息时自动恢复 sticky ──
+
+  const msgCount = () => tuiState.messages().length;
+  createMemo(() => {
+    const count = msgCount();
+    if (sticky() && scrollEl?.scrollToBottom) {
+      // 延迟一帧让内容先渲染再滚动
+      setTimeout(() => {
+        scrollEl?.scrollToBottom?.();
+      }, 0);
+    }
+    return count;
+  });
+
+  onCleanup(() => {
+    scrollEl = null;
+  });
+
+  // ── 滚轮事件 ──
+
+  function handleMouseScroll(deltaY: number) {
+    if (!scrollEl) return;
+    if (deltaY > 0) {
+      // 向下滚 → 往底部 → delta 为正
+      scrollEl.scrollBy?.(-deltaY * SCROLL_LINE_STEP);
+    } else if (deltaY < 0) {
+      // 向上滚 → 离开底部
+      scrollEl.scrollBy?.(-deltaY * SCROLL_LINE_STEP);
+      setSticky(false);
+    }
+  }
+
   return (
-    <scrollbox flexGrow={1} stickyScroll={true} stickyStart="bottom">
+    <scrollbox
+      flexGrow={1}
+      stickyScroll={sticky()}
+      stickyStart="bottom"
+      ref={(el: any) => { scrollEl = el; }}
+      onMouseScroll={(e: any) => {
+        handleMouseScroll(e.deltaY ?? 0);
+      }}
+    >
       <box flexDirection="column">
         {renderedMessages().map((msg) => {
             // ── 用户消息：双横线夹内容 ──

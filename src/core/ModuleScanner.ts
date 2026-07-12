@@ -82,8 +82,10 @@ export class ModuleScanner {
           const definition = await ModuleParser.parseFile(fullPath);
           const rootPath = path.dirname(fullPath);
           const relativePath = path.relative(projectRoot, rootPath) || '.';
+          // 模块标识使用相对路径，确保与文件系统和 module.md 中的路径引用一致
+          const moduleName = relativePath !== '.' ? relativePath : definition.frontmatter.name;
           modules.push({
-            name: definition.frontmatter.name,
+            name: moduleName,
             rootPath,
             relativePath,
             moduleMdPath: fullPath,

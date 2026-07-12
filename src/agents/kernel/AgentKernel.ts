@@ -6,7 +6,7 @@
 
 import { ToolRegistry } from './ToolRegistry.js';
 import { AgentLoop, type LoopEvents } from './AgentLoop.js';
-import { createKernelToolRegistry } from './tools/index.js';
+import { createKernelToolRegistry, createRootKernelToolRegistry } from './tools/index.js';
 import { AgentSandbox } from './Sandbox.js';
 import type { KernelConfig, AgentLoopConfig, PromptBlock } from './types.js';
 import type { Logger } from '../../core/Logger.js';
@@ -23,6 +23,7 @@ export interface KernelOptions {
   requestingModule?: string;
   maxToolRounds?: number;
   logger?: Logger;
+  isRoot?: boolean;
 }
 
 export interface KernelNotification {
@@ -62,11 +63,14 @@ export class AgentKernel {
     this._sessionId = `kernel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     // 注册内置工具 + 可选 MCP 桥接
-    this.registry = createKernelToolRegistry(
-      options.sandbox || new AgentSandbox({ allowed: [options.workspaceRoot], excluded: [] }),
-      options.crossModuleRouter,
-      options.requestingModule,
-    );
+    const sandbox = options.sandbox || new AgentSandbox({ allowed: [options.workspaceRoot], excluded: [] });
+    this.registry = options.isRoot
+      ? createRootKernelToolRegistry(sandbox, options.crossModuleRouter, options.requestingModule)
+      : createKernelToolRegistry(sandbox, options.crossModuleRouter, options.requestingModule);
+
+    const toolNames = this.registry.list().map(t => t.name);
+    const router = options.crossModuleRouter ? '有' : '无';
+    this.logger.info(`[Kernel:${this.name}] isRoot=${!!options.isRoot} router=${router} tools (${toolNames.length}): ${toolNames.join(', ')}`);
 
     const loopEvents: LoopEvents = {
       onPhaseChange: (phase) => {

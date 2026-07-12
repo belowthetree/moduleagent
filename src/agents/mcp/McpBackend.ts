@@ -35,9 +35,17 @@ export class CrossModuleRouter {
   listModules(requestingModule: string): string {
     if (this.callbacks.getModuleList) {
       const modules = this.callbacks.getModuleList(requestingModule);
-      return modules
-        .map((m) => `- **${m.name}**: ${m.description} (路径: ${m.path})`)
-        .join('\n') || '无可用模块';
+      const lines = ['模块名称即是 `.module-agent/module/` 下的目录路径（根模块的文档直接在该目录下）:'];
+      lines.push('');
+      for (const m of modules) {
+        const docPath = m.path === '.' ? 'module.md (根目录)' : `${m.path}/module.md`;
+        const parent = m.path === '.' ? '' :
+          m.path.lastIndexOf('/') > 0
+            ? ` — 父模块: ${m.path.substring(0, m.path.lastIndexOf('/'))}`
+            : '';
+        lines.push(`- **${m.name}** → ${docPath}${parent} — ${m.description}`);
+      }
+      return lines.join('\n');
     }
     return '无可用模块';
   }

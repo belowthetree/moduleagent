@@ -12,6 +12,7 @@ import { createSearchTool } from './search.js';
 import { createListFilesTool } from './list-files.js';
 import { createGitOperationsTool } from './git-operations.js';
 import { createMcpBridgeTools } from './mcp-bridge.js';
+import { createModuleFileTools } from './module-files.js';
 import type { CrossModuleRouter } from '../../mcp/McpBackend.js';
 import type { Tool } from '../types.js';
 
@@ -44,6 +45,24 @@ export function createKernelToolRegistry(
   return registry;
 }
 
+export function createRootKernelToolRegistry(
+  sandbox: AgentSandbox,
+  crossModuleRouter?: CrossModuleRouter,
+  requestingModule?: string,
+): ToolRegistry {
+  const registry = new ToolRegistry();
+
+  // 根模块：仅允许模块文件读写 + 列表，不可操作项目源码
+  registry.registerAll(createModuleFileTools(sandbox));
+
+  if (crossModuleRouter) {
+    const mcpTools = createMcpBridgeTools(crossModuleRouter, requestingModule || '');
+    registry.registerAll(mcpTools);
+  }
+
+  return registry;
+}
+
 export {
   createFileReadTool,
   createFileWriteTool,
@@ -53,4 +72,5 @@ export {
   createListFilesTool,
   createGitOperationsTool,
   createMcpBridgeTools,
+  createModuleFileTools,
 };
