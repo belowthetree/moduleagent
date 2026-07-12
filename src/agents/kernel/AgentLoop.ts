@@ -17,6 +17,7 @@ import { defaultLogger } from '../../core/Logger.js';
 export interface LoopEvents {
   onPhaseChange: (phase: LoopPhase, data?: unknown) => void;
   onStreamChunk: (text: string) => void;
+  onReasoningChunk: (text: string) => void;
   onToolCall: (toolName: string, toolCallId: string, status: string, detail?: string) => void;
   onError: (error: Error) => void;
 }
@@ -94,6 +95,11 @@ export class AgentLoop {
         abortSignal: this.abortController!.signal,
         maxRetries: 1,
         onStepFinish: (event) => {
+          const reasoning = (event as any).reasoningText as string | undefined;
+          if (reasoning) {
+            this.logger.info(`[AgentLoop] reasoning: ${reasoning.length} chars`);
+            this.events.onReasoningChunk(reasoning);
+          }
           if (event.toolCalls) {
             for (const tc of event.toolCalls) {
               const tcid = (tc as any).toolCallId || '';

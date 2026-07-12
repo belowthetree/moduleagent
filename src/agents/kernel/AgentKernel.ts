@@ -81,6 +81,11 @@ export class AgentKernel {
           content: { type: 'text', text },
         });
       },
+      onReasoningChunk: (text) => {
+        this._emit('agent_thought_chunk', {
+          content: { text },
+        });
+      },
       onToolCall: (toolName, toolCallId, status, detail) => {
         if (status === 'completed' || status === 'error') {
           this._emit('tool_call_update', {

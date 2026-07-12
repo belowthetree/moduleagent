@@ -50,9 +50,11 @@ export default function ContextArea() {
   const renderedMessages = createMemo(() => {
     const msgs = tuiState.messages();
     const collapsed = tuiState.collapsedThoughts();
+    const collapsedCross = tuiState.collapsedCrossContext();
     return msgs.map(m => ({
       ...m,
       _collapsed: collapsed.has(m.id),
+      _crossCollapsed: collapsedCross.has(m.id),
     }));
   });
 
@@ -191,12 +193,57 @@ export default function ContextArea() {
               );
             }
 
-            // ── 系统 / 跨模块消息：简单文本 ──
-            const fg = TYPE_FG[msg.msgType] || "#888888";
+            // ── 跨模块通信消息：可点击展开 ──
+            if (msg.msgType === 'cross_context') {
+              const crossContent = msg.content || '';
+              const firstLine = crossContent.split('\n')[0] || crossContent;
+              const bodyLines = crossContent.split('\n').slice(1).join('\n');
+              const collapsed = (msg as any)._crossCollapsed ?? true;
+              const toggle = () => {
+                const set = new Set(tuiState.collapsedCrossContext());
+                if (collapsed) set.delete(msg.id);
+                else set.add(msg.id);
+                tuiState.setCollapsedCrossContext(set);
+              };
+
+              return (
+                <box flexDirection="column" padding={0} marginBottom={1}>
+                  <box
+                    flexDirection="column"
+                    padding={0}
+                    backgroundColor="#1e2433"
+                    borderStyle="rounded"
+                    borderColor="#2d3548"
+                    onMouseDown={(e: any) => { toggle(); e?.preventDefault?.(); }}
+                  >
+                    <box flexDirection="row" justifyContent="space-between">
+                      <text fg="#5BADFF" style={{ italic: true }}>
+                        {collapsed ? '▸ ' : '▾ '}跨模块通信
+                      </text>
+                      {msg.time ? <text fg="#666666">{msg.time}</text> : null}
+                    </box>
+                    <text fg="#5BADFF" dim selectable>{firstLine}</text>
+                    {collapsed ? (
+                      bodyLines ? (
+                        <text fg="#555555" dim selectable>
+                          {bodyLines.length > 60
+                            ? bodyLines.slice(0, 60).replace(/\n/g, ' ') + '…'
+                            : bodyLines.replace(/\n/g, ' ')}
+                        </text>
+                      ) : null
+                    ) : (
+                      <text fg="#9ACFFF" selectable>{bodyLines || firstLine}</text>
+                    )}
+                  </box>
+                </box>
+              );
+            }
+
+            // ── 系统消息：简单文本 ──
             return (
               <box flexDirection="column" padding={0}>
                 <box flexDirection="row" justifyContent="space-between">
-                  <text fg={fg} selectable={true} dim>
+                  <text fg="#888888" selectable={true} dim>
                     {msg.content}
                   </text>
                   {msg.time ? <text fg="#666666">{msg.time}</text> : null}

@@ -177,8 +177,17 @@ export class TuiSessionStore {
           break;
         }
         case 'tool_call':
+          result.push({ id: m.id, role: 'tool', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          i++;
+          break;
         case 'system':
+          result.push({ id: m.id, role: 'system', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          i++;
+          break;
         case 'cross_context':
+          result.push({ id: m.id, role: 'cross', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          i++;
+          break;
         default:
           result.push({ id: m.id, role: 'system', content: m.content, thinking: '', time: m.time, status: 'sent' });
           i++;
@@ -232,6 +241,24 @@ export class TuiSessionStore {
             id: msg.id,
             role: 'system',
             msgType: 'system',
+            content: msg.content || '',
+            time: msg.time || '',
+          });
+          break;
+        case 'cross':
+          result.push({
+            id: msg.id,
+            role: 'system',
+            msgType: 'cross_context',
+            content: msg.content || '',
+            time: msg.time || '',
+          });
+          break;
+        case 'tool':
+          result.push({
+            id: msg.id,
+            role: 'system',
+            msgType: 'tool_call',
             content: msg.content || '',
             time: msg.time || '',
           });

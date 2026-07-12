@@ -71,12 +71,12 @@ export class TuiBridge implements IAgentBridge {
       onCrossContext: (source, target, direction, phase, content) => {
         const arrow = direction === 'sent' ? '→' : '←';
         const label = phase === 'request' ? '请求' : '响应';
-        const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
+        const fullContent = `${arrow} ${source} → ${target} [${label}]\n${content}`;
         const msg: ChatMessage = {
           id: `cross-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           role: 'system',
           msgType: 'cross_context',
-          content: `${arrow} ${source} → ${target} [${label}]: ${shortContent}`,
+          content: fullContent,
           time: new Date().toLocaleTimeString(),
         };
         tuiState.setMessages([...tuiState.messages(), msg]);

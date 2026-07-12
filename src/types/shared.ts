@@ -47,7 +47,7 @@ export interface LayoutNode {
 
 export interface ChatMsg {
   id: string;
-  role: 'user' | 'agent' | 'cross' | 'system';
+  role: 'user' | 'agent' | 'cross' | 'tool' | 'system';
   content: string;
   thinking: string;
   tools?: string;
