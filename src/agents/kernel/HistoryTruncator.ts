@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { TokenEstimator } from '../../core/TokenEstimator.js';
+import { defaultLogger, type Logger } from '../../core/Logger.js';
 
 // ── 配置 ──
 
@@ -60,15 +61,18 @@ export class HistoryTruncator {
   private config: TruncationConfig;
   private estimator: TokenEstimator;
   private marker: string;
+  private logger: Logger;
 
   constructor(
     config: Partial<TruncationConfig> = {},
     estimator: TokenEstimator,
     marker?: string,
+    logger?: Logger,
   ) {
     this.config = { ...DEFAULT_TRUNCATION_CONFIG, ...config };
     this.estimator = estimator;
     this.marker = marker ?? DEFAULT_MARKER;
+    this.logger = logger || defaultLogger;
   }
 
   /**
@@ -150,6 +154,13 @@ export class HistoryTruncator {
       this.estimator.estimate(this.marker) +
       tailTokens +
       (tail.length + 1) * 4;
+
+    this.logger.warn(
+      `HistoryTruncator: truncated ${truncatedCount}/${messages.length} msgs ` +
+      `(tokens: ${totalTokens}→${afterTokens}, ` +
+      `threshold=${threshold}, tailBudget=${this.config.tailTokenBudget}, ` +
+      `window=${this.config.contextWindow})`,
+    );
 
     return {
       messages: result,

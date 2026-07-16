@@ -290,6 +290,12 @@ export class Agent {
     if (this._kernel) {
       try {
         this._lastSendResult = await this._kernel.send(blocks);
+        if (this._lastSendResult?.usage) {
+          this._logger.info(
+            `Agent [${this.name}] usage: prompt=${this._lastSendResult.usage.promptTokens} ` +
+            `completion=${this._lastSendResult.usage.completionTokens} total=${this._lastSendResult.usage.totalTokens}`,
+          );
+        }
         this._transition(AgentState.Idle);
       } catch (err) {
         this._transition(AgentState.Error);

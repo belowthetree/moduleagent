@@ -246,6 +246,13 @@ export class ModuleAgentSubsystem {
       this.setAgentStatus(finalTarget, 'idle');
       this.setStatus('idle');
 
+      if (entry.agent.lastUsage) {
+        this.logger.info(
+          `sendMessage [${finalTarget}] usage: prompt=${entry.agent.lastUsage.promptTokens} ` +
+          `completion=${entry.agent.lastUsage.completionTokens} total=${entry.agent.lastUsage.totalTokens}`,
+        );
+      }
+
       return {
         result: {
           reply: acc?.reply || '',

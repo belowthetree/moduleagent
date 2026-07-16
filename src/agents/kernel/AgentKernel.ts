@@ -154,6 +154,12 @@ export class AgentKernel {
     this.logger.info(`[Kernel:${this.name}] 发送: ${blocks.length} 个块`);
     const result = await this.loop.send(blocks);
     this.logger.info(`[Kernel:${this.name}] 结果: stopReason=${result.stopReason}`);
+    if (result.usage) {
+      this.logger.info(
+        `[Kernel:${this.name}] usage: prompt=${result.usage.promptTokens} ` +
+        `completion=${result.usage.completionTokens} total=${result.usage.totalTokens}`,
+      );
+    }
     return result;
   }
 

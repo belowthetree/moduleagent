@@ -250,6 +250,17 @@ export class AgentLoop {
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
       }));
       const beforeTokens = this.tokenEstimator.estimateMessages(slimMsgs);
+      const threshold = this.contextWindow * DEFAULT_TRUNCATION_CONFIG.truncateRatio;
+      const softThreshold = this.contextWindow * 0.5;
+
+      // 软警告：超过 50% 窗口
+      if (beforeTokens > softThreshold) {
+        this.logger.info(
+          `[AgentLoop] context: ${beforeTokens}/${this.contextWindow} tokens (${((beforeTokens / this.contextWindow) * 100).toFixed(0)}%), ` +
+          `${slimMsgs.length} msgs`,
+        );
+      }
+
       const truncResult = this.historyTruncator.truncate(slimMsgs);
 
       if (truncResult.truncatedCount > 0) {

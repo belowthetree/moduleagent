@@ -6,6 +6,8 @@
 // 使用 EMA 平滑收敛。
 // ---------------------------------------------------------------------------
 
+import { defaultLogger, type Logger } from './Logger.js';
+
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
@@ -25,11 +27,13 @@ export class TokenEstimator {
   private readonly _emaAlpha: number;
 
   private _calibrated = false;
+  private _logger: Logger;
 
   // ── 构造 ──
 
-  constructor(emaAlpha = 0.3) {
+  constructor(emaAlpha = 0.3, logger?: Logger) {
     this._emaAlpha = emaAlpha;
+    this._logger = logger || defaultLogger;
   }
 
   // ── 公开 API ──
@@ -50,9 +54,19 @@ export class TokenEstimator {
     if (r < 0.05 || r > 2) return;
 
     // EMA 平滑
+    const oldRatio = this._tokPerChar;
+    const wasCalibrated = this._calibrated;
     this._tokPerChar =
       (1 - this._emaAlpha) * this._tokPerChar + this._emaAlpha * r;
     this._calibrated = true;
+
+    // 首次校准或比例变化 >20% 时记录
+    if (!wasCalibrated || (oldRatio > 0 && Math.abs(this._tokPerChar - oldRatio) / oldRatio > 0.2)) {
+      this._logger.info(
+        `TokenEstimator calibrated: tokPerChar=${this._tokPerChar.toFixed(4)} ` +
+        `(raw=${r.toFixed(4)} promptTokens=${usage.promptTokens} promptChars=${promptChars})`,
+      );
+    }
   }
 
   /** 估算单段文本的 token 数 */

@@ -8,6 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Tool } from './types.js';
+import { defaultLogger, type Logger } from '../../core/Logger.js';
 
 // ── 截断规则 ──
 
@@ -75,6 +76,13 @@ export class ToolOutputTruncator {
         const head = result.content.slice(0, rule.headChars);
         const tail = result.content.slice(-rule.tailChars);
         const truncated = result.content.length - rule.headChars - rule.tailChars;
+        const toolName = tool.name;
+
+        defaultLogger.warn(
+          `ToolOutputTruncator [${toolName}]: output truncated ` +
+          `${result.content.length}→${rule.maxChars} chars ` +
+          `(head=${rule.headChars} tail=${rule.tailChars})`,
+        );
 
         return {
           content:

@@ -6,6 +6,8 @@
 // 零额外 LLM 调用，纯启发式。
 // ---------------------------------------------------------------------------
 
+import { defaultLogger, type Logger } from '../../core/Logger.js';
+
 export type RouteDecision = 'fast' | 'normal';
 
 export interface RouteContext {
@@ -17,6 +19,12 @@ export interface RouteContext {
 }
 
 export class ModelRouter {
+  private logger: Logger;
+
+  constructor(logger?: Logger) {
+    this.logger = logger || defaultLogger;
+  }
+
   private readonly fastKeywords = [
     '是什么', 'what is', 'how many', 'list', '列出',
     'show', '显示', 'explain', '解释', 'describe', '描述',
@@ -45,6 +53,7 @@ export class ModelRouter {
   classify(ctx: RouteContext): RouteDecision {
     const lower = ctx.userText.toLowerCase();
     const words = ctx.userText.trim().split(/\s+/);
+    let reason = '';
 
     // 1. 短问候
     if (
@@ -52,32 +61,45 @@ export class ModelRouter {
       !ctx.hasFileReferences &&
       !ctx.hasCodeActions
     ) {
-      return 'fast';
+      reason = 'short-greeting';
+      return this._decide('fast', reason, ctx);
     }
 
     // 2. 简单查询
     const hasFastKeyword = this.fastKeywords.some((k) => lower.includes(k));
     const hasCodeKeyword = this.codeActionKeywords.some((k) => lower.includes(k));
     if (hasFastKeyword && !hasCodeKeyword && !ctx.hasFileReferences) {
-      return 'fast';
+      reason = 'fast-keyword';
+      return this._decide('fast', reason, ctx);
     }
 
     // 3. 文件引用 / 代码动作
     if (ctx.hasFileReferences || hasCodeKeyword) {
-      return 'normal';
+      reason = hasCodeKeyword ? 'code-action' : 'file-reference';
+      return this._decide('normal', reason, ctx);
     }
 
     // 4. 长消息
     if (ctx.messageLength > 100) {
-      return 'normal';
+      reason = 'long-message';
+      return this._decide('normal', reason, ctx);
     }
 
     // 5. 第 1 轮
     if (ctx.turnNumber <= 1) {
-      return 'normal';
+      reason = 'first-turn';
+      return this._decide('normal', reason, ctx);
     }
 
     // 6. 默认
-    return 'fast';
+    reason = 'default';
+    return this._decide('fast', reason, ctx);
+  }
+
+  private _decide(decision: RouteDecision, reason: string, ctx: RouteContext): RouteDecision {
+    this.logger.info(
+      `ModelRouter: ${decision} (reason=${reason} turn=${ctx.turnNumber} len=${ctx.messageLength})`,
+    );
+    return decision;
   }
 }

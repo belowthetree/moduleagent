@@ -6,15 +6,19 @@
 // 连续 N 次相同失败后注入干预消息。
 // ---------------------------------------------------------------------------
 
+import { defaultLogger, type Logger } from '../../core/Logger.js';
+
 export class StormBreaker {
   /** 连续相同签名的最大容忍次数 */
   readonly maxStorms: number;
 
   private _stormSig = '';
   private _stormCount = 0;
+  private logger: Logger;
 
-  constructor(maxStorms = 3) {
+  constructor(maxStorms = 3, logger?: Logger) {
     this.maxStorms = maxStorms;
+    this.logger = logger || defaultLogger;
   }
 
   /**
@@ -32,13 +36,23 @@ export class StormBreaker {
 
     if (sig === this._stormSig) {
       this._stormCount++;
+      this.logger.warn(
+        `StormBreaker: repeated failure #${this._stormCount}/${this.maxStorms} ` +
+        `tool="${toolName}" sig="${sig.slice(0, 80)}"`,
+      );
       if (this._stormCount >= this.maxStorms) {
+        this.logger.error(
+          `StormBreaker: INTERVENE — injecting intervention after ${this._stormCount} repeated failures on "${toolName}"`,
+        );
         return {
           intervene: true,
           message: `[系统提示] 你似乎陷入了循环——连续 ${this._stormCount} 次相同的 "${toolName}" 操作都失败了（错误: ${error.slice(0, 200)}）。请尝试完全不同的方法，或向用户说明情况并寻求帮助。`,
         };
       }
     } else {
+      if (this._stormSig && sig !== this._stormSig) {
+        this.logger.info(`StormBreaker: new failure pattern detected, resetting counter (was: "${this._stormSig.slice(0, 60)}")`);
+      }
       this._stormSig = sig;
       this._stormCount = 1;
     }

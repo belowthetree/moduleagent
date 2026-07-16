@@ -13,6 +13,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import type { Tool } from '../types.js';
+import { defaultLogger } from '../../../core/Logger.js';
 
 /**
  * 创建 module_context:* 系列工具。
@@ -46,6 +47,7 @@ function createReadFullTool(moduleDir: string): Tool {
     async execute() {
       try {
         const content = await fs.readFile(modulePath, 'utf-8');
+        defaultLogger.info(`module_context_read_full: loaded ${content.length} chars from module.md`);
         return { content };
       } catch {
         return { content: '(暂无 module.md 文档)' };
@@ -72,6 +74,7 @@ function createReadPatternsTool(moduleDir: string): Tool {
     async execute() {
       try {
         const content = await fs.readFile(patternsPath, 'utf-8');
+        defaultLogger.info(`module_context_read_patterns: loaded ${content.length} chars from patterns.md`);
         return { content };
       } catch {
         return { content: '(暂无 patterns.md 修改规范)' };
@@ -114,6 +117,7 @@ function createReadExperienceTool(moduleDir: string): Tool {
           return { content: '(暂无经验记录)' };
         }
         const recent = entries.slice(-Math.min(count, entries.length));
+        defaultLogger.info(`module_context_read_experience: loaded ${recent.length}/${entries.length} entries (count=${count})`);
         return { content: `# 近期经验（最近 ${recent.length} 条）\n\n${recent.join('\n')}` };
       } catch {
         return { content: '(暂无 experience.md 经验记录)' };
