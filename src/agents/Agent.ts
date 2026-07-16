@@ -47,6 +47,8 @@ export interface AgentStartOptions {
   systemPrompt?: string;
   kernelModuleName?: string;
   crossModuleRouter?: import('./mcp/McpBackend.js').CrossModuleRouter;
+  /** 模块文档目录，用于注册 module_context:* 按需工具 */
+  moduleDir?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +82,7 @@ export class Agent {
 
   private _queue: QueuedItem[] = [];
   private _draining = false;
+  private _lastSendResult: { stopReason: string; content: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } } | null = null;
 
   private constructor(
     name: string,
@@ -122,6 +125,11 @@ export class Agent {
     return this._queue.length;
   }
 
+  /** 最近一次 send 的 usage 信息 */
+  get lastUsage(): { promptTokens: number; completionTokens: number; totalTokens: number } | undefined {
+    return this._lastSendResult?.usage;
+  }
+
   get kernel(): AgentKernel | null {
     return this._kernel;
   }
@@ -137,6 +145,7 @@ export class Agent {
       requestingModule: options.kernelModuleName || name,
       sandbox: options.sandbox,
       isRoot: options.isRoot,
+      moduleDir: options.moduleDir,
     });
 
     const sessionId = kernel.sessionId;
@@ -280,7 +289,7 @@ export class Agent {
 
     if (this._kernel) {
       try {
-        await this._kernel.send(blocks);
+        this._lastSendResult = await this._kernel.send(blocks);
         this._transition(AgentState.Idle);
       } catch (err) {
         this._transition(AgentState.Error);

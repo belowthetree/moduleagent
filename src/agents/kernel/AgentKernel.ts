@@ -7,6 +7,7 @@
 import { ToolRegistry } from './ToolRegistry.js';
 import { AgentLoop, type LoopEvents } from './AgentLoop.js';
 import { createKernelToolRegistry, createRootKernelToolRegistry } from './tools/index.js';
+import { createModuleContextTools } from './tools/module-context.js';
 import { AgentSandbox } from './Sandbox.js';
 import type { KernelConfig, AgentLoopConfig, PromptBlock } from './types.js';
 import type { Logger } from '../../core/Logger.js';
@@ -24,6 +25,8 @@ export interface KernelOptions {
   maxToolRounds?: number;
   logger?: Logger;
   isRoot?: boolean;
+  /** 模块文档目录（.module-agent/module/<name>/），用于注册 module_context:* 按需工具 */
+  moduleDir?: string;
 }
 
 export interface KernelNotification {
@@ -43,6 +46,11 @@ export type NotificationCallback = (notification: KernelNotification) => void;
 export interface KernelSendResult {
   stopReason: string;
   content: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
 }
 
 export class AgentKernel {
@@ -67,6 +75,13 @@ export class AgentKernel {
     this.registry = options.isRoot
       ? createRootKernelToolRegistry(sandbox, options.crossModuleRouter, options.requestingModule)
       : createKernelToolRegistry(sandbox, options.crossModuleRouter, options.requestingModule);
+
+    // P1: 渐进式上下文披露 — 注册 module_context:* 按需工具
+    if (options.moduleDir && !options.isRoot) {
+      const ctxTools = createModuleContextTools(options.moduleDir);
+      this.registry.registerAll(ctxTools);
+      this.logger.info(`[Kernel:${this.name}] registered ${ctxTools.length} module_context tools`);
+    }
 
     const toolNames = this.registry.list().map(t => t.name);
     const router = options.crossModuleRouter ? '有' : '无';

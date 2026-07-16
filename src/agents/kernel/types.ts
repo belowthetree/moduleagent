@@ -102,6 +102,8 @@ export interface KernelConfig {
   temperature?: number;
   fastModel?: string;
   allowStreaming?: boolean;
+  /** 上下文窗口总 token 数（用于截断判断，默认 128000） */
+  contextWindow?: number;
 }
 
 export interface VisibilityConfig {
@@ -115,6 +117,20 @@ export interface AgentLoopConfig {
   workspaceRoot: string;
   tools: Tool[];
   maxToolRounds?: number;
+  /** 上下文截断配置（默认使用 DEFAULT_TRUNCATION_CONFIG） */
+  truncation?: {
+    contextWindow?: number;
+    truncateRatio?: number;
+    tailTokenBudget?: number;
+    minKeepMessages?: number;
+  };
+  /** 在线压缩配置（默认关闭） */
+  compaction?: {
+    enabled?: boolean;
+    compactRatio?: number;
+    tailTokenBudget?: number;
+    minIntervalMs?: number;
+  };
 }
 
 export interface PromptBlock {

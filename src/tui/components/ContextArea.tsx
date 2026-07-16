@@ -8,7 +8,9 @@ import { useKeyboard, useRenderer } from "@opentui/solid";
 import { tuiState } from "../state.js";
 import type { ChatMessage, MessageType } from "../types.js";
 
-const SCROLL_LINE_STEP = 4;
+const SCROLL_LINE_STEP = 6;
+const BOTTOM_FIXED_ROWS = 5;
+const PAGE_OVERLAP = 5;
 
 // ── 消息类型 → 标签 ──
 
@@ -64,16 +66,18 @@ export default function ContextArea() {
     if (!scrollEl) return;
 
     if (key.name === 'pageup') {
-      const height = renderer?.height ?? 40;
-      scrollEl.scrollBy?.(height);
+      const visibleRows = (renderer?.height ?? 40) - BOTTOM_FIXED_ROWS;
+      const scrollAmount = Math.max(1, visibleRows - PAGE_OVERLAP);
+      scrollEl.scrollTop = Math.max(0, (scrollEl.scrollTop ?? 0) - scrollAmount);
       setSticky(false);
       key.preventDefault();
     } else if (key.name === 'pagedown') {
-      const height = renderer?.height ?? 40;
-      scrollEl.scrollBy?.(-height);
+      const visibleRows = (renderer?.height ?? 40) - BOTTOM_FIXED_ROWS;
+      const scrollAmount = Math.max(1, visibleRows - PAGE_OVERLAP);
+      scrollEl.scrollTop = (scrollEl.scrollTop ?? 0) + scrollAmount;
       key.preventDefault();
     } else if (key.ctrl && key.name === 'home') {
-      scrollEl.scrollTo?.(0);
+      scrollEl.scrollTop = 0;
       setSticky(false);
       key.preventDefault();
     } else if (key.ctrl && key.name === 'end') {
@@ -103,14 +107,15 @@ export default function ContextArea() {
 
   // ── 滚轮事件 ──
 
-  function handleMouseScroll(deltaY: number) {
+  function handleMouseScroll(deltaY: number, e?: any) {
     if (!scrollEl) return;
+    e?.preventDefault?.();
+    const visibleRows = (renderer?.height ?? 40) - BOTTOM_FIXED_ROWS;
+    const step = Math.max(6, Math.floor(visibleRows / 5));
     if (deltaY > 0) {
-      // 向下滚 → 往底部 → delta 为正
-      scrollEl.scrollBy?.(-deltaY * SCROLL_LINE_STEP);
+      scrollEl.scrollTop = (scrollEl.scrollTop ?? 0) + step;
     } else if (deltaY < 0) {
-      // 向上滚 → 离开底部
-      scrollEl.scrollBy?.(-deltaY * SCROLL_LINE_STEP);
+      scrollEl.scrollTop = Math.max(0, (scrollEl.scrollTop ?? 0) - step);
       setSticky(false);
     }
   }
@@ -122,7 +127,7 @@ export default function ContextArea() {
       stickyStart="bottom"
       ref={(el: any) => { scrollEl = el; }}
       onMouseScroll={(e: any) => {
-        handleMouseScroll(e.deltaY ?? 0);
+        handleMouseScroll(e.deltaY ?? 0, e);
       }}
     >
       <box flexDirection="column">

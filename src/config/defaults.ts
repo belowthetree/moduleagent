@@ -12,6 +12,7 @@ export interface ProjectConfig {
       model?: string;
       fastModel?: string;
       maxTokens?: number;
+      contextWindow?: number;
       command?: string;
       args?: string[];
       defaultMode?: string;
@@ -23,6 +24,7 @@ export interface ProjectConfig {
       model?: string;
       fastModel?: string;
       maxTokens?: number;
+      contextWindow?: number;
       command?: string;
       args?: string[];
       defaultMode?: string;

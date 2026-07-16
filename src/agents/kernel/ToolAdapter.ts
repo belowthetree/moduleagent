@@ -5,6 +5,7 @@
 import { tool, jsonSchema } from 'ai';
 import type { Tool, ToolInputSchema } from './types.js';
 import { defaultLogger } from '../../core/Logger.js';
+import { ToolOutputTruncator } from './ToolOutputTruncator.js';
 
 export function convertToolToAISDK(t: Tool): Record<string, unknown> {
   const schema = t.inputSchema as ToolInputSchema;
@@ -47,8 +48,10 @@ export function convertToolDefinitionToAISDK(t: Tool): { type: 'function'; name:
 }
 
 export function convertToolsToAISDK(tools: Tool[]): Record<string, any> {
+  // P1: 包装工具输出截断
+  const wrapped = ToolOutputTruncator.wrapAll(tools);
   const result: Record<string, any> = {};
-  for (const t of tools) {
+  for (const t of wrapped) {
     Object.assign(result, convertToolToAISDK(t));
   }
   return result;

@@ -13,6 +13,7 @@ import { createListFilesTool } from './list-files.js';
 import { createGitOperationsTool } from './git-operations.js';
 import { createMcpBridgeTools } from './mcp-bridge.js';
 import { createModuleFileTools } from './module-files.js';
+import { createModuleContextTools } from './module-context.js';
 import type { CrossModuleRouter } from '../../mcp/McpBackend.js';
 import type { Tool } from '../types.js';
 
@@ -73,4 +74,5 @@ export {
   createGitOperationsTool,
   createMcpBridgeTools,
   createModuleFileTools,
+  createModuleContextTools,
 };

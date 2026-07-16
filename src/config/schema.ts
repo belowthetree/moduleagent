@@ -17,6 +17,7 @@ export const AgentConfigSchema = z.object({
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
   maxTokens: z.number().int().positive().optional(),
+  contextWindow: z.number().int().positive().optional(),
 });
 
 // 单条项目配置（无名称）

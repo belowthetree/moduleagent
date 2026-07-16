@@ -21,3 +21,4 @@ release/
 .module-agent.json
 out/
 *.zip
+ModuleAgent.code-workspace

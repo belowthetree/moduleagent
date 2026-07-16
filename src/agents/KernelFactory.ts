@@ -35,6 +35,7 @@ export class KernelFactory {
       maxToolRounds?: number;
       sandbox?: AgentSandbox;
       isRoot?: boolean;
+      moduleDir?: string;
     },
   ): Promise<AgentKernel> {
     const log = logger || defaultLogger;
@@ -71,6 +72,7 @@ export class KernelFactory {
       maxToolRounds: kernelOptions?.maxToolRounds ?? 15,
       logger: log,
       isRoot: kernelOptions?.isRoot,
+      moduleDir: kernelOptions?.moduleDir,
     };
 
     if (kernelOptions?.crossModuleRouter) {

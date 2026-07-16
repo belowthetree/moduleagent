@@ -166,7 +166,7 @@ export class ModuleAgentSubsystem {
   async sendMessage(
     text: string,
     moduleName?: string,
-  ): Promise<{ result?: { reply: string; thinking: string; tools: string; timeline?: unknown[]; stopReason?: string }; error?: string }> {
+  ): Promise<{ result?: { reply: string; thinking: string; tools: string; timeline?: unknown[]; stopReason?: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }; error?: string }> {
     if (!this.graph) throw new Error('Not initialized — call init() first');
 
     const targetName = moduleName || this.currentModule;
@@ -252,6 +252,7 @@ export class ModuleAgentSubsystem {
           thinking: acc?.thinking || '',
           tools: acc?.tools || '',
           timeline: acc?.timeline || [],
+          usage: entry.agent.lastUsage,
         },
       };
     } catch (err) {
@@ -721,6 +722,7 @@ export class ModuleAgentSubsystem {
         onNotification,
         crossModuleRouter: this.crossModuleRouter ?? undefined,
         kernelModuleName: moduleName,
+        moduleDir: path.join(this.projectRoot, '.module-agent', 'module', moduleName),
         onQueue: (qlen: number) => {
           self.callbacks.onMessage({
             id: `queue-${Date.now()}`,
