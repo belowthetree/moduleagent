@@ -62,17 +62,20 @@ export class HistoryTruncator {
   private estimator: TokenEstimator;
   private marker: string;
   private logger: Logger;
+  private archive?: (records: SlimMsg[]) => void;
 
   constructor(
     config: Partial<TruncationConfig> = {},
     estimator: TokenEstimator,
     marker?: string,
     logger?: Logger,
+    archive?: (records: SlimMsg[]) => void,
   ) {
     this.config = { ...DEFAULT_TRUNCATION_CONFIG, ...config };
     this.estimator = estimator;
     this.marker = marker ?? DEFAULT_MARKER;
     this.logger = logger || defaultLogger;
+    this.archive = archive;
   }
 
   /**
@@ -149,6 +152,16 @@ export class HistoryTruncator {
     // 构建结果: [marker, ...tail]
     const markerMsg: SlimMsg = { role: 'user', content: this.marker };
     const result = [markerMsg, ...tail];
+
+    // 被丢弃的中间消息存档
+    if (this.archive) {
+      try {
+        this.archive(messages.slice(1, messages.length - tail.length));
+      } catch {
+        // 存档失败不影响截断
+      }
+    }
+
     const afterTokens =
       headTokens +
       this.estimator.estimate(this.marker) +

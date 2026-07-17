@@ -165,7 +165,7 @@ export class ModuleAgentCore {
       },
       getModuleList: (requestingModule) => this.modules.getModuleListForBridge(requestingModule),
     };
-    this.crossModuleRouter = new CrossModuleRouter(callbacks);
+    this.crossModuleRouter = new CrossModuleRouter(callbacks, this.modules.crossModuleLimits);
     this.modules.crossModuleRouter = this.crossModuleRouter;
     this.logger.info('ModuleAgentCore: cross-module router initialized');
   }

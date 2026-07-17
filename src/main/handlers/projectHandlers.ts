@@ -59,8 +59,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
 
       // 跨模块通信路由器
       const crossRouter = new CrossModuleRouter({
-        getAgentEntry(name) {
-          const e = ctx.core.modules.getAgent(name);
+        getAgentEntry(name) {          const e = ctx.core.modules.getAgent(name);
           return e ? e.agent : undefined;
         },
         startAgent(name) {
@@ -120,7 +119,7 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
           else ctx.logger.info(message);
         },
         getModuleList: (requestingModule) => ctx.core.modules.getModuleListForBridge(requestingModule),
-      });
+      }, ctx.core.modules.crossModuleLimits);
       ctx.core.modules.crossModuleRouter = crossRouter;
 
       ctx.logger.info('Cross-module router initialized');

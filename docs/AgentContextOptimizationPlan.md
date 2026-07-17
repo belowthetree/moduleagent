@@ -2,6 +2,7 @@
 
 > 基于 [DeepSeek-Reasonix 优化机制分析](./DeepSeek-Reasonix-Optimization.md) 对标制订
 > 制订日期: 2026-07-16
+> **实施状态更新: 2026-07-18**（见文末 [§8 实施状态](#8-实施状态2026-07-18-更新)）
 
 ---
 
@@ -14,6 +15,7 @@
 5. [P3 — 长期锦上添花](#5-p3--长期锦上添花)
 6. [实施路线图](#6-实施路线图)
 7. [附录：代码修改索引](#7-附录代码修改索引)
+8. [实施状态（2026-07-18 更新）](#8-实施状态2026-07-18-更新)
 
 ---
 
@@ -553,3 +555,67 @@ Week 7+: P3 完善
 | `sessionPrompted` | 作为缓存锚定的基础保留 |
 | `ExperienceSummarizer` | 异步总结架构合理，P2 增强即可 |
 | `SessionStore` | JSON 持久化方案对当前规模足够 |
+
+---
+
+## 8. 实施状态（2026-07-18 更新）
+
+### 8.1 各优化项状态总览
+
+| 方案条目 | 状态 | 实现说明 |
+|---------|------|---------|
+| 2.1 滑动窗口截断 | ✅ 已实现（超越方案） | `HistoryTruncator.ts`：按 **token 预算**（16K）保留尾部，比方案的固定条数更贴近 Reasonix；`AgentLoop.ts` Step 2 接入 |
+| 2.2 Token 计数与校准 | ✅ 已实现 | `TokenEstimator.ts`（EMA 校准）；usage 透传 UI（`ModuleAgentSubsystem.ts` → `shared.ts`） |
+| 3.1 System Prompt 缓存锚定 | ✅ 已实现 | 系统提示经 `Agent.start({ systemPrompt })` 以独立 system 角色注入（模块：`ModuleAgentSubsystem._startAgentInternal`；角色：`RoleAgentManager`）；`PromptBuilder`/`RoleAgentSubsystem` 不再混入首条 user 消息；工具 schema 按名排序（既有）。Cache 诊断日志未做 |
+| 3.2 工具输出智能截断 | ✅ 已实现 | `ToolOutputTruncator.ts` 分工具规则，接入 `ToolAdapter.ts`；Phase 2 归档由 60% snip 层实现（见下） |
+| 3.3 渐进式上下文披露 | ✅ 已实现 | 非根模块首条消息仅注入 module.md 前 2000 字符 + 按需获取指引；`module_context_read_*` 工具既有；`progressiveDisclosure` 配置默认开启；`subagentprompt.md` 已补充工具规则 |
+| 4.1 在线上下文压缩 | ✅ 已实现（已救活） | `ContextCompactor.ts` + fastModel 摘要 + 失败降级截断。**关键修复**：配置管道此前断裂（`AgentKernel` 未透传 `truncation`/`compaction`），本轮已全链路打通（schema → defaults → Subsystem → Agent → KernelFactory → AgentKernel → AgentLoop） |
+| 4.2 双模型路由 | ✅ 已实现 | `ModelRouter.ts` 启发式分类 + `fastModel` per-module 覆盖 |
+| 4.3 结构化输出 | ❌ 未实现 | 无 `classifyIntent` / `generateObject`；`ExperienceSummarizer` 仍为自由文本 |
+| 5.1 死循环防护 | ✅ 已实现 | `StormBreaker.ts`（`AgentLoop.ts` `onStepFinish` 接入） |
+| 5.2 Checkpoint 快照 | ⏸️ 决议不做（本期） | 2026-07-18 评审决议暂缓 |
+| 5.3 并行 Agent 执行 | ⏸️ 暂缓 | 同原方案 |
+
+### 8.2 方案外新增（对标 Reasonix 第二轮评审）
+
+| 优化项 | 状态 | 实现 |
+|--------|------|------|
+| 跨模块调用治理（Reasonix §11） | ✅ | `CallChain.ts`（AsyncLocalStorage 传播调用链，含 `Agent.send` 排队时 `snapshot()` 保链）；环检测、maxHops=3、wait-for 死锁检测、120s 超时；`routeCall` 改走 `Agent.send` 队列修复 `AgentLoop.messages` 重入；`Agent.send` 改为返回结果。配置 `crossModule.maxHops/timeoutMs` |
+| 请求重试（Reasonix §7） | ✅ | `RetryPolicy.ts`：指数退避+抖动+`Retry-After`+错误分类；LLM 外层重试由 `stepsCompleted===0` 门控（防副作用工具重复执行），内层 `maxRetries: 2`；模块/角色 spawn 失败重试 1 次（幂等复查） |
+| SessionStore 磁盘封顶 | ✅ | `SessionStore` 200 条 / 5MB 上限（`contextHistoryLimit` 可配），溢出写 `archives/<module>/context-overflow.jsonl` |
+| 60% 旧工具结果 snip（Reasonix §1.1/§9.2） | ✅ | `ToolResultSnipper.ts`：零 LLM 成本，跳过 head+最近 4 条，复用 `TOOL_TRUNCATION_RULES`，处理 ai-sdk tool 消息结构；`AgentLoop` 执行顺序 **snip(0.6) → compact(0.7) → truncate(0.8)** |
+| 丢弃内容存档（Reasonix §1.1） | ✅ | `ArchiveWriter.ts`：snip/truncate/compact 丢弃内容统一写 `.module-agent/archives/<module>/*.jsonl`，fire-and-forget |
+| 50% 上下文用量通知（Reasonix §1.1 softCompactRatio） | ✅ | `LoopEvents.onContextUsage` → `context_usage` 通知 → UI 系统消息；0.5/0.4 滞回防刷屏 |
+
+### 8.3 本轮新增/修改文件
+
+**新建**（4）：
+
+| 文件 | 用途 |
+|------|------|
+| `src/agents/mcp/CallChain.ts` | AsyncLocalStorage 跨模块调用链追踪 |
+| `src/core/RetryPolicy.ts` | 通用重试（退避/抖动/Retry-After/错误分类） |
+| `src/agents/kernel/ToolResultSnipper.ts` | 60% 旧工具结果精简层 |
+| `src/agents/kernel/ArchiveWriter.ts` | jsonl 存档写入器 |
+
+**修改**（18）：`Agent.ts`（send 返回结果 + ALS snapshot 队列）、`McpBackend.ts`（routeCall 治理）、`AgentLoop.ts`（snip/重试/用量事件/存档接入）、`AgentKernel.ts`、`KernelFactory.ts`、`types.ts`、`HistoryTruncator.ts`、`ContextCompactor.ts`、`StreamAccumulator.ts`（磁盘封顶）、`ModuleAgentSubsystem.ts`（systemPrompt/配置透传/用量通知）、`ModuleAgentCore.ts`、`RoleAgentManager.ts`、`RoleAgentSubsystem.ts`、`PromptBuilder.ts`（Tier1 摘要）、`projectHandlers.ts`、`schema.ts`/`defaults.ts`（新配置项）、`config/knowledge/subagentprompt.md`。
+
+### 8.4 新增配置项
+
+```jsonc
+{
+  "truncation":  { "contextWindow": 128000, "truncateRatio": 0.8, "tailTokenBudget": 16384, "minKeepMessages": 2, "snipRatio": 0.6 },
+  "compaction":  { "enabled": true, "compactRatio": 0.7, "tailTokenBudget": 16384, "minIntervalMs": 60000 },
+  "crossModule": { "maxHops": 3, "timeoutMs": 120000 },
+  "contextHistoryLimit": 200,
+  "progressiveDisclosure": true
+}
+```
+
+### 8.5 遗留事项
+
+1. **4.3 结构化输出**（意图识别 + ExperienceSummarizer JSON Schema）
+2. **Cache 诊断日志**（3.1 的 cacheHit/miss 归因，依赖 Provider 返回字段）
+3. **90% 强制压缩层**（Reasonix compactForceRatio，当前 truncate 兜底已覆盖）
+4. **Checkpoint/Rewind**（本期决议不做）
+5. 验证方式：`pnpm run typecheck`（错误数与基线一致）、`pnpm run test`（失败项与基线一致，均为既有 TUI/Windows 路径问题）

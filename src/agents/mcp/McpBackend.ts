@@ -7,6 +7,17 @@ import type { PromptBlock } from '../kernel/types.js';
 import { defaultLogger } from '../../core/Logger.js';
 import type { Agent } from '../Agent.js';
 import type { ChatMsg } from '../../types/shared.js';
+import { currentChain, runWithChain } from './CallChain.js';
+
+export interface CrossModuleLimits {
+  /** 跨模块调用最大跳数（默认 3） */
+  maxHops?: number;
+  /** 跨模块调用超时 ms（默认 120000） */
+  timeoutMs?: number;
+}
+
+const DEFAULT_MAX_HOPS = 3;
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 export interface CrossModuleRouterCallbacks {
   getAgentEntry(moduleName: string): Agent | undefined;
@@ -30,7 +41,18 @@ export interface CrossModuleRouterCallbacks {
 export type McpBackendCallbacks = CrossModuleRouterCallbacks;
 
 export class CrossModuleRouter {
-  constructor(private callbacks: CrossModuleRouterCallbacks) {}
+  private readonly maxHops: number;
+  private readonly timeoutMs: number;
+  /** 等待图：requester → target（用于跨链死锁检测） */
+  private pendingWaits = new Map<string, string>();
+
+  constructor(
+    private callbacks: CrossModuleRouterCallbacks,
+    limits: CrossModuleLimits = {},
+  ) {
+    this.maxHops = limits.maxHops ?? DEFAULT_MAX_HOPS;
+    this.timeoutMs = limits.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  }
 
   listModules(requestingModule: string): string {
     if (this.callbacks.getModuleList) {
@@ -57,6 +79,39 @@ export class CrossModuleRouter {
     query?: string;
   }): Promise<{ success: boolean; result?: string; answer?: string; error?: string }> {
     const { targetModule, requestingModule, task, query } = params;
+
+    // ── 调用链治理：环检测 + 深度限制 ──
+    const prevChain = currentChain();
+    const baseChain =
+      requestingModule && prevChain[prevChain.length - 1] !== requestingModule
+        ? [...prevChain, requestingModule]
+        : [...prevChain];
+
+    if (baseChain.includes(targetModule)) {
+      const cyclePath = [...baseChain, targetModule].join(' → ');
+      this.log('warn', `cross-module: cycle rejected: ${cyclePath}`);
+      return {
+        success: false,
+        error: `检测到循环调用（${cyclePath}），已拒绝。请直接基于已有信息作答，或改派其他模块。`,
+      };
+    }
+    if (baseChain.length > this.maxHops) {
+      const chainPath = baseChain.join(' → ');
+      this.log('warn', `cross-module: max hops (${this.maxHops}) exceeded: ${chainPath} ↦ ${targetModule}`);
+      return {
+        success: false,
+        error: `跨模块委派超过最大深度 ${this.maxHops}（当前链: ${chainPath}），已拒绝。请直接完成当前子任务。`,
+      };
+    }
+
+    // ── 跨链死锁检测（wait-for 图） ──
+    if (requestingModule && this._wouldDeadlock(requestingModule, targetModule)) {
+      this.log('warn', `cross-module: deadlock rejected: ${requestingModule} → ${targetModule}`);
+      return {
+        success: false,
+        error: `调用 ${targetModule} 将形成等待环（目标正在等待调用方），已拒绝。请直接基于已有信息作答。`,
+      };
+    }
 
     let entry = this.callbacks.getAgentEntry(targetModule);
     if (!entry) {
@@ -93,19 +148,19 @@ export class CrossModuleRouter {
       );
     }
 
+    if (requestingModule) this.pendingWaits.set(requestingModule, targetModule);
+
     try {
       this.callbacks.startStream?.(targetModule);
       this.callbacks.setAgentStatus?.(targetModule, 'streaming');
       const promptBlocks = this.callbacks.buildPromptBlocks(targetModule, promptText);
 
-      let responseText = '';
-      const kernel = entry.kernel;
-      if (kernel) {
-        const result = await kernel.send(promptBlocks);
-        responseText = result.content;
-      } else {
-        responseText = 'No kernel available';
-      }
+      // 走 Agent.send 队列（busy 时排队），并传播调用链上下文
+      const sendPromise = runWithChain([...baseChain, targetModule], () =>
+        entry.send(promptBlocks),
+      );
+      const result = await this._withTimeout(sendPromise, targetModule);
+      const responseText = result.content || '';
 
       this.callbacks.setAgentStatus?.(targetModule, 'idle');
 
@@ -185,7 +240,38 @@ export class CrossModuleRouter {
     } catch (err) {
       this.callbacks.setAgentStatus?.(targetModule, 'error');
       return { success: false, error: `Prompt failed: ${(err as Error).message}` };
+    } finally {
+      if (requestingModule) this.pendingWaits.delete(requestingModule);
     }
+  }
+
+  /** 死锁检测：从 target 沿 wait-for 图传递遍历，若能回到 requester 则成环 */
+  private _wouldDeadlock(requester: string, target: string): boolean {
+    const seen = new Set<string>();
+    let cur: string | undefined = target;
+    while (cur && this.pendingWaits.has(cur)) {
+      if (seen.has(cur)) return false;
+      seen.add(cur);
+      cur = this.pendingWaits.get(cur);
+      if (cur === requester) return true;
+    }
+    return false;
+  }
+
+  private _withTimeout<T>(promise: Promise<T>, targetModule: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(
+          new Error(
+            `跨模块调用超时（${this.timeoutMs}ms）: ${targetModule} 未在限定时间内完成`,
+          ),
+        );
+      }, this.timeoutMs);
+      promise.then(
+        (v) => { clearTimeout(timer); resolve(v); },
+        (err) => { clearTimeout(timer); reject(err); },
+      );
+    });
   }
 
   private log(level: 'info' | 'warn' | 'error', message: string): void {

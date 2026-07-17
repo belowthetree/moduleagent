@@ -19,6 +19,7 @@ import {
   dedupMessage,
 } from '../agents/prompts/PromptBuilder.js';
 import { SendGuard } from './AgentSubsystemUtils.js';
+import { withRetry } from './RetryPolicy.js';
 import type { PromptBlock } from '../agents/kernel/types.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
 import type { CoreCallbacks, CoreStatus, CoreMessage, InitResult } from './CoreTypes.js';
@@ -92,6 +93,11 @@ export class ModuleAgentSubsystem {
   // 跨模块路由
   crossModuleRouter: import('../agents/mcp/McpBackend.js').CrossModuleRouter | null = null;
 
+  /** 跨模块调用限制（供 Router 构造） */
+  get crossModuleLimits(): { maxHops?: number; timeoutMs?: number } {
+    return this.config?.crossModule ?? {};
+  }
+
   // 外部钩子
   private _onSessionUpdate?: (moduleName: string, sessionId: string, notification: any) => void;
   private _onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
@@ -135,6 +141,7 @@ export class ModuleAgentSubsystem {
     this.prompts = loadSystemPrompts(this.configDir);
     this._stateManager = new SessionStore(
       path.join(projectRoot, '.module-agent', 'context'),
+      { maxMessages: this.config.contextHistoryLimit },
     );
     this.currentModule = this.graph.root;
 
@@ -200,6 +207,7 @@ export class ModuleAgentSubsystem {
         prompts: this.prompts,
         sessionPrompted: this.sessionPrompted,
         cwd: entry.agent.cwd,
+        progressiveDisclosure: this.config?.progressiveDisclosure !== false,
       });
 
       this.logger.info(`sendMessage [${finalTarget}]: ${finalText.length} chars, ${blocks.length} blocks`);
@@ -361,7 +369,23 @@ export class ModuleAgentSubsystem {
     const pending = this.pendingStarts.get(moduleName);
     if (pending) return pending;
 
-    const promise = this._startAgentInternal(moduleName);
+    // 启动失败重试一次（重试前复查：可能已被并发调用者启动）
+    const promise = withRetry(
+      async () => {
+        const now = this.agents.get(moduleName);
+        if (now) return now;
+        return this._startAgentInternal(moduleName);
+      },
+      {
+        maxAttempts: 2,
+        baseDelayMs: 1000,
+        shouldRetry: () => true,
+        onRetry: (attempt, delayMs, err) =>
+          this.logger.warn(
+            `startAgent [${moduleName}] failed (attempt ${attempt}/2), retrying in ${delayMs}ms: ${(err as Error)?.message ?? err}`,
+          ),
+      },
+    );
     this.pendingStarts.set(moduleName, promise);
 
     try {
@@ -464,6 +488,7 @@ export class ModuleAgentSubsystem {
         model: mod.model || def.model,
         maxTokens: mod.maxTokens ?? def.maxTokens,
         fastModel: mod.fastModel || def.fastModel,
+        contextWindow: mod.contextWindow ?? def.contextWindow,
         defaultMode: mod.defaultMode || def.defaultMode,
       };
     }
@@ -474,6 +499,7 @@ export class ModuleAgentSubsystem {
       model: def.model,
       maxTokens: def.maxTokens,
       fastModel: def.fastModel,
+      contextWindow: def.contextWindow,
       defaultMode: def.defaultMode,
     };
   }
@@ -487,6 +513,7 @@ export class ModuleAgentSubsystem {
       prompts: this.prompts,
       sessionPrompted: this.sessionPrompted,
       cwd: entry?.agent.cwd,
+      progressiveDisclosure: this.config?.progressiveDisclosure !== false,
     });
   }
 
@@ -705,6 +732,17 @@ export class ModuleAgentSubsystem {
           if (tc.status) {
             self.callbacks.onToolCall?.(moduleName, realName, tc.status, undefined, tc.toolCallId);
           }
+        } else if (update === 'context_usage') {
+          const u = (data as { detail?: { tokens: number; window: number; ratio: number } }).detail;
+          if (u) {
+            self.callbacks.onMessage({
+              id: `ctx-${Date.now()}`,
+              role: 'system',
+              content: `上下文已使用 ${(u.ratio * 100).toFixed(0)}%（约 ${u.tokens.toLocaleString()}/${u.window.toLocaleString()} tokens）。达到阈值时将自动精简历史。`,
+              time: new Date().toLocaleTimeString(),
+              moduleName,
+            });
+          }
         }
 
         // 流累积：将通知路由到 SessionStore
@@ -717,7 +755,7 @@ export class ModuleAgentSubsystem {
         }
       };
 
-      // 启动 Agent
+      // 启动 Agent（systemPrompt 以独立 system 角色注入，锚定前缀缓存）
       const agent = await Agent.start({
         name: moduleName,
         config: agentConfig,
@@ -729,7 +767,14 @@ export class ModuleAgentSubsystem {
         onNotification,
         crossModuleRouter: this.crossModuleRouter ?? undefined,
         kernelModuleName: moduleName,
+        systemPrompt: isRoot ? this.prompts.mainPrompt : this.prompts.subPrompt,
         moduleDir: path.join(this.projectRoot, '.module-agent', 'module', moduleName),
+        truncation: this.config?.truncation,
+        compaction: this.config?.compaction,
+        archiveDir: path.join(
+          this.projectRoot, '.module-agent', 'archives',
+          moduleName.replace(/[<>:"/\\|?*]/g, '_'),
+        ),
         onQueue: (qlen: number) => {
           self.callbacks.onMessage({
             id: `queue-${Date.now()}`,

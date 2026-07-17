@@ -27,6 +27,12 @@ export interface KernelOptions {
   isRoot?: boolean;
   /** 模块文档目录（.module-agent/module/<name>/），用于注册 module_context:* 按需工具 */
   moduleDir?: string;
+  /** 上下文截断配置（透传 AgentLoop） */
+  truncation?: AgentLoopConfig['truncation'];
+  /** 在线压缩配置（透传 AgentLoop） */
+  compaction?: AgentLoopConfig['compaction'];
+  /** 被丢弃内容的存档目录（透传 AgentLoop） */
+  archiveDir?: string;
 }
 
 export interface KernelNotification {
@@ -121,6 +127,9 @@ export class AgentKernel {
       onError: (error) => {
         this.logger.error(`[Kernel:${this.name}] 错误: ${error.message}`);
       },
+      onContextUsage: (usage) => {
+        this._emit('context_usage', { detail: usage });
+      },
     };
 
     const loopConfig: AgentLoopConfig = {
@@ -129,6 +138,9 @@ export class AgentKernel {
       workspaceRoot: options.workspaceRoot,
       tools: this.registry.list(),
       maxToolRounds: options.maxToolRounds,
+      truncation: options.truncation,
+      compaction: options.compaction,
+      archiveDir: options.archiveDir,
     };
 
     this.loop = new AgentLoop(loopConfig, loopEvents, this.logger);

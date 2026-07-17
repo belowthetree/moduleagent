@@ -40,13 +40,29 @@ function createStreamAccumulator(): StreamAccumulator {
 
 // ── SessionStore ──
 
+export interface SessionStoreOptions {
+  /** 每模块持久化消息上限（默认 200） */
+  maxMessages?: number;
+  /** 每模块持久化文件大小上限字节（默认 5MB） */
+  maxBytes?: number;
+}
+
+const DEFAULT_MAX_MESSAGES = 200;
+const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+
 export class SessionStore {
   private readonly contextBaseDir: string;
+  private readonly archiveBaseDir: string;
+  private readonly maxMessages: number;
+  private readonly maxBytes: number;
   private readonly streamState: Map<string, StreamAccumulator>;
   private readonly contextMap: Map<string, ChatMsg[]>;
 
-  constructor(contextBaseDir: string) {
+  constructor(contextBaseDir: string, options: SessionStoreOptions = {}) {
     this.contextBaseDir = contextBaseDir;
+    this.archiveBaseDir = path.resolve(contextBaseDir, '..', 'archives');
+    this.maxMessages = options.maxMessages ?? DEFAULT_MAX_MESSAGES;
+    this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
     this.streamState = new Map();
     this.contextMap = new Map();
   }
@@ -181,12 +197,59 @@ export class SessionStore {
   async saveContext(moduleName: string, msgs: ChatMsg[]): Promise<void> {
     try {
       await this.initContextDir();
-      const json = JSON.stringify(msgs, null, 2);
+      const capped = this._capMessages(moduleName, msgs);
+      const json = JSON.stringify(capped, null, 2);
       const finalPath = path.join(this.contextBaseDir, `${this._safeName(moduleName)}.json`);
       await fs.writeFile(finalPath, json, 'utf-8');
     } catch (err) {
       defaultLogger.warn(`[SessionStore] saveContext failed for [${moduleName}]: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * 磁盘封顶：消息数超 maxMessages 或序列化后超 maxBytes 时从头部裁剪，
+   * 被裁掉的消息追加到 archives/<module>/context-overflow.jsonl。
+   */
+  private _capMessages(moduleName: string, msgs: ChatMsg[]): ChatMsg[] {
+    let result = msgs;
+
+    if (result.length > this.maxMessages) {
+      const overflow = result.slice(0, result.length - this.maxMessages);
+      result = result.slice(-this.maxMessages);
+      this._archiveOverflow(moduleName, overflow);
+      defaultLogger.info(
+        `[SessionStore] [${moduleName}] capped context: dropped ${overflow.length} msgs (max=${this.maxMessages})`,
+      );
+    }
+
+    let size = JSON.stringify(result).length;
+    if (size > this.maxBytes) {
+      const removed: ChatMsg[] = [];
+      while (result.length > 1 && size > this.maxBytes) {
+        removed.push(result[0]!);
+        result = result.slice(1);
+        size = JSON.stringify(result).length;
+      }
+      if (removed.length > 0) {
+        this._archiveOverflow(moduleName, removed);
+        defaultLogger.info(
+          `[SessionStore] [${moduleName}] capped context: dropped ${removed.length} msgs (maxBytes=${this.maxBytes})`,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  private _archiveOverflow(moduleName: string, msgs: ChatMsg[]): void {
+    if (msgs.length === 0) return;
+    const file = path.join(this.archiveBaseDir, this._safeName(moduleName), 'context-overflow.jsonl');
+    const lines = msgs.map((m) => JSON.stringify(m)).join('\n') + '\n';
+    fs.mkdir(path.dirname(file), { recursive: true })
+      .then(() => fs.appendFile(file, lines, 'utf-8'))
+      .catch((err) =>
+        defaultLogger.warn(`[SessionStore] archive overflow failed for [${moduleName}]: ${(err as Error).message}`),
+      );
   }
 
   async loadContext(moduleName: string): Promise<ChatMsg[]> {

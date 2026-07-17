@@ -20,6 +20,7 @@ export interface AgentConfig {
   baseUrl?: string;
   maxTokens?: number;
   fastModel?: string;
+  contextWindow?: number;
 }
 
 export class KernelFactory {
@@ -36,6 +37,9 @@ export class KernelFactory {
       sandbox?: AgentSandbox;
       isRoot?: boolean;
       moduleDir?: string;
+      truncation?: import('./kernel/types.js').AgentLoopConfig['truncation'];
+      compaction?: import('./kernel/types.js').AgentLoopConfig['compaction'];
+      archiveDir?: string;
     },
   ): Promise<AgentKernel> {
     const log = logger || defaultLogger;
@@ -65,6 +69,7 @@ export class KernelFactory {
         maxTokens: config.maxTokens ?? 4096,
         temperature: 0.7,
         fastModel: config.fastModel,
+        contextWindow: config.contextWindow,
       },
       workspaceRoot: normalizedCwd,
       systemPrompt,
@@ -73,6 +78,9 @@ export class KernelFactory {
       logger: log,
       isRoot: kernelOptions?.isRoot,
       moduleDir: kernelOptions?.moduleDir,
+      truncation: kernelOptions?.truncation,
+      compaction: kernelOptions?.compaction,
+      archiveDir: kernelOptions?.archiveDir,
     };
 
     if (kernelOptions?.crossModuleRouter) {

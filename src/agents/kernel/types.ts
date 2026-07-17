@@ -123,6 +123,8 @@ export interface AgentLoopConfig {
     truncateRatio?: number;
     tailTokenBudget?: number;
     minKeepMessages?: number;
+    /** 旧工具结果 snip 触发比例（默认 0.6） */
+    snipRatio?: number;
   };
   /** 在线压缩配置（默认关闭） */
   compaction?: {
@@ -131,6 +133,8 @@ export interface AgentLoopConfig {
     tailTokenBudget?: number;
     minIntervalMs?: number;
   };
+  /** 被丢弃内容（snip/compact/truncate）的存档目录；缺省则不存档 */
+  archiveDir?: string;
 }
 
 export interface PromptBlock {

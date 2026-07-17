@@ -9,6 +9,7 @@ import { KernelFactory, type AgentConfig } from './KernelFactory.js';
 import type { Logger } from '../core/Logger.js';
 import { defaultLogger } from '../core/Logger.js';
 import { AgentKernel, type KernelNotification, type PromptBlock, AgentSandbox } from './kernel/index.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 // ---------------------------------------------------------------------------
 // AgentState — Agent 运行状态枚举
@@ -49,16 +50,30 @@ export interface AgentStartOptions {
   crossModuleRouter?: import('./mcp/McpBackend.js').CrossModuleRouter;
   /** 模块文档目录，用于注册 module_context:* 按需工具 */
   moduleDir?: string;
+  /** 上下文截断配置（透传 kernel） */
+  truncation?: import('./kernel/types.js').AgentLoopConfig['truncation'];
+  /** 在线压缩配置（透传 kernel） */
+  compaction?: import('./kernel/types.js').AgentLoopConfig['compaction'];
+  /** 被丢弃内容的存档目录（透传 kernel） */
+  archiveDir?: string;
 }
 
 // ---------------------------------------------------------------------------
 // 内部：队列消息条目
 // ---------------------------------------------------------------------------
 
+export interface AgentSendResult {
+  stopReason: string;
+  content: string;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+}
+
 interface QueuedItem {
   blocks: PromptBlock[];
-  resolve: () => void;
+  resolve: (result: AgentSendResult) => void;
   reject: (err: Error) => void;
+  /** 入队时的 AsyncLocalStorage 快照（跨模块调用链在排队期间不丢失） */
+  snapshot?: <T>(fn: () => T) => T;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +161,9 @@ export class Agent {
       sandbox: options.sandbox,
       isRoot: options.isRoot,
       moduleDir: options.moduleDir,
+      truncation: options.truncation,
+      compaction: options.compaction,
+      archiveDir: options.archiveDir,
     });
 
     const sessionId = kernel.sessionId;
@@ -181,14 +199,15 @@ export class Agent {
     return agent;
   }
 
-  async send(blocks: PromptBlock[]): Promise<void> {
+  async send(blocks: PromptBlock[]): Promise<AgentSendResult> {
     if (this._state === AgentState.Stopped) {
       throw new Error(`Agent [${this.name}] is stopped`);
     }
 
     if (this._state !== AgentState.Idle && this._state !== AgentState.Error) {
-      return new Promise<void>((resolve, reject) => {
-        this._queue.push({ blocks, resolve, reject });
+      const snapshot = AsyncLocalStorage.snapshot();
+      return new Promise<AgentSendResult>((resolve, reject) => {
+        this._queue.push({ blocks, resolve, reject, snapshot });
         const qlen = this._queue.length;
         this._logger.info(
           `Agent [${this.name}] queued message (state=${this._state}, queue=${qlen})`,
@@ -284,7 +303,7 @@ export class Agent {
   // 内部：消息处理 + 队列消费
   // -----------------------------------------------------------------------
 
-  private async _processMessage(blocks: PromptBlock[]): Promise<void> {
+  private async _processMessage(blocks: PromptBlock[]): Promise<AgentSendResult> {
     this._transition(AgentState.Streaming);
 
     if (this._kernel) {
@@ -297,11 +316,11 @@ export class Agent {
           );
         }
         this._transition(AgentState.Idle);
+        return this._lastSendResult ?? { stopReason: 'end_turn', content: '' };
       } catch (err) {
         this._transition(AgentState.Error);
         throw err;
       }
-      return;
     }
 
     throw new Error(`Agent [${this.name}] has no kernel`);
@@ -318,8 +337,9 @@ export class Agent {
           `Agent [${this.name}] draining queue (remaining=${this._queue.length})`,
         );
         try {
-          await this._processMessage(item.blocks);
-          item.resolve();
+          const run = () => this._processMessage(item.blocks);
+          const result = item.snapshot ? await item.snapshot(run) : await run();
+          item.resolve(result);
         } catch (err) {
           item.reject(err as Error);
         }

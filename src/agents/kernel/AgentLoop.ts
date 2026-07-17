@@ -16,6 +16,9 @@ import { HistoryTruncator, DEFAULT_TRUNCATION_CONFIG } from './HistoryTruncator.
 import { ModelRouter } from './ModelRouter.js';
 import { ContextCompactor, DEFAULT_COMPACTION_CONFIG } from './ContextCompactor.js';
 import { StormBreaker } from './StormBreaker.js';
+import { ToolResultSnipper, DEFAULT_SNIP_CONFIG } from './ToolResultSnipper.js';
+import { createArchiveWriter } from './ArchiveWriter.js';
+import { withRetry, isRetryableError } from '../../core/RetryPolicy.js';
 import type {
   AgentLoopConfig,
   LoopPhase,
@@ -32,6 +35,8 @@ export interface LoopEvents {
   onReasoningChunk: (text: string) => void;
   onToolCall: (toolName: string, toolCallId: string, status: string, detail?: string) => void;
   onError: (error: Error) => void;
+  /** 上下文用量越过 50% 时触发（滞回：降至 40% 以下后重置） */
+  onContextUsage?: (usage: { tokens: number; window: number; ratio: number }) => void;
 }
 
 // ── 发送结果 ──
@@ -77,6 +82,7 @@ export class AgentLoop {
   // ── P0 优化模块 ──
   private tokenEstimator: TokenEstimator;
   private historyTruncator: HistoryTruncator;
+  private toolResultSnipper: ToolResultSnipper;
 
   // ── P2 优化模块 ──
   private modelRouter: ModelRouter;
@@ -87,6 +93,7 @@ export class AgentLoop {
 
   // ── 配置 ──
   private contextWindow: number;
+  private contextUsageNotified = false;
 
   constructor(config: AgentLoopConfig, events: LoopEvents, logger?: Logger) {
     // 基础赋值（logger 必须先赋值，后续代码可能引用）
@@ -120,12 +127,14 @@ export class AgentLoop {
     );
     this.tools = convertToolsToAISDK(sortedTools);
 
-    // ── P0: TokenEstimator + HistoryTruncator ──
+    // ── P0: TokenEstimator + HistoryTruncator + ToolResultSnipper ──
     this.tokenEstimator = new TokenEstimator();
     this.contextWindow =
       config.truncation?.contextWindow ??
       config.kernelConfig.contextWindow ??
       DEFAULT_TRUNCATION_CONFIG.contextWindow;
+
+    const archiveWriter = createArchiveWriter(config.archiveDir);
 
     this.historyTruncator = new HistoryTruncator(
       {
@@ -141,6 +150,18 @@ export class AgentLoop {
           DEFAULT_TRUNCATION_CONFIG.minKeepMessages,
       },
       this.tokenEstimator,
+      undefined,
+      undefined,
+      archiveWriter
+        ? (records) => archiveWriter('history-truncated.jsonl', records)
+        : undefined,
+    );
+
+    this.toolResultSnipper = new ToolResultSnipper(
+      { snipRatio: config.truncation?.snipRatio ?? DEFAULT_SNIP_CONFIG.snipRatio },
+      this.tokenEstimator,
+      archiveWriter,
+      this.logger,
     );
 
     // ── P2: ModelRouter ──
@@ -163,6 +184,9 @@ export class AgentLoop {
         this.tokenEstimator,
         this.fastModel, // 使用 fastModel 做总结
         this.logger,
+        archiveWriter
+          ? (records) => archiveWriter('compacted.jsonl', records)
+          : undefined,
       );
     }
 
@@ -225,6 +249,9 @@ export class AgentLoop {
     this.messages.push({ role: 'user', content: userText });
 
     try {
+      // ── Step 0: 旧工具结果 snip（零 LLM 成本，60% 阈值） ──
+      this.toolResultSnipper.snipStale(this.messages, this.contextWindow);
+
       // ── Step 1: 尝试在线压缩（P2，仅在启用时） ──
       let compactionLog = '';
       if (this.contextCompactor) {
@@ -253,12 +280,23 @@ export class AgentLoop {
       const threshold = this.contextWindow * DEFAULT_TRUNCATION_CONFIG.truncateRatio;
       const softThreshold = this.contextWindow * 0.5;
 
-      // 软警告：超过 50% 窗口
+      // 软警告：超过 50% 窗口（滞回：降至 40% 以下后重置）
+      const usageRatio = beforeTokens / this.contextWindow;
       if (beforeTokens > softThreshold) {
         this.logger.info(
-          `[AgentLoop] context: ${beforeTokens}/${this.contextWindow} tokens (${((beforeTokens / this.contextWindow) * 100).toFixed(0)}%), ` +
+          `[AgentLoop] context: ${beforeTokens}/${this.contextWindow} tokens (${(usageRatio * 100).toFixed(0)}%), ` +
           `${slimMsgs.length} msgs`,
         );
+        if (!this.contextUsageNotified) {
+          this.contextUsageNotified = true;
+          this.events.onContextUsage?.({
+            tokens: beforeTokens,
+            window: this.contextWindow,
+            ratio: usageRatio,
+          });
+        }
+      } else if (usageRatio < 0.4) {
+        this.contextUsageNotified = false;
       }
 
       const truncResult = this.historyTruncator.truncate(slimMsgs);
@@ -277,16 +315,21 @@ export class AgentLoop {
       // ── Step 3: 路由模型（P2） ──
       const activeModel = this.selectModel(userText);
 
-      // ── Step 4: LLM 调用 ──
-      const result = await generateText({
-        model: activeModel,
-        system: this.systemPrompt,
-        messages: this.messages,
-        tools: Object.keys(this.tools).length > 0 ? this.tools : undefined,
-        stopWhen: stepCountIs(this.maxToolRounds + 1),
-        abortSignal: this.abortController!.signal,
-        maxRetries: 1,
-        onStepFinish: (event) => {
+      // ── Step 4: LLM 调用（带重试） ──
+      // 外层重试仅当首个 step 完成前失败才触发——一旦某 step 完成，
+      // 整体重试会重复执行已完成的副作用工具（file_write 等）。
+      let stepsCompleted = 0;
+      const result = await withRetry(
+        () => generateText({
+          model: activeModel,
+          system: this.systemPrompt,
+          messages: this.messages,
+          tools: Object.keys(this.tools).length > 0 ? this.tools : undefined,
+          stopWhen: stepCountIs(this.maxToolRounds + 1),
+          abortSignal: this.abortController!.signal,
+          maxRetries: 2,
+          onStepFinish: (event) => {
+            stepsCompleted++;
           // 推理内容
           const reasoning = (event as any).reasoningText as string | undefined;
           if (reasoning) {
@@ -357,7 +400,17 @@ export class AgentLoop {
             }
           }
         },
-      });
+        }),
+        {
+          maxAttempts: 3,
+          shouldRetry: (err) =>
+            !this._cancelled && stepsCompleted === 0 && isRetryableError(err),
+          onRetry: (attempt, delayMs, err) =>
+            this.logger.warn(
+              `[AgentLoop] LLM call failed (attempt ${attempt}/3), retrying in ${delayMs}ms: ${(err as Error)?.message ?? err}`,
+            ),
+        },
+      );
 
       // ── 取消检查 ──
       if (this._cancelled) {

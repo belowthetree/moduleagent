@@ -78,6 +78,7 @@ export class RoleAgentSubsystem {
       projectPath: options.projectPath,
       workspaceRoot: options.workspaceRoot,
       logger: this.logger,
+      systemPrompt: this.rolePrompt,
       callbacks: {
         onSessionUpdate(roleName, sessionId, notification) {
           const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
@@ -248,9 +249,8 @@ export class RoleAgentSubsystem {
 
     if (isFirst) {
       this.sessionPrompted.add(roleName);
-      if (this.rolePrompt) {
-        blocks.push({ type: 'text', text: this.rolePrompt + '\n\n---\n\n' });
-      }
+      // 注意：角色系统提示词已通过 RoleAgentManager 以独立 system 角色注入，
+      // 不在此重复（前缀缓存锚定）。
 
       // 在首条消息中注入知识引用
       const entry = this.manager.getAgent(roleName);

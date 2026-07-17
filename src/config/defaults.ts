@@ -3,32 +3,46 @@
 // 定义 ProjectConfig、ConfigEntry、RoleConfig、Workflow 等配置接口和默认常量
 // ---------------------------------------------------------------------------
 
+export interface TruncationSettings {
+  contextWindow?: number;
+  truncateRatio?: number;
+  tailTokenBudget?: number;
+  minKeepMessages?: number;
+  /** 旧工具结果截断（snip）触发比例，默认 0.6 */
+  snipRatio?: number;
+}
+
+export interface CompactionSettings {
+  enabled: boolean;
+  compactRatio?: number;
+  tailTokenBudget?: number;
+  minIntervalMs?: number;
+}
+
+export interface CrossModuleSettings {
+  /** 跨模块调用最大跳数，默认 3 */
+  maxHops?: number;
+  /** 跨模块调用超时（ms），默认 120000 */
+  timeoutMs?: number;
+}
+
+interface AgentSettings {
+  provider?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+  fastModel?: string;
+  maxTokens?: number;
+  contextWindow?: number;
+  command?: string;
+  args?: string[];
+  defaultMode?: string;
+}
+
 export interface ProjectConfig {
   agents: {
-    default: {
-      provider?: string;
-      apiKey?: string;
-      baseUrl?: string;
-      model?: string;
-      fastModel?: string;
-      maxTokens?: number;
-      contextWindow?: number;
-      command?: string;
-      args?: string[];
-      defaultMode?: string;
-    };
-    modules?: Record<string, {
-      provider?: string;
-      apiKey?: string;
-      baseUrl?: string;
-      model?: string;
-      fastModel?: string;
-      maxTokens?: number;
-      contextWindow?: number;
-      command?: string;
-      args?: string[];
-      defaultMode?: string;
-    }>;
+    default: AgentSettings;
+    modules?: Record<string, AgentSettings>;
   };
   exclude: string[];
   projectPath: string;
@@ -36,6 +50,13 @@ export interface ProjectConfig {
   summarization?: {
     enabled: boolean;
   };
+  truncation?: TruncationSettings;
+  compaction?: CompactionSettings;
+  crossModule?: CrossModuleSettings;
+  /** SessionStore 每模块持久化消息上限，默认 200 */
+  contextHistoryLimit?: number;
+  /** 渐进式上下文披露：首条消息仅注入摘要，完整文档按需通过工具获取，默认 true */
+  progressiveDisclosure?: boolean;
 }
 
 export interface ConfigEntry extends ProjectConfig {

@@ -10,6 +10,7 @@ import type { Logger } from '../../core/Logger.js';
 import { defaultLogger } from '../../core/Logger.js';
 import type { RoleConfig } from '../../config/defaults.js';
 import { AgentSandbox } from '../kernel/Sandbox.js';
+import { withRetry } from '../../core/RetryPolicy.js';
 
 // ---------------------------------------------------------------------------
 // RoleAgentEntry 接口
@@ -31,6 +32,8 @@ export interface RoleAgentManagerOptions {
   projectPath: string;
   workspaceRoot: string;
   logger?: Logger;
+  /** 角色系统提示词（以独立 system 角色注入，锚定前缀缓存） */
+  systemPrompt?: string;
     callbacks?: {
       onSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
     onQueue?: (queueLength: number) => void;
@@ -48,6 +51,7 @@ export class RoleAgentManager {
   private projectPath: string;
   private workspaceRoot: string;
   private logger: Logger;
+  private systemPrompt: string;
   private callbacks?: RoleAgentManagerOptions['callbacks'];
 
   agents = new Map<string, RoleAgentEntry>();
@@ -59,6 +63,7 @@ export class RoleAgentManager {
     this.projectPath = options.projectPath;
     this.workspaceRoot = options.workspaceRoot;
     this.logger = options.logger || defaultLogger;
+    this.systemPrompt = options.systemPrompt ?? '';
     this.callbacks = options.callbacks;
   }
 
@@ -75,7 +80,23 @@ export class RoleAgentManager {
     const pending = this.pendingStarts.get(roleName);
     if (pending) return pending;
 
-    const promise = this._startRoleAgentInternal(role);
+    // 启动失败重试一次（重试前复查：可能已被并发调用者启动）
+    const promise = withRetry(
+      async () => {
+        const now = this.agents.get(roleName);
+        if (now) return now;
+        return this._startRoleAgentInternal(role);
+      },
+      {
+        maxAttempts: 2,
+        baseDelayMs: 1000,
+        shouldRetry: () => true,
+        onRetry: (attempt, delayMs, err) =>
+          this.logger.warn(
+            `startRoleAgent [${roleName}] failed (attempt ${attempt}/2), retrying in ${delayMs}ms: ${(err as Error)?.message ?? err}`,
+          ),
+      },
+    );
     this.pendingStarts.set(roleName, promise);
 
     try {
@@ -166,6 +187,7 @@ export class RoleAgentManager {
         onNotification,
         onQueue: self.callbacks?.onQueue,
         onSystemMessage: self.callbacks?.onSystemMessage,
+        systemPrompt: this.systemPrompt,
       });
 
       // 6. Build and store entry

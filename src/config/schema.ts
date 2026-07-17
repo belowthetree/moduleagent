@@ -20,6 +20,26 @@ export const AgentConfigSchema = z.object({
   contextWindow: z.number().int().positive().optional(),
 });
 
+export const TruncationConfigSchema = z.object({
+  contextWindow: z.number().int().positive().optional(),
+  truncateRatio: z.number().min(0.1).max(1).optional(),
+  tailTokenBudget: z.number().int().positive().optional(),
+  minKeepMessages: z.number().int().min(1).optional(),
+  snipRatio: z.number().min(0.1).max(1).optional(),
+});
+
+export const CompactionConfigSchema = z.object({
+  enabled: z.boolean(),
+  compactRatio: z.number().min(0.1).max(1).optional(),
+  tailTokenBudget: z.number().int().positive().optional(),
+  minIntervalMs: z.number().int().positive().optional(),
+});
+
+export const CrossModuleConfigSchema = z.object({
+  maxHops: z.number().int().min(1).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+});
+
 // 单条项目配置（无名称）
 export const ProjectConfigSchema = z.object({
   agents: z.object({
@@ -32,6 +52,11 @@ export const ProjectConfigSchema = z.object({
   summarization: z.object({
     enabled: z.boolean(),
   }).optional(),
+  truncation: TruncationConfigSchema.optional(),
+  compaction: CompactionConfigSchema.optional(),
+  crossModule: CrossModuleConfigSchema.optional(),
+  contextHistoryLimit: z.number().int().positive().optional(),
+  progressiveDisclosure: z.boolean().optional(),
 });
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

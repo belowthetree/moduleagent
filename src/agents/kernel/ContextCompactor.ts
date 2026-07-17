@@ -9,6 +9,7 @@
 
 import { generateText } from 'ai';
 import { TokenEstimator } from '../../core/TokenEstimator.js';
+import { withRetry } from '../../core/RetryPolicy.js';
 import type { Logger } from '../../core/Logger.js';
 import { defaultLogger } from '../../core/Logger.js';
 
@@ -61,17 +62,20 @@ export class ContextCompactor {
   private summarizerModel: any; // LanguageModel
   private logger: Logger;
   private lastCompactionTime = 0;
+  private archive?: (records: SlimMsg[]) => void;
 
   constructor(
     config: Partial<CompactionConfig>,
     estimator: TokenEstimator,
     summarizerModel: any,
     logger?: Logger,
+    archive?: (records: SlimMsg[]) => void,
   ) {
     this.config = { ...DEFAULT_COMPACTION_CONFIG, ...config };
     this.estimator = estimator;
     this.summarizerModel = summarizerModel;
     this.logger = logger || defaultLogger;
+    this.archive = archive;
   }
 
   /**
@@ -155,6 +159,15 @@ export class ContextCompactor {
       const summary = await this.summarize(foldable);
       this.lastCompactionTime = now;
 
+      // 被折叠的原始消息存档
+      if (this.archive) {
+        try {
+          this.archive(foldable);
+        } catch {
+          // 存档失败不影响压缩
+        }
+      }
+
       const summaryMsg = {
         role: 'user',
         content: `[对话摘要 — 已压缩 ${foldable.length} 条消息]\n\n${summary}`,
@@ -207,13 +220,16 @@ export class ContextCompactor {
       })
       .join('\n\n');
 
-    const result = await generateText({
-      model: this.summarizerModel,
-      system:
-        '你是一个对话摘要器。将以下 Agent 对话压缩为简洁摘要，保留：关键决策、文件修改、错误和解决方案。用中文输出。',
-      prompt: `请摘要以下对话：\n\n${conversation}`,
-      maxOutputTokens: 1000,
-    });
+    const result = await withRetry(
+      () => generateText({
+        model: this.summarizerModel,
+        system:
+          '你是一个对话摘要器。将以下 Agent 对话压缩为简洁摘要，保留：关键决策、文件修改、错误和解决方案。用中文输出。',
+        prompt: `请摘要以下对话：\n\n${conversation}`,
+        maxOutputTokens: 1000,
+      }),
+      { maxAttempts: 2 },
+    );
 
     return result.text || '(摘要生成失败)';
   }

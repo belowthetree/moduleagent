@@ -53,51 +53,79 @@ export function buildPromptBlocks(options: {
   prompts: { mainPrompt: string; subPrompt: string };
   sessionPrompted: Set<string>;
   cwd?: string;
+  /**
+   * 渐进式披露（默认 true，仅非根模块生效）：
+   * 首条消息仅注入 module.md 摘要，patterns/experience/完整文档
+   * 由模型按需通过 module_context_read_* 工具获取。
+   */
+  progressiveDisclosure?: boolean;
 }): PromptBlock[] {
-  const { moduleName, userText, graph, prompts, sessionPrompted, cwd } = options;
+  const { moduleName, userText, graph, sessionPrompted, cwd } = options;
   const blocks: PromptBlock[] = [];
   const isFirst = !sessionPrompted.has(moduleName);
+  const isRoot = moduleName === graph?.root;
+  // 根模块无 module_context 工具，保持全量注入
+  const progressive = (options.progressiveDisclosure ?? true) && !isRoot;
 
   if (isFirst) {
     sessionPrompted.add(moduleName);
 
     // cwd 提示（非根模块）
-    if (cwd && moduleName !== graph?.root) {
+    if (cwd && !isRoot) {
       blocks.push({ type: 'text', text: `当前工作目录: ${cwd}\n\n` });
     }
 
-    // 系统提示
-    const systemPrompt = moduleName === graph?.root ? prompts.mainPrompt : prompts.subPrompt;
-    if (systemPrompt) {
-      blocks.push({ type: 'text', text: systemPrompt + '\n\n---\n\n' });
-      defaultLogger.info(`[${moduleName}] system prompt: ${systemPrompt.slice(0, 120)}... (${systemPrompt.length} chars)`);
-    }
+    // 注意：系统提示（mainagent/subagent prompt）已通过 Agent.start 的
+    // systemPrompt 参数以独立 system 角色注入，不在此重复（前缀缓存锚定）。
 
     // 模块上下文（module.md 正文）
     const node = graph?.nodes.get(moduleName);
 
     if (node?.definition?.body) {
-      blocks.push({ type: 'text', text: `# Module: ${moduleName}\n\n${node.definition.body}\n\n---\n\n` });
-      defaultLogger.info(`[${moduleName}] module context: ${node.definition.body.slice(0, 120)}... (${node.definition.body.length} chars)`);
+      if (progressive) {
+        blocks.push({ type: 'text', text: buildTier1SummaryBlock(moduleName, node.definition.body) });
+        defaultLogger.info(`[${moduleName}] module context: tier-1 summary (${node.definition.body.length} chars full)`);
+      } else {
+        blocks.push({ type: 'text', text: `# Module: ${moduleName}\n\n${node.definition.body}\n\n---\n\n` });
+        defaultLogger.info(`[${moduleName}] module context: ${node.definition.body.slice(0, 120)}... (${node.definition.body.length} chars)`);
+      }
     }
 
-    // 修改规范（patterns.md）
-    const patternsBlock = loadPatternsBlock(node?.absolutePath);
-    if (patternsBlock) {
-      blocks.push({ type: 'text', text: patternsBlock });
-      defaultLogger.info(`[${moduleName}] patterns injected (${patternsBlock.length} chars)`);
-    }
+    if (!progressive) {
+      // 修改规范（patterns.md）
+      const patternsBlock = loadPatternsBlock(node?.absolutePath);
+      if (patternsBlock) {
+        blocks.push({ type: 'text', text: patternsBlock });
+        defaultLogger.info(`[${moduleName}] patterns injected (${patternsBlock.length} chars)`);
+      }
 
-    // 近期经验（experience.md，最近 3 条）
-    const experienceBlock = loadExperienceBlock(node?.absolutePath);
-    if (experienceBlock) {
-      blocks.push({ type: 'text', text: experienceBlock });
-      defaultLogger.info(`[${moduleName}] experience injected (${experienceBlock.length} chars)`);
+      // 近期经验（experience.md，最近 3 条）
+      const experienceBlock = loadExperienceBlock(node?.absolutePath);
+      if (experienceBlock) {
+        blocks.push({ type: 'text', text: experienceBlock });
+        defaultLogger.info(`[${moduleName}] experience injected (${experienceBlock.length} chars)`);
+      }
     }
   }
 
   blocks.push({ type: 'text', text: userText });
   return blocks;
+}
+
+// ── Tier-1 摘要（渐进式披露） ──
+
+const TIER1_SUMMARY_CHARS = 2000;
+
+function buildTier1SummaryBlock(moduleName: string, body: string): string {
+  const truncated = body.length > TIER1_SUMMARY_CHARS;
+  const summary = truncated ? body.slice(0, TIER1_SUMMARY_CHARS) + '\n\n…(摘要已截断)' : body;
+  return (
+    `# Module: ${moduleName}\n\n${summary}\n\n---\n\n` +
+    `本模块的完整文档按需获取：\n` +
+    `- **修改代码前**，必须先调用 \`module_context_read_patterns\` 读取本模块修改规范\n` +
+    `- 需要完整模块文档（职责/API/依赖）时，调用 \`module_context_read_full\`\n` +
+    `- 需要历史经验教训时，调用 \`module_context_read_experience\`\n\n`
+  );
 }
 
 // ── 经验 / 规范注入 ──
