@@ -62,12 +62,6 @@ export class TuiBridge implements IAgentBridge {
       basePath: repoRoot,
       configDir: path.join(repoRoot, 'config'),
       logger: defaultLogger,
-      onRoleSessionUpdate: (roleName, _sid, notification) => {
-        self._onSubsystemChunk('role', roleName, notification);
-      },
-      onWorkflowSessionUpdate: (agentName, _sid, notification) => {
-        self._onSubsystemChunk('wf', agentName, notification);
-      },
       onCrossContext: (source, target, direction, phase, content) => {
         const arrow = direction === 'sent' ? '→' : '←';
         const label = phase === 'request' ? '请求' : '响应';
@@ -96,15 +90,15 @@ export class TuiBridge implements IAgentBridge {
   private _buildCallbacks(self: TuiBridge): CoreCallbacks {
     return {
       onStreamChunk: (moduleName, text, type) => {
-        // 只追加当前模块的流式输出，避免跨模块通信时子模块输出污染当前视图
-        if (moduleName !== self.core.getCurrentAgent()) return;
+        // 只追加当前目标（模块/角色/工作流）的流式输出，避免跨模块通信时子模块输出污染当前视图
+        if (!self._isCurrent(moduleName)) return;
         const msgType: MessageType = type === 'message' ? 'agent_reply' : 'agent_thought';
         const msgId = type === 'message' ? self.store.replyId : self.store.thoughtId;
         self.store.appendChunk(msgId, text, msgType);
         self.store.syncTo(tuiState);
       },
       onStreamComplete: (moduleName) => {
-        if (moduleName !== self.core.getCurrentAgent()) return;
+        if (!self._isCurrent(moduleName)) return;
         self.store.finalizeStream();
         self.store.syncTo(tuiState);
 
@@ -118,7 +112,7 @@ export class TuiBridge implements IAgentBridge {
       onStreamError: (moduleName, error) => {
         self.core.modules.setAgentStatus(moduleName, 'error');
         self._updateGlobalStatus();
-        if (moduleName === self.core.getCurrentAgent()) {
+        if (self._isCurrent(moduleName)) {
           self.store.addErrorMsg(error);
           self.store.syncTo(tuiState);
         }
@@ -127,7 +121,7 @@ export class TuiBridge implements IAgentBridge {
         self._updateGlobalStatus();
       },
       onMessage: (message: CoreMessage) => {
-        if (message.moduleName && message.moduleName !== self.core.getCurrentAgent()) return;
+        if (message.moduleName && !self._isCurrent(message.moduleName)) return;
         self.store.messages.push({
           ...message,
           msgType: message.role === 'system' ? 'system' : 'agent_reply',
@@ -135,8 +129,8 @@ export class TuiBridge implements IAgentBridge {
         self.store.syncTo(tuiState);
       },
       onToolCall: (moduleName, toolName, toolStatus, toolDetail, toolCallId) => {
-        // 非当前模块的 tool call 不操作 store（避免跨模块通信污染视图）
-        if (moduleName !== self.core.getCurrentAgent()) return;
+        // 非当前目标的 tool call 不操作 store（避免跨模块通信污染视图）
+        if (!self._isCurrent(moduleName)) return;
 
         const isNewTool = toolStatus === 'running' || toolStatus === 'pending';
         if (isNewTool) {
@@ -228,7 +222,7 @@ export class TuiBridge implements IAgentBridge {
         self.store.syncTo(tuiState);
       },
       onCrossModuleMessage: (source, target, direction, phase, content) => {
-        if (source !== self.core.getCurrentAgent()) return;
+        if (!self._isCurrent(source)) return;
         const shortContent = content.length > 100 ? content.slice(0, 100) + '…' : content;
         const statusIcon = phase === 'request' ? '…' : '✓';
         const toolName = direction === 'sent' ? `→ ${target}` : `← ${target}`;
@@ -248,26 +242,14 @@ export class TuiBridge implements IAgentBridge {
     };
   }
 
-  // ── 子系统会话更新 helper ──
+  // ── 当前目标过滤 helper ──
 
-  private _onSubsystemChunk(prefix: string, agentName: string, notification: { update: unknown }): void {
-    if (agentName !== this.core.getCurrentAgent()) return;
-    const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
-    const data = notification.update as Record<string, unknown>;
-    if (update) defaultLogger.info(`[ACP:${prefix}] ${agentName} ← ${update}`);
-    if (update === 'agent_message_chunk') {
-      const block = data.content as { type?: string; text?: string } | undefined;
-      if (block?.text) {
-        this.store.appendChunk(this.store.replyId, block.text, 'agent_reply');
-        this.store.syncTo(tuiState);
-      }
-    } else if (update === 'agent_thought_chunk') {
-      const block = data.content as { type?: string; text?: string } | undefined;
-      if (block?.text) {
-        this.store.appendChunk(this.store.thoughtId, block.text, 'agent_thought');
-        this.store.syncTo(tuiState);
-      }
+  /** 判断 agent 名称是否为当前展示目标：module 目标比 Core 当前模块，role/workflow 目标比 TUI 当前 agent */
+  private _isCurrent(name: string): boolean {
+    if (tuiState.currentTarget() === 'module') {
+      return name === this.core.getCurrentAgent();
     }
+    return name === tuiState.currentAgent();
   }
 
   // -----------------------------------------------------------------------
@@ -358,11 +340,11 @@ export class TuiBridge implements IAgentBridge {
 
       // 路由到正确的子系统
       if (targetType === 'role') {
-        const roleName = this.core.getCurrentAgent();
+        const roleName = tuiState.currentAgent();
         if (!this.core.roles) throw new Error('Role subsystem not initialized');
         await this.core.roles.sendMessage(roleName, text);
       } else if (targetType === 'workflow') {
-        const wfName = this.core.getCurrentAgent();
+        const wfName = tuiState.currentAgent();
         if (!this.core.workflows) throw new Error('Workflow subsystem not initialized');
         await this.core.workflows.executeWorkflow(wfName, text);
       } else {
@@ -456,6 +438,7 @@ export class TuiBridge implements IAgentBridge {
 
     await this.core.setCurrentAgent(name);
     tuiState.setCurrentAgent(name);
+    tuiState.setCurrentTarget('module');
     this.loadedModules.add(name);
     tuiState.setAgentCwd(this.getAgentCwd());
 
@@ -509,8 +492,19 @@ export class TuiBridge implements IAgentBridge {
     await this.core.roles.startRole(rc);
     tuiState.setCurrentAgent(roleName);
     tuiState.setCurrentTarget('role');
+    await this.loadRoleHistory(roleName);
     this._updateActiveCounts();
     defaultLogger.info(`TuiBridge: started role agent [${roleName}]`);
+  }
+
+  /** 加载角色历史消息（角色上下文以 workrole:<name> 键持久化在共享 SessionStore） */
+  async loadRoleHistory(roleName: string): Promise<void> {
+    const msgs = await this.core.modules.loadContext(`workrole:${roleName}`);
+    this.store.setMessages(this.store.formatFromCore(msgs));
+    this.store.syncTo(tuiState);
+    const collapsed = this.store.getCollapsedThoughts();
+    tuiState.setCollapsedThoughts(collapsed);
+    defaultLogger.info(`TuiBridge: loaded ${msgs.length} msgs for role [${roleName}]`);
   }
 
   async sendRoleMessage(roleName: string, text: string): Promise<void> {
@@ -674,6 +668,8 @@ export class TuiBridge implements IAgentBridge {
   // -----------------------------------------------------------------------
 
   async saveSession(moduleName?: string): Promise<void> {
+    // 角色/工作流上下文由各自子系统在 sendMessage 后自行持久化，无需经模块上下文落盘
+    if (tuiState.currentTarget() !== 'module') return;
     const name = moduleName || this.core.getCurrentAgent();
     if (!name) return;
     const coreMsgs = this.store.formatForCore(this.store.messages);

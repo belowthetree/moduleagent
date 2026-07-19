@@ -59,6 +59,15 @@ function buildEntries(): QuickPanelEntry[] {
     },
   });
 
+  result.push({
+    label: '角色选择',
+    keys: 'Ctrl+X  R',
+    description: '查看并切换角色 Agent',
+    action: () => {
+      tuiState.setScreen('roles');
+    },
+  });
+
   return result;
 }
 

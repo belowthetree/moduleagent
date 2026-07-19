@@ -22,7 +22,7 @@ export interface CommandDef {
   requiresArg?: boolean;
 }
 
-export type TuiScreen = 'setup' | 'chat' | 'tree';
+export type TuiScreen = 'setup' | 'chat' | 'tree' | 'roles';
 
 /** 快速面板中的一条入口 */
 export interface QuickPanelEntry {

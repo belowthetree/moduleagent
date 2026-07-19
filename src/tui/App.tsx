@@ -16,6 +16,7 @@ import SetupWizard from './components/SetupWizard.js';
 import ModuleTree from './components/ModuleTree.js';
 import ExperiencePanel from './components/ExperiencePanel.js';
 import QuickPanel from './components/QuickPanel.js';
+import RolePanel from './components/RolePanel.js';
 
 function addSystemMessage(text: string) {
   const msg: ChatMessage = {
@@ -51,8 +52,12 @@ export default function App() {
     }
   });
 
-  // Esc: 关闭模块树 / 经验选择回退
+  // Esc: 关闭模块树 / 角色选择 / 经验选择回退
   useKeyboard((key) => {
+    if (screen() === 'roles') {
+      // 角色选择界面的 Esc 由 RolePanel 自身处理（避免双重响应）
+      return;
+    }
     if (screen() !== 'tree') return;
     if (key.name === 'escape') {
       if (tuiState.showExperiencePanel()) {
@@ -100,6 +105,8 @@ export default function App() {
     <box position="relative" width="100%" height="100%">
       {screen() === 'setup' ? (
         <SetupWizard onComplete={handleSetupComplete} />
+      ) : screen() === 'roles' ? (
+        <RolePanel />
       ) : screen() === 'tree' && tuiState.showExperiencePanel() && tuiState.experienceModuleIndex() >= 0 ? (
         <ExperiencePanel />
       ) : screen() === 'tree' ? (
