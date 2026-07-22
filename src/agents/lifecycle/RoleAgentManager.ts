@@ -34,6 +34,12 @@ export interface RoleAgentManagerOptions {
   logger?: Logger;
   /** 角色系统提示词（以独立 system 角色注入，锚定前缀缓存） */
   systemPrompt?: string;
+  /** 上下文截断配置（透传 kernel，来自主配置） */
+  truncation?: import('../kernel/types.js').AgentLoopConfig['truncation'];
+  /** 在线压缩配置（透传 kernel，来自主配置） */
+  compaction?: import('../kernel/types.js').AgentLoopConfig['compaction'];
+  /** 按 agent 名解析丢弃内容存档目录 */
+  archiveDirFor?: (agentName: string) => string;
     callbacks?: {
       onSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;
     onQueue?: (queueLength: number) => void;
@@ -53,6 +59,9 @@ export class RoleAgentManager {
   private logger: Logger;
   private systemPrompt: string;
   private callbacks?: RoleAgentManagerOptions['callbacks'];
+  private truncation?: RoleAgentManagerOptions['truncation'];
+  private compaction?: RoleAgentManagerOptions['compaction'];
+  private archiveDirFor?: (agentName: string) => string;
 
   agents = new Map<string, RoleAgentEntry>();
   pendingStarts = new Map<string, Promise<RoleAgentEntry>>();
@@ -65,6 +74,9 @@ export class RoleAgentManager {
     this.logger = options.logger || defaultLogger;
     this.systemPrompt = options.systemPrompt ?? '';
     this.callbacks = options.callbacks;
+    this.truncation = options.truncation;
+    this.compaction = options.compaction;
+    this.archiveDirFor = options.archiveDirFor;
   }
 
   // -----------------------------------------------------------------------
@@ -148,11 +160,8 @@ export class RoleAgentManager {
     const roleName = role.name;
 
     try {
-      // 1. Resolve agent config
-      const agentConfig: AgentConfig = {
-        command: role.agents.default.command,
-        args: role.agents.default.args,
-      };
+      // 1. Resolve agent config（透传角色级 provider/apiKey/baseUrl/model/fastModel/contextWindow）
+      const agentConfig = this.resolveRoleConfig(role);
 
       // 2. Compute visibility from visible module paths
       const allowed = role.visibleModulePaths.length > 0
@@ -188,6 +197,9 @@ export class RoleAgentManager {
         onQueue: self.callbacks?.onQueue,
         onSystemMessage: self.callbacks?.onSystemMessage,
         systemPrompt: this.systemPrompt,
+        truncation: this.truncation,
+        compaction: this.compaction,
+        archiveDir: this.archiveDirFor?.(`workrole:${roleName}`),
       });
 
       // 6. Build and store entry
@@ -211,9 +223,14 @@ export class RoleAgentManager {
   // -----------------------------------------------------------------------
 
   resolveRoleConfig(role: RoleConfig): AgentConfig {
+    const def = role.agents.default;
     return {
-      command: role.agents.default.command,
-      args: role.agents.default.args,
+      provider: def.provider,
+      apiKey: def.apiKey,
+      baseUrl: def.baseUrl,
+      model: def.model,
+      fastModel: def.fastModel,
+      contextWindow: def.contextWindow,
     };
   }
 }

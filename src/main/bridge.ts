@@ -4,10 +4,10 @@
 // 职责（精简后）：
 //   1. 创建 ModuleAgentCore + 配置 PostSendHooks
 //   2. 构建 HandlerContext（仅 IPC/传输层资源）
-//   3. 委托 10 个领域 handler 注册全部 ~46 个 IPC 通道
+//   3. 委托 8 个领域 handler 注册全部 37 个 IPC 通道
 //
 // 状态管理（AgentStateManager、agentStatus、sendLock、prompts）已移入 Core 层。
-// Post-send 逻辑（summarizer + workspace diff）通过 PostSendHooks 注入 Core。
+// Post-send 逻辑（summarizer）通过 PostSendHooks 注入 Core。
 // ============================================================================
 
 import path from 'path';
@@ -29,7 +29,6 @@ import { registerContextHandlers } from './handlers/contextHandlers.js';
 import { registerConfigHandlers } from './handlers/configHandlers.js';
 import { registerRoleHandlers } from './handlers/roleHandlers.js';
 import { registerWorkflowHandlers } from './handlers/workflowHandlers.js';
-import { registerMigrationHandlers } from './handlers/migrationHandlers.js';
 import { registerKnowledgeHandlers } from './handlers/knowledgeHandlers.js';
 
 // ============================================================================
@@ -39,14 +38,12 @@ import { registerKnowledgeHandlers } from './handlers/knowledgeHandlers.js';
 //   ElectronBridge (~80行)  ← 编排
 //     ├── dialogHandlers       ← 1 通道
 //     ├── projectHandlers      ← 3 通道
-//     ├── agentHandlers        ← 6 通道（委托给 core.modules.sendMessage）
+//     ├── agentHandlers        ← 3 通道（委托给 core.modules.sendMessage）
 //     ├── contextHandlers      ← 3 通道（委托给 core.modules）
 //     ├── configHandlers       ← 2 通道
-//     ├── roleHandlers         ← 9 通道（委托给 core.roles.sendMessage）
-//     ├── workflowHandlers     ← 9 通道
-//     ├── migrationHandlers    ← 2 通道
-//     ├── knowledgeHandlers    ← 5 通道
-//     └── workspaceDiffHandlers← 5 通道
+//     ├── roleHandlers         ← 10 通道（委托给 core.roles.sendMessage）
+//     ├── workflowHandlers     ← 10 通道
+//     └── knowledgeHandlers    ← 5 通道
 //
 // HandlerContext 从 14 字段缩减至 6 字段。
 // ============================================================================
@@ -153,7 +150,6 @@ export class ElectronBridge implements IAgentBridge {
     registerConfigHandlers(this.handlerCtx);
     registerRoleHandlers(this.handlerCtx);
     registerWorkflowHandlers(this.handlerCtx);
-    registerMigrationHandlers(this.handlerCtx);
     registerKnowledgeHandlers(this.handlerCtx);
   }
 
@@ -168,7 +164,8 @@ export class ElectronBridge implements IAgentBridge {
   }
 
   async dispose(): Promise<void> {
-    this.core.dispose();
+    // await core.dispose()：退出前等待进行中的 context 保存完成
+    await this.core.dispose();
   }
 
   async sendMessage(moduleName: string, text: string): Promise<{ result?: { reply: string }; error?: string }> {

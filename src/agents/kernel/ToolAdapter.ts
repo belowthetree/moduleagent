@@ -7,6 +7,37 @@ import type { Tool, ToolInputSchema } from './types.js';
 import { defaultLogger } from '../../core/Logger.js';
 import { ToolOutputTruncator } from './ToolOutputTruncator.js';
 
+// ── 日志脱敏 ──
+
+/** 敏感参数键名（值在日志中替换为 ***） */
+const SENSITIVE_KEY = /api[-_]?key|token|secret|password/i;
+/** 日志中参数序列化的最大长度 */
+const PARAMS_LOG_MAX_CHARS = 500;
+
+/** 递归脱敏：敏感键的值替换为 ***（限制深度防止过深遍历） */
+function maskSensitive(value: unknown, depth = 0): unknown {
+  if (value === null || typeof value !== 'object' || depth > 3) return value;
+  if (Array.isArray(value)) return value.map((v) => maskSensitive(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = SENSITIVE_KEY.test(k) ? '***' : maskSensitive(v, depth + 1);
+  }
+  return out;
+}
+
+/** 参数日志序列化：脱敏 + 截断（避免 file_write 完整内容写入日志） */
+function formatParamsForLog(input: Record<string, unknown>): string {
+  let json: string;
+  try {
+    json = JSON.stringify(maskSensitive(input));
+  } catch {
+    json = String(input);
+  }
+  return json.length > PARAMS_LOG_MAX_CHARS
+    ? json.slice(0, PARAMS_LOG_MAX_CHARS) + '…'
+    : json;
+}
+
 export function convertToolToAISDK(t: Tool): Record<string, unknown> {
   const schema = t.inputSchema as ToolInputSchema;
   return {
@@ -30,7 +61,7 @@ export function convertToolToAISDK(t: Tool): Record<string, unknown> {
           }
           return result.content;
         } catch (err) {
-          defaultLogger.error(`[${t.name}] EXCEPTION in execute: ${(err as Error).message} | params=${JSON.stringify(input)}`);
+          defaultLogger.error(`[${t.name}] EXCEPTION in execute: ${(err as Error).message} | params=${formatParamsForLog(input)}`);
           throw err;
         }
       },

@@ -9,6 +9,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import os from 'os';
 import { IpcChannel } from '../../protocol/IpcChannels.js';
+import { sanitizeFileName } from './fileNameSanitize.js';
 import type { HandlerContext } from './HandlerContext.js';
 
 export function registerWorkflowHandlers(ctx: HandlerContext): void {
@@ -69,7 +70,9 @@ export function registerWorkflowHandlers(ctx: HandlerContext): void {
     const projectRoot = ctx.core.getProjectRoot();
     if (!projectRoot) return { success: false, error: 'no project root' };
     try {
-      const wfDir = path.join(projectRoot, '.module-agent', 'workflow', name);
+      // 清洗渲染层输入，防 '../' 路径穿越
+      const safeName = sanitizeFileName(name);
+      const wfDir = path.join(projectRoot, '.module-agent', 'workflow', safeName);
       const stepDir = path.join(wfDir, 'step1');
       await fs.ensureDir(stepDir);
       const stepMd = [
@@ -94,12 +97,14 @@ export function registerWorkflowHandlers(ctx: HandlerContext): void {
     const projectRoot = ctx.core.getProjectRoot();
     if (!projectRoot) return { success: false };
     try {
-      const wfDir = path.join(projectRoot, '.module-agent', 'workflow', name);
+      // 清洗渲染层输入，防 '../' 路径穿越
+      const safeName = sanitizeFileName(name);
+      const wfDir = path.join(projectRoot, '.module-agent', 'workflow', safeName);
       if (fs.existsSync(wfDir)) {
         await fs.remove(wfDir);
       }
       // Also clean up state file
-      const stateFile = path.join(projectRoot, '.module-agent', 'workflow', `${name}.state.json`);
+      const stateFile = path.join(projectRoot, '.module-agent', 'workflow', `${safeName}.state.json`);
       if (fs.existsSync(stateFile)) await fs.promises.unlink(stateFile);
       return { success: true };
     } catch (err) {
@@ -111,7 +116,8 @@ export function registerWorkflowHandlers(ctx: HandlerContext): void {
     const projectRoot = ctx.core.getProjectRoot();
     if (!projectRoot) return { success: false };
     try {
-      const filePath = path.join(projectRoot, '.module-agent', 'workflow', wfName, stepName, 'STEP.md');
+      // 清洗渲染层输入，防 '../' 路径穿越
+      const filePath = path.join(projectRoot, '.module-agent', 'workflow', sanitizeFileName(wfName), sanitizeFileName(stepName), 'STEP.md');
       await fs.ensureDir(path.dirname(filePath));
       await fs.promises.writeFile(filePath, content, 'utf-8');
       ctx.logger.info(`workflow:stepSave [${wfName}/${stepName}]`);
@@ -125,7 +131,8 @@ export function registerWorkflowHandlers(ctx: HandlerContext): void {
     const projectRoot = ctx.core.getProjectRoot();
     if (!projectRoot) return { success: false };
     try {
-      const stepDir = path.join(projectRoot, '.module-agent', 'workflow', wfName, stepName);
+      // 清洗渲染层输入，防 '../' 路径穿越
+      const stepDir = path.join(projectRoot, '.module-agent', 'workflow', sanitizeFileName(wfName), sanitizeFileName(stepName));
       if (fs.existsSync(stepDir)) await fs.remove(stepDir);
       return { success: true };
     } catch (err) {
@@ -137,7 +144,8 @@ export function registerWorkflowHandlers(ctx: HandlerContext): void {
     const projectRoot = ctx.core.getProjectRoot();
     if (!projectRoot) return { success: false, error: 'no project root' };
     try {
-      const wfDir = path.join(projectRoot, '.module-agent', 'workflow', wfName);
+      // 清洗渲染层输入，防 '../' 路径穿越
+      const wfDir = path.join(projectRoot, '.module-agent', 'workflow', sanitizeFileName(wfName));
       // Find next step number
       let maxN = 0;
       if (fs.existsSync(wfDir)) {

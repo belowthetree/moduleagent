@@ -3,14 +3,15 @@
     {
       "agents": {
         "default": {
-          "command": "opencode",
-          "args": [
-            "acp"
-          ]
+          "model": "claude-sonnet-4-20250514",
+          "provider": "anthropic"
         }
       },
       "exclude": [],
-      "projectPath": "E:\\Project\\picode",
+      "projectPath": "E:\\Project\\ModuleAgent",
+      "summarization": {
+        "enabled": false
+      },
       "name": "default"
     }
   ],
@@ -22,10 +23,8 @@
       "visibleModulePaths": [],
       "agents": {
         "default": {
-          "command": "opencode",
-          "args": [
-            "acp"
-          ]
+          "provider": "anthropic",
+          "model": "claude-sonnet-4-20250514"
         }
       },
       "knowledgeRefs": [

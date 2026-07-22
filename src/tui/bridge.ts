@@ -62,6 +62,7 @@ export class TuiBridge implements IAgentBridge {
       basePath: repoRoot,
       configDir: path.join(repoRoot, 'config'),
       logger: defaultLogger,
+      ignoreConfigProjectPath: true,
       onCrossContext: (source, target, direction, phase, content) => {
         const arrow = direction === 'sent' ? '→' : '←';
         const label = phase === 'request' ? '请求' : '响应';
@@ -261,6 +262,26 @@ export class TuiBridge implements IAgentBridge {
     this.configDir = getProjectConfigDir(projectRoot);
     ensureConfigFiles(path.join(basePath, 'config'), projectRoot);
 
+    // 首次进入：无根模块时自动创建 stub，保证 init 后有 agent 可对话
+    const moduleDir = path.join(projectRoot, '.module-agent', 'module');
+    const rootModulePath = path.join(moduleDir, 'module.md');
+    let rootStubCreated = false;
+    if (!fs.existsSync(rootModulePath)) {
+      try {
+        fs.ensureDirSync(moduleDir);
+        const rootModuleName = path.basename(projectRoot);
+        fs.writeFileSync(
+          rootModulePath,
+          `---\nname: ${rootModuleName}\ndescription: ${rootModuleName} project root module\n---\n\n# ${rootModuleName}\n\n## Module Description\n\nTo be filled\n`,
+          'utf-8',
+        );
+        rootStubCreated = true;
+        defaultLogger.info(`TuiBridge: created root module stub at ${rootModulePath}`);
+      } catch (err) {
+        defaultLogger.warn(`TuiBridge: failed to create root module stub: ${(err as Error).message}`);
+      }
+    }
+
     try {
       const workspaceConfig = await ConfigLoader.load(projectRoot);
       const config = ConfigLoader.getDefaultConfig(workspaceConfig);
@@ -311,6 +332,17 @@ export class TuiBridge implements IAgentBridge {
       } catch (err) {
         defaultLogger.warn(`TuiBridge: auto-start agent [${currentAgent}] failed: ${(err as Error).message}`);
       }
+    }
+
+    if (rootStubCreated) {
+      const msg: ChatMessage = {
+        id: `sys-${Date.now()}`,
+        role: 'system',
+        msgType: 'system',
+        content: `已创建根模块 "${path.basename(projectRoot)}"。可直接对话让 agent 分析项目并生成子模块文档，完成后用 /rescan 刷新模块树。`,
+        time: new Date().toLocaleTimeString(),
+      };
+      tuiState.setMessages([...tuiState.messages(), msg]);
     }
 
     return result;
@@ -469,7 +501,18 @@ export class TuiBridge implements IAgentBridge {
         name: r.name,
         description: r.description,
         visibleModulePaths: r.visibleModulePaths,
-        agents: { default: { command: r.agents.default.command || '', args: r.agents.default.args || [] } },
+        agents: {
+          default: {
+            command: r.agents.default.command || '',
+            args: r.agents.default.args || [],
+            provider: r.agents.default.provider,
+            apiKey: r.agents.default.apiKey,
+            baseUrl: r.agents.default.baseUrl,
+            model: r.agents.default.model,
+            fastModel: r.agents.default.fastModel,
+            contextWindow: r.agents.default.contextWindow,
+          },
+        },
         knowledgeRefs: r.knowledgeRefs,
       }));
     } catch {
@@ -487,7 +530,18 @@ export class TuiBridge implements IAgentBridge {
       name: roleConfig.name,
       description: roleConfig.description,
       visibleModulePaths: roleConfig.visibleModulePaths,
-      agents: { default: { command: roleConfig.agents.default.command || '', args: roleConfig.agents.default.args || [] } },
+      agents: {
+        default: {
+          command: roleConfig.agents.default.command || '',
+          args: roleConfig.agents.default.args || [],
+          provider: roleConfig.agents.default.provider,
+          apiKey: roleConfig.agents.default.apiKey,
+          baseUrl: roleConfig.agents.default.baseUrl,
+          model: roleConfig.agents.default.model,
+          fastModel: roleConfig.agents.default.fastModel,
+          contextWindow: roleConfig.agents.default.contextWindow,
+        },
+      },
     };
     await this.core.roles.startRole(rc);
     tuiState.setCurrentAgent(roleName);

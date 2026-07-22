@@ -66,7 +66,10 @@ export interface ConfigEntry extends ProjectConfig {
 export interface RoleAgentConfig {
   provider?: string;
   apiKey?: string;
+  baseUrl?: string;
   model?: string;
+  fastModel?: string;
+  contextWindow?: number;
   command?: string;
   args?: string[];
 }

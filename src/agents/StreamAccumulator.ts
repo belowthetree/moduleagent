@@ -56,7 +56,6 @@ export class SessionStore {
   private readonly maxMessages: number;
   private readonly maxBytes: number;
   private readonly streamState: Map<string, StreamAccumulator>;
-  private readonly contextMap: Map<string, ChatMsg[]>;
 
   constructor(contextBaseDir: string, options: SessionStoreOptions = {}) {
     this.contextBaseDir = contextBaseDir;
@@ -64,7 +63,6 @@ export class SessionStore {
     this.maxMessages = options.maxMessages ?? DEFAULT_MAX_MESSAGES;
     this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
     this.streamState = new Map();
-    this.contextMap = new Map();
   }
 
   // ── Context directory ──
@@ -85,6 +83,14 @@ export class SessionStore {
   }
 
   startStream(moduleName: string): void {
+    const existing = this.streamState.get(moduleName);
+    if (existing && !existing.finished) {
+      // 不静默丢弃：替换活跃流会丢掉进行中的内容，调用方需感知
+      defaultLogger.warn(
+        `[SessionStore] startStream: [${moduleName}] 已有活跃流` +
+        `（reply=${existing.reply.length} chars），旧累积器将被替换，进行中的内容可能丢失`,
+      );
+    }
     this.streamState.set(moduleName, createStreamAccumulator());
   }
 
@@ -266,6 +272,43 @@ export class SessionStore {
         defaultLogger.warn(`[SessionStore] loadContext failed for [${moduleName}]: ${(err as Error).message}`);
       }
       return [];
+    }
+  }
+
+  /**
+   * 跨模块调用上下文直接落盘（不经过活跃流累积器）。
+   * routeCall 完成后调用：跨模块调用的回复累积在调用方局部 buffer，
+   * 这里只负责把「请求 + 回复」两条消息追加进目标模块的上下文文件，
+   * 因此不会与用户对话的流式累积器竞争。
+   */
+  async appendCrossContext(moduleName: string, requestText: string, responseText: string): Promise<void> {
+    try {
+      const timeStr = new Date().toLocaleTimeString();
+      const baseId = 'x' + Date.now().toString(36);
+      const userMsg: ChatMsg = {
+        id: baseId,
+        role: 'user',
+        content: requestText,
+        thinking: '',
+        time: timeStr,
+        status: 'sent',
+        moduleName,
+      };
+      const agentMsg: ChatMsg = {
+        id: baseId + 'r',
+        role: 'agent',
+        content: responseText || '(无文本回复)',
+        thinking: '',
+        timeline: [],
+        time: timeStr,
+        status: 'completed',
+        moduleName,
+      };
+      const existing = await this.loadContext(moduleName);
+      existing.push(userMsg, agentMsg);
+      await this.saveContext(moduleName, existing);
+    } catch (err) {
+      defaultLogger.warn(`[SessionStore] appendCrossContext failed for [${moduleName}]: ${(err as Error).message}`);
     }
   }
 

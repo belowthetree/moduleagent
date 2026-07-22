@@ -49,8 +49,8 @@ export const useConfigStore = defineStore('config', () => {
     localStorage.setItem(LS_KEYS.autoDocUpdate, String(autoDocUpdate.value));
   }
 
-  async function saveToProject(projectRoot: string): Promise<{ success: boolean }> {
-    return window.moduleAgent.saveAgentConfig(
+  async function saveToProject(projectRoot: string): Promise<{ success: boolean; error?: string }> {
+    const result = await window.moduleAgent.saveAgentConfig(
       projectRoot,
       provider.value,
       apiKey.value,
@@ -59,6 +59,11 @@ export const useConfigStore = defineStore('config', () => {
       projectPath.value,
       autoDocUpdate.value,
     );
+    // 主进程校验失败会拒绝写盘并返回 error，抛出由调用方（SetupView/SettingsDialog）展示
+    if (!result.success) {
+      throw new Error(result.error || '配置保存失败');
+    }
+    return result;
   }
 
   async function loadFromProject(projectRoot: string): Promise<void> {

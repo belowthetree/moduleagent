@@ -31,7 +31,7 @@ export function executeCommand(input: string): void {
       const moduleHelp = [
         '/list            — 列出所有模块',
         '/tree            — 显示模块树形结构 (含状态)',
-        '/rescan          — 重新扫描模块',
+        '/rescan          — 重新扫描模块（agent 生成 module.md 后刷新模块树）',
         '/get <name>      — 查看模块详情',
         '/module <name>   — 切换模块',
         '/clear           — 清空上下文',
@@ -185,7 +185,7 @@ export function executeCommand(input: string): void {
 
       const modes: { value: string; name: string; current: boolean }[] = service.getAgentModes?.() ?? [];
       if (modes.length === 0) {
-        addSystemMsg('当前 agent 无可用模式。');
+        addSystemMsg('当前 agent 无可用模式（内核模式不支持运行时 mode 切换）。');
         return;
       }
 
@@ -214,7 +214,7 @@ export function executeCommand(input: string): void {
       }
       addSystemMsg(`正在全局切换模式到 ${mode.name}...`);
       service.setGlobalDefaultMode?.(arg).then(() => {
-        addSystemMsg(`默认模式已设为 "${mode.name}"，已应用到所有运行中的 agent。`);
+        addSystemMsg(`默认模式已设为 "${mode.name}"（已写入全局配置，对后续启动的 agent 生效；内核模式下运行中的 agent 不受影响）。`);
       }).catch((err: Error) => {
         addSystemMsg(`切换失败: ${err.message}`);
       });
@@ -227,7 +227,7 @@ export function executeCommand(input: string): void {
 
       const models: { value: string; name: string; current: boolean }[] = service.getAgentModels?.() ?? [];
       if (models.length === 0) {
-        addSystemMsg('当前 agent 无可用模型列表（agent 未上报 configOptions.model）。');
+        addSystemMsg('当前 agent 无可用模型列表（内核模式下模型来自 .module-agent.json 配置，可用 /setup 修改）。');
         return;
       }
 
@@ -256,7 +256,7 @@ export function executeCommand(input: string): void {
       }
       addSystemMsg(`正在全局切换模型到 ${model.name}...`);
       service.setGlobalDefaultModel?.(arg).then(() => {
-        addSystemMsg(`默认模型已设为 "${model.name}"，已应用到所有运行中的 agent。`);
+        addSystemMsg(`默认模型已设为 "${model.name}"（已写入全局配置，对后续启动的 agent 生效；内核模式下运行中的 agent 不受影响）。`);
       }).catch((err: Error) => {
         addSystemMsg(`切换失败: ${err.message}`);
       });

@@ -5,6 +5,7 @@
 
 import { createMemo } from "solid-js";
 import { useRenderer } from "@opentui/solid";
+import { TextAttributes } from "@opentui/core";
 import { tuiState } from "../state.js";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -49,7 +50,7 @@ export default function StatusBar() {
 
   return (
     <box flexDirection="row" height={1} padding={0}>
-      <text fg="#777777" dim>{barText()}</text>
+      <text fg="#777777" attributes={TextAttributes.DIM}>{barText()}</text>
     </box>
   );
 }

@@ -32,6 +32,12 @@ export interface RoleAgentSubsystemOptions {
   stateManager?: SessionStore;
   /** Post-send hook (summarizer + workspace diff) */
   onPostSend?: (roleName: string, msgs: ChatMsg[], entry: RoleAgentEntry) => void;
+  /** 上下文截断配置（透传 kernel，来自主配置） */
+  truncation?: import('../agents/kernel/types.js').AgentLoopConfig['truncation'];
+  /** 在线压缩配置（透传 kernel，来自主配置） */
+  compaction?: import('../agents/kernel/types.js').AgentLoopConfig['compaction'];
+  /** 按 agent 名解析丢弃内容存档目录 */
+  archiveDirFor?: (agentName: string) => string;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +85,9 @@ export class RoleAgentSubsystem {
       workspaceRoot: options.workspaceRoot,
       logger: this.logger,
       systemPrompt: this.rolePrompt,
+      truncation: options.truncation,
+      compaction: options.compaction,
+      archiveDirFor: options.archiveDirFor,
       callbacks: {
         onSessionUpdate(roleName, sessionId, notification) {
           const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
@@ -224,6 +233,27 @@ export class RoleAgentSubsystem {
 
     await entry.agent.cancel();
     this.logger.info(`role:cancel [${roleName}] → stopped`);
+  }
+
+  /**
+   * 清空角色上下文：运行中 agent 的内存历史 + 首条消息标记 + 持久化文件。
+   * 清空后下一条消息会重新注入 knowledgeRefs（sessionPrompted 已重置）。
+   */
+  async clearRoleContext(roleName: string): Promise<void> {
+    const entry = this.manager.getAgent(roleName);
+    if (entry) {
+      try {
+        await entry.agent.clearContext();
+        this.logger.info(`role:clearContext [${roleName}] kernel context cleared`);
+      } catch (err) {
+        // clearContext 失败回退：停止 agent，下次使用时自动重启
+        this.logger.warn(`role:clearContext [${roleName}] failed, stopping agent: ${(err as Error).message}`);
+        await this.manager.stopRoleAgent(roleName);
+      }
+    }
+    this.sessionPrompted.delete(roleName);
+    await this._stateManager?.clearContext(`workrole:${roleName}`);
+    this.logger.info(`role:clearContext [${roleName}] done`);
   }
 
   // -----------------------------------------------------------------------

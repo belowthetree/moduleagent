@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
@@ -7,7 +7,16 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     setupFiles: ['./vitest.setup.ts'],
-    exclude: ['e2e/**', 'node_modules/**'],
+    // 保留 vitest 默认排除（含 **/node_modules/**），追加 e2e 与各工具产物目录
+    exclude: [
+      ...configDefaults.exclude,
+      'e2e/**',
+      '.opencode/**',
+      '.claude/**',
+      '.sisyphus/**',
+      '.reasonix/**',
+      '.module-agent/**',
+    ],
   },
   resolve: {
     alias: {

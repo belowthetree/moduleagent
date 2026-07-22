@@ -56,10 +56,8 @@ export function createPostSendHook(opts: PostSendHookOptions) {
 
     // ── 1. Summarizer（触发即忘，后台执行） ──
     if (opts.getSummarizationEnabled() && opts.summarizer) {
-      const agentConfig = {
-        command: entry.agent.config.command,
-        args: entry.agent.config.args,
-      };
+      // 透传完整 agent 配置（provider/apiKey/baseUrl/model 等），内核模式需要
+      const agentConfig = { ...entry.agent.config };
       opts.logger.info(`PostSend: triggering summarizer for [${moduleName}]`);
       opts.summarizer.summarize({
         moduleName,

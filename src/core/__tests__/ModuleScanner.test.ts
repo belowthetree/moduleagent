@@ -78,8 +78,28 @@ describe('ModuleScanner', () => {
       const result = await ModuleScanner.scan({ projectRoot: root });
 
       expect(result).toHaveLength(3);
+      // 模块标识使用相对路径（跨模块解析、module.md 引用均以相对路径为准），
+      // 根模块（relativePath='.'）使用 frontmatter name
       const names = result.map((d) => d.name).sort();
-      expect(names).toEqual(['auth', 'payments', 'root']);
+      expect(names).toEqual(['packages/auth', 'packages/payments', 'root']);
+    });
+
+    it('normalizes path separators in module names (Windows backslash safe)', async () => {
+      const root = createProject({
+        'module.md': '---\nname: root\ndescription: Root\n---\n\n# Root',
+        'packages/auth/module.md': '---\nname: auth\ndescription: Auth\n---\n\n# Auth',
+        'deeply/nested/mod/module.md': '---\nname: mod\ndescription: Mod\n---\n\n# Mod',
+      });
+
+      const result = await ModuleScanner.scan({ projectRoot: root });
+
+      // 任何平台（含 Windows）模块名与 relativePath 都不得含反斜杠
+      for (const d of result) {
+        expect(d.name).not.toContain('\\');
+        expect(d.relativePath).not.toContain('\\');
+      }
+      const names = result.map((d) => d.name).sort();
+      expect(names).toEqual(['deeply/nested/mod', 'packages/auth', 'root']);
     });
 
     it('excludes builtin-excluded directories', async () => {

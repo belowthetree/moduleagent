@@ -15,16 +15,12 @@
     "declarationMap": true,
     "sourceMap": true,
     "isolatedModules": true,
-    "jsx": "react-jsx",
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid",
     "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "composite": true
+    "noImplicitOverride": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist", "src/main/**/*", "src/preload/**/*", "src/renderer/**/*", "src/types/**/*"],
-  "references": [
-    { "path": "./tsconfig.node.json" },
-    { "path": "./tsconfig.web.json" }
-  ]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/types/**/*.ts"],
+  "exclude": ["node_modules", "dist", "out", "src/main/**/*", "src/preload/**/*", "src/renderer/**/*"]
 }

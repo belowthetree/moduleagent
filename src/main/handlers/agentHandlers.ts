@@ -1,6 +1,6 @@
 // ============================================================================
 // agentHandlers — 模块 Agent IPC handler
-// 注册通道: agent:start / agent:send / agent:cancel / agent:stop / agent:isRunning / agent:getRunning
+// 注册通道: agent:start / agent:send / agent:cancel
 //
 // 状态管理（锁、流累积、上下文保存、状态追踪）已移入 Core 层。
 // Handler 仅负责 IPC 编解码 + 委托给 core.modules。
@@ -39,23 +39,5 @@ export function registerAgentHandlers(ctx: HandlerContext): void {
     }
     const acc = ctx.core.modules.cancelStream(moduleName);
     return { accumulated: acc };
-  });
-
-  ipcMain.handle(IpcChannel.Agent.Stop, async (_event, moduleName: string) => {
-    const entry = ctx.core.modules.getAgent(moduleName);
-    if (entry) {
-      entry.agent.stop();
-      ctx.core.modules.deleteAgentStatus(moduleName);
-    }
-    ctx.core.modules.stopStream(moduleName);
-    return {};
-  });
-
-  ipcMain.handle(IpcChannel.Agent.IsRunning, (_event, moduleName: string) => {
-    return ctx.core.modules.getAgent(moduleName) !== undefined;
-  });
-
-  ipcMain.handle(IpcChannel.Agent.GetRunning, () => {
-    return ctx.core.modules.listAgentStatuses();
   });
 }

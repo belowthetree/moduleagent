@@ -7,7 +7,7 @@
 import { createSignal } from 'solid-js';
 import { useKeyboard, useRenderer } from '@opentui/solid';
 import { tuiState } from '../state.js';
-import type { KeyEvent } from '@opentui/core';
+import { TextAttributes, type KeyEvent } from '@opentui/core';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -112,7 +112,7 @@ export default function QuickPanel() {
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      <input width={0} height={0} visible={false} value="" keyBindings={[]} />
+      <input width={0} visible={false} value="" keyBindings={[]} />
 
       {/* 暗色遮罩 + 垂直居中 */}
       <box flexDirection="column" width="100%" height="100%" alignSelf="center" justifyContent="center">
@@ -121,12 +121,12 @@ export default function QuickPanel() {
           width={panelWidth}
           alignSelf="center"
           backgroundColor="#161b22"
-          borderStyle="round"
+          borderStyle="rounded"
           borderColor="#58a6ff"
           padding={1}
         >
-          <text fg="#58a6ff" bold>快捷面板</text>
-          <text fg="#555555" dim height={1}>——————————————</text>
+          <text fg="#58a6ff" attributes={TextAttributes.BOLD}>快捷面板</text>
+          <text fg="#555555" attributes={TextAttributes.DIM} height={1}>——————————————</text>
 
           {(() => {
             const sel = selectedIdx();
@@ -137,13 +137,13 @@ export default function QuickPanel() {
                   <text width={2} fg={isSelected ? '#58a6ff' : '#555555'}>
                     {isSelected ? '▸' : ' '}
                   </text>
-                  <text width={18} fg={isSelected ? '#58a6ff' : '#c9d1d9'} bold={isSelected}>
+                  <text width={18} fg={isSelected ? '#58a6ff' : '#c9d1d9'} attributes={isSelected ? TextAttributes.BOLD : TextAttributes.NONE}>
                     {entry.label}
                   </text>
-                  <text width={14} fg="#FFA07A" dim>
+                  <text width={14} fg="#FFA07A" attributes={TextAttributes.DIM}>
                     {entry.keys}
                   </text>
-                  <text fg="#888888" dim>
+                  <text fg="#888888" attributes={TextAttributes.DIM}>
                     {entry.description}
                   </text>
                 </box>
@@ -152,7 +152,7 @@ export default function QuickPanel() {
           })()}
 
           <text height={1}> </text>
-          <text fg="#555555" dim height={1}>
+          <text fg="#555555" attributes={TextAttributes.DIM} height={1}>
             ↑↓ 选择  Enter 打开  Esc 关闭
           </text>
         </box>

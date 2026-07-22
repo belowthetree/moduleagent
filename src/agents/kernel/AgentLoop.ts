@@ -6,13 +6,16 @@
 //   P0 — TokenEstimator（token 校准）+ HistoryTruncator（滑动窗口截断）
 //   P2 — ModelRouter（快/慢模型路由）+ ContextCompactor（在线压缩）
 //   P3 — StormBreaker（死循环检测）
+//
+// 消息历史全程保持 ai-sdk ModelMessage[] 结构：
+// response.messages 只含本次调用新生成的消息，必须追加而非替换。
 // ---------------------------------------------------------------------------
 
-import { generateText, stepCountIs } from 'ai';
+import { generateText, stepCountIs, type ModelMessage } from 'ai';
 import { resolveLanguageModel } from './ProviderResolver.js';
 import { convertToolsToAISDK } from './ToolAdapter.js';
 import { TokenEstimator } from '../../core/TokenEstimator.js';
-import { HistoryTruncator, DEFAULT_TRUNCATION_CONFIG } from './HistoryTruncator.js';
+import { HistoryTruncator, DEFAULT_TRUNCATION_CONFIG, slimMessages } from './HistoryTruncator.js';
 import { ModelRouter } from './ModelRouter.js';
 import { ContextCompactor, DEFAULT_COMPACTION_CONFIG } from './ContextCompactor.js';
 import { StormBreaker } from './StormBreaker.js';
@@ -55,20 +58,13 @@ export interface SendResult {
 
 const DEFAULT_MAX_TOOL_ROUNDS = 15;
 
-// ── 内部 slim 消息类型 ──
-
-interface SlimMsg {
-  role: string;
-  content: string;
-}
-
 // ── AgentLoop ──
 
 export class AgentLoop {
   // ── 核心状态 ──
   private systemPrompt: string;
   private maxToolRounds: number;
-  private messages: any[] = [];
+  private messages: ModelMessage[] = [];
   private logger: Logger;
   private events: LoopEvents;
   private _phase: LoopPhase = 'idle' as LoopPhase;
@@ -94,6 +90,9 @@ export class AgentLoop {
   // ── 配置 ──
   private contextWindow: number;
   private contextUsageNotified = false;
+  /** LLM 采样参数（仅当配置存在时传递，避免 undefined 覆盖 SDK 默认值） */
+  private maxOutputTokens?: number;
+  private temperature?: number;
 
   constructor(config: AgentLoopConfig, events: LoopEvents, logger?: Logger) {
     // 基础赋值（logger 必须先赋值，后续代码可能引用）
@@ -120,6 +119,8 @@ export class AgentLoop {
     this.maxToolRounds = config.maxToolRounds ?? DEFAULT_MAX_TOOL_ROUNDS;
     this.events = events;
     this._sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.maxOutputTokens = config.kernelConfig.maxTokens;
+    this.temperature = config.kernelConfig.temperature;
 
     // 工具：按名称排序以保证 schema 字节级稳定（P1 缓存友好）
     const sortedTools = [...config.tools].sort((a, b) =>
@@ -208,7 +209,7 @@ export class AgentLoop {
     return this._phase;
   }
 
-  get conversationHistory(): any[] {
+  get conversationHistory(): ModelMessage[] {
     return [...this.messages];
   }
 
@@ -255,13 +256,8 @@ export class AgentLoop {
       // ── Step 1: 尝试在线压缩（P2，仅在启用时） ──
       let compactionLog = '';
       if (this.contextCompactor) {
-        // 将 this.messages 映射为 SlimMsg[]
-        const slimMsgs: SlimMsg[] = this.messages.map((m: any) => ({
-          role: m.role,
-          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-        }));
         const compactResult = await this.contextCompactor.maybeCompact(
-          slimMsgs,
+          this.messages,
           this.contextWindow,
         );
         if (compactResult.compacted) {
@@ -272,12 +268,9 @@ export class AgentLoop {
       }
 
       // ── Step 2: 滑动窗口截断（P0） ──
-      const slimMsgs: SlimMsg[] = this.messages.map((m: any) => ({
-        role: m.role,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-      }));
-      const beforeTokens = this.tokenEstimator.estimateMessages(slimMsgs);
-      const threshold = this.contextWindow * DEFAULT_TRUNCATION_CONFIG.truncateRatio;
+      const beforeTokens = this.tokenEstimator.estimateMessages(
+        slimMessages(this.messages),
+      );
       const softThreshold = this.contextWindow * 0.5;
 
       // 软警告：超过 50% 窗口（滞回：降至 40% 以下后重置）
@@ -285,7 +278,7 @@ export class AgentLoop {
       if (beforeTokens > softThreshold) {
         this.logger.info(
           `[AgentLoop] context: ${beforeTokens}/${this.contextWindow} tokens (${(usageRatio * 100).toFixed(0)}%), ` +
-          `${slimMsgs.length} msgs`,
+          `${this.messages.length} msgs`,
         );
         if (!this.contextUsageNotified) {
           this.contextUsageNotified = true;
@@ -299,11 +292,11 @@ export class AgentLoop {
         this.contextUsageNotified = false;
       }
 
-      const truncResult = this.historyTruncator.truncate(slimMsgs);
+      const truncResult = this.historyTruncator.truncate(this.messages);
 
       if (truncResult.truncatedCount > 0) {
         // 重建 messages: [head, ...truncated]
-        const head = slimMsgs[0]!;
+        const head = this.messages[0]!;
         this.messages = [head, ...truncResult.messages];
         this.logger.warn(
           `[AgentLoop] truncated ${truncResult.truncatedCount} msgs, tokens: ${truncResult.beforeTokens}→${truncResult.afterTokens}${compactionLog ? ' + ' + compactionLog : ''}`,
@@ -319,6 +312,10 @@ export class AgentLoop {
       // 外层重试仅当首个 step 完成前失败才触发——一旦某 step 完成，
       // 整体重试会重复执行已完成的副作用工具（file_write 等）。
       let stepsCompleted = 0;
+      // StormBreaker 干预消息缓冲：generateText 执行期间 push 进 this.messages
+      // 不会被本次调用感知，且会被结果合并覆盖。先缓冲，待 response.messages
+      // 合并完成后按序追加，确保下一轮调用能看到干预。
+      const interventions: ModelMessage[] = [];
       const result = await withRetry(
         () => generateText({
           model: activeModel,
@@ -328,6 +325,11 @@ export class AgentLoop {
           stopWhen: stepCountIs(this.maxToolRounds + 1),
           abortSignal: this.abortController!.signal,
           maxRetries: 2,
+          // 仅当配置存在时传递，避免 undefined 覆盖 SDK 默认值
+          ...(this.maxOutputTokens != null
+            ? { maxOutputTokens: this.maxOutputTokens }
+            : {}),
+          ...(this.temperature != null ? { temperature: this.temperature } : {}),
           onStepFinish: (event) => {
             stepsCompleted++;
           // 推理内容
@@ -372,14 +374,14 @@ export class AgentLoop {
                 JSON.stringify((tr as any).output || '').slice(0, 500),
               );
 
-              // StormBreaker 检测
+              // StormBreaker 检测（干预消息先缓冲，见上方 interventions 注释）
               if (isError) {
                 const { intervene, message } = this.stormBreaker.detect(
                   tr.toolName,
                   (tr as any).error || '',
                 );
                 if (intervene && message) {
-                  this.messages.push({ role: 'user', content: message });
+                  interventions.push({ role: 'user', content: message });
                   this.logger.warn(
                     `[StormBreaker] intervened after ${this.stormBreaker.maxStorms} repeated failures on "${tr.toolName}"`,
                   );
@@ -426,10 +428,8 @@ export class AgentLoop {
         | undefined;
       if (usage?.promptTokens) {
         // 用本次的 prompt 文本校准估算器
-        const promptChars = this.messages
-          .map((m: any) =>
-            typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-          )
+        const promptChars = slimMessages(this.messages)
+          .map((m) => m.content)
           .join('').length + this.systemPrompt.length;
         this.tokenEstimator.calibrate(
           { promptTokens: usage.promptTokens, completionTokens: usage.completionTokens, totalTokens: usage.totalTokens },
@@ -440,8 +440,15 @@ export class AgentLoop {
         );
       }
 
-      // 用 ai-sdk 返回的完整历史替换
-      this.messages = [...result.response.messages];
+      // ai-sdk v7 的 response.messages 只包含本次调用新生成的消息，
+      // 必须追加到现有历史之后（而非替换），否则刚 push 的 user 消息和
+      // 全部历史都会被丢弃。
+      this.messages.push(...result.response.messages);
+
+      // StormBreaker 干预消息在合并后按序追加，下一轮调用可见
+      if (interventions.length > 0) {
+        this.messages.push(...interventions);
+      }
 
       if (text) {
         this.events.onStreamChunk(text);
@@ -477,7 +484,7 @@ export class AgentLoop {
     if (!this.fastModel) return this.model;
 
     const userMsgCount = this.messages.filter(
-      (m: any) => m.role === 'user',
+      (m) => m.role === 'user',
     ).length;
     const hasFileRefs =
       /[@.\/\\]/.test(userText) || /\.(go|js|ts|py|rs|java|md)/.test(userText);
@@ -511,14 +518,12 @@ export class AgentLoop {
     estimatedTokens: number;
     isCalibrated: boolean;
   } {
-    const slimMsgs: SlimMsg[] = this.messages.map((m: any) => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-    }));
     return {
       contextWindow: this.contextWindow,
       messageCount: this.messages.length,
-      estimatedTokens: this.tokenEstimator.estimateMessages(slimMsgs),
+      estimatedTokens: this.tokenEstimator.estimateMessages(
+        slimMessages(this.messages),
+      ),
       isCalibrated: this.tokenEstimator.isCalibrated,
     };
   }

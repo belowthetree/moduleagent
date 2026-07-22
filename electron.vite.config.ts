@@ -12,7 +12,6 @@ export default defineConfig({
           'fs-extra',
           'gray-matter',
           'marked',
-          'simple-git',
           'zod',
           'path',
           'url',

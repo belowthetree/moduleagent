@@ -33,6 +33,14 @@ export interface WorkflowSubsystemOptions {
   workspaceRoot: string;
   logger?: Logger;
   onSessionUpdate?: (agentName: string, sessionId: string, notification: any) => void;
+  /** 项目级默认 agent 配置（provider/model/apiKey 等，来自主配置 agents.default） */
+  defaultAgentConfig?: AgentConfig;
+  /** 上下文截断配置（透传 kernel，来自主配置） */
+  truncation?: import('../agents/kernel/types.js').AgentLoopConfig['truncation'];
+  /** 在线压缩配置（透传 kernel，来自主配置） */
+  compaction?: import('../agents/kernel/types.js').AgentLoopConfig['compaction'];
+  /** 按 agent 名解析丢弃内容存档目录 */
+  archiveDirFor?: (agentName: string) => string;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,6 +56,7 @@ export class WorkflowSubsystem {
   private workspaceRoot: string;
   private configDir: string;
   private subPrompt = '';
+  private defaultAgentConfig: AgentConfig;
 
   // Execution state
   private currentWorkflow: string | null = null;
@@ -63,6 +72,7 @@ export class WorkflowSubsystem {
     this.workspaceRoot = options.workspaceRoot;
     this.configDir = options.configDir || path.join(options.basePath, 'config');
     this._onSessionUpdate = options.onSessionUpdate;
+    this.defaultAgentConfig = options.defaultAgentConfig ?? {};
     const subPromptPath = path.join(this.configDir, 'knowledge', 'subagentprompt.md');
     try {
       this.subPrompt = fs.readFileSync(subPromptPath, 'utf-8');
@@ -82,6 +92,9 @@ export class WorkflowSubsystem {
       projectPath: options.projectPath,
       workspaceRoot: options.workspaceRoot,
       logger: this.logger,
+      truncation: options.truncation,
+      compaction: options.compaction,
+      archiveDirFor: options.archiveDirFor,
       callbacks: {
         onSessionUpdate(agentName, sessionId, notification) {
           const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
@@ -149,10 +162,8 @@ export class WorkflowSubsystem {
     state.startedAt = new Date().toISOString();
     this._saveState(name, state);
 
-    const projectAgentConfig: AgentConfig = {
-      command: 'opencode',
-      args: ['acp'],
-    };
+    // 项目级 agent 配置来自主配置 agents.default（内核模式 command/args 已无效）
+    const projectAgentConfig: AgentConfig = { ...this.defaultAgentConfig };
 
     const results: WorkflowStepResult[] = [];
 
@@ -230,22 +241,20 @@ export class WorkflowSubsystem {
     });
 
     try {
-      // 4. Start agent
+      // 4. Start agent（subagent 系统提示词以独立 system 角色注入，锚定前缀缓存）
       const entry = await this.manager.startStepAgent(
         wf.name,
         step.name,
         agentConfig,
         workspacePath,
+        this.subPrompt || undefined,
       );
 
       // 5. Build and send prompt
       const blocks = this._buildStepPrompt(wf, step, inputContext);
       this.callbacks.onStatusChange('streaming');
 
-      await (entry.agent as any).connection.prompt({
-        sessionId: entry.agent.sessionId,
-        prompt: blocks,
-      });
+      await entry.agent.send(blocks);
 
       this.callbacks.onStreamComplete(step.name);
       this.callbacks.onStatusChange('idle');
@@ -326,15 +335,13 @@ export class WorkflowSubsystem {
       '## 步骤产出\n\n',
       outputContents || '(无产出文件)',
       '\n\n---\n\n',
-      '请回复 **PASS**（通过）或 **FAIL**（不通过），并简要说明原因。',
-      '如果是不通过，请列出具体哪些标准未满足。',
+      '请先给出简要分析（如不通过，列出具体哪些标准未满足），',
+      '然后在回复的**最后一行**单独输出结论，格式严格为：\n\n',
+      '`VERDICT: PASS`（全部标准均满足）或 `VERDICT: FAIL`（任一标准未满足）',
     ].join('');
 
-    // Use the same agent config as the work step (or default)
-    const agentConfig: AgentConfig = {
-      command: step.definition.agent?.command || 'opencode',
-      args: step.definition.agent?.args || ['acp'],
-    };
+    // 验收 agent 复用项目级默认配置（内核模式 command/args 已无效）
+    const agentConfig: AgentConfig = { ...this.defaultAgentConfig };
 
     const workspacePath = await prepareStepWorkspace({
       workflowName,
@@ -345,22 +352,21 @@ export class WorkflowSubsystem {
     });
 
     try {
+      // subagent 系统提示词以独立 system 角色注入，锚定前缀缓存
       const entry = await this.manager.startStepAgent(
         workflowName,
         `${step.name}-acceptance`,
         agentConfig,
         workspacePath,
+        this.subPrompt || undefined,
       );
 
       const blocks: PromptBlock[] = [
-        { type: 'text', text: this.subPrompt + '\n\n---\n\n' },
         { type: 'text', text: acceptancePrompt },
       ];
 
-      await (entry.agent as any).connection.prompt({
-        sessionId: entry.agent.sessionId,
-        prompt: blocks,
-      });
+      const sendResult = await entry.agent.send(blocks);
+      const responseText = sendResult.content || '';
 
       this.callbacks.onStreamComplete(`${step.name}-acceptance`);
 
@@ -371,15 +377,28 @@ export class WorkflowSubsystem {
         workspaceRoot: this.workspaceRoot,
       });
 
-      // Since we can't easily capture the agent response from stream callbacks,
-      // we assume PASS by default. The acceptance is best-effort at this level;
-      // a full implementation would accumulate the response text and parse it.
-      this.logger.info(`Workflow ${workflowName}/${step.name}: acceptance check completed`);
-      return true;
+      // 从累积回复解析验收结论（取最后一个 VERDICT 行）
+      const verdict = WorkflowSubsystem.parseVerdict(responseText);
+      if (verdict === null) {
+        this.logger.warn(
+          `Workflow ${workflowName}/${step.name}: 验收回复未包含 VERDICT 行，保守判定 FAIL` +
+          `（回复末尾: ${responseText.slice(-200) || '(空回复)'}）`,
+        );
+        return false;
+      }
+      this.logger.info(`Workflow ${workflowName}/${step.name}: acceptance verdict = ${verdict}`);
+      return verdict === 'PASS';
     } catch (err) {
       this.logger.error(`Workflow ${workflowName}/${step.name}: acceptance check failed: ${(err as Error).message}`);
       return false;
     }
+  }
+
+  /** 解析验收回复结论：取最后一个 `VERDICT: PASS|FAIL` 行；无法解析返回 null（调用方保守判 FAIL） */
+  private static parseVerdict(text: string): 'PASS' | 'FAIL' | null {
+    const matches = [...text.matchAll(/VERDICT:\s*(PASS|FAIL)/gi)];
+    if (matches.length === 0) return null;
+    return matches[matches.length - 1]![1]!.toUpperCase() as 'PASS' | 'FAIL';
   }
 
   // -----------------------------------------------------------------------
@@ -431,10 +450,8 @@ export class WorkflowSubsystem {
   ): PromptBlock[] {
     const blocks: PromptBlock[] = [];
 
-    // System prompt
-    if (this.subPrompt) {
-      blocks.push({ type: 'text', text: this.subPrompt + '\n\n---\n\n' });
-    }
+    // 注意：subagent 系统提示词已通过 Agent.start({ systemPrompt }) 独立注入，
+    // 不在此重复拼入 user blocks（前缀缓存锚定）。
 
     // Knowledge references
     const knowledgeBlock = this._buildKnowledgeBlock(step, wf);
@@ -589,11 +606,9 @@ export class WorkflowSubsystem {
   // Internal: config resolution
   // -----------------------------------------------------------------------
 
-  private _resolveAgentConfig(step: WorkflowStepDescriptor, projectConfig: AgentConfig): AgentConfig {
-    return {
-      command: step.definition.agent?.command || projectConfig.command,
-      args: step.definition.agent?.args || projectConfig.args,
-    };
+  private _resolveAgentConfig(_step: WorkflowStepDescriptor, projectConfig: AgentConfig): AgentConfig {
+    // 内核模式下 step 级 command/args 已无效，统一使用项目级默认配置
+    return { ...projectConfig };
   }
 
   // -----------------------------------------------------------------------

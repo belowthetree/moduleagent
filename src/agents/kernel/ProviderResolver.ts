@@ -27,16 +27,16 @@ export function resolveLanguageModel(config: KernelConfig): ResolvedProvider {
 
   switch (provider) {
     case 'anthropic':
-      languageModel = createAnthropic({ apiKey })(modelName);
+      languageModel = createAnthropic({ apiKey, ...(config.baseUrl ? { baseURL: config.baseUrl } : {}) })(modelName);
       break;
     case 'openai':
-      languageModel = createOpenAI({ apiKey })(modelName);
+      languageModel = createOpenAI({ apiKey, ...(config.baseUrl ? { baseURL: config.baseUrl } : {}) })(modelName);
       break;
     case 'deepseek':
-      languageModel = createDeepSeek({ apiKey })(modelName);
+      languageModel = createDeepSeek({ apiKey, ...(config.baseUrl ? { baseURL: config.baseUrl } : {}) })(modelName);
       break;
     case 'google':
-      languageModel = createGoogleGenerativeAI({ apiKey })(modelName);
+      languageModel = createGoogleGenerativeAI({ apiKey, ...(config.baseUrl ? { baseURL: config.baseUrl } : {}) })(modelName);
       break;
     case 'custom':
       languageModel = createOpenAI({

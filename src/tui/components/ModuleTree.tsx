@@ -5,6 +5,7 @@
 
 import { createMemo, createSignal } from "solid-js";
 import { useRenderer, useKeyboard } from "@opentui/solid";
+import { TextAttributes } from "@opentui/core";
 import { defaultLogger } from "../../core/Logger.js";
 import type { ModuleGraph, ModuleGraphNode } from "../../types/module.js";
 
@@ -187,7 +188,7 @@ export default function ModuleTree(props: ModuleTreeProps) {
         <text fg="#58a6ff">
           {props.selectionMode === 'experience' ? ' 选择模块 — 查看经验' : ' 模块树'}
         </text>
-        <text fg="#888888" dim>
+        <text fg="#888888" attributes={TextAttributes.DIM}>
           {props.selectionMode === 'experience'
             ? '↑↓←→ 导航  Enter 选择  Esc 关闭'
             : '↑↓←→ 导航  Enter 切换  Esc 关闭'}
@@ -197,10 +198,10 @@ export default function ModuleTree(props: ModuleTreeProps) {
         隐藏 input：OpenTUI 的键盘事件路由依赖聚焦的 input 元素。
         没有 input 聚焦时方向键不会被派发到 useKeyboard 处理器。
         此 input 不可见，仅用于接收键盘事件。
+        （InputRenderable 高度固定为 1，不支持 height prop。）
       */}
       <input
         width={0}
-        height={0}
         visible={false}
         value=""
         keyBindings={[]}
@@ -231,8 +232,8 @@ export default function ModuleTree(props: ModuleTreeProps) {
                     <text fg={isSelected ? '#58a6ff' : '#555555'}>{isSelected ? '→ ' : '  '}</text>
                     <text fg="#555555">{node.connector}</text>
                     <text fg={statusFg}>{statusIcon} </text>
-                    <text fg={nameFg} bold={node.isCurrent}>{node.name}</text>
-                    <text fg="#888888" dim>{desc ? ` — ${desc}` : ''}</text>
+                    <text fg={nameFg} attributes={node.isCurrent ? TextAttributes.BOLD : TextAttributes.NONE}>{node.name}</text>
+                    <text fg="#888888" attributes={TextAttributes.DIM}>{desc ? ` — ${desc}` : ''}</text>
                   </box>
                 </box>
               );

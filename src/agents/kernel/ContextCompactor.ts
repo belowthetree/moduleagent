@@ -5,11 +5,15 @@
 // 当消息历史超过阈值时，调用轻量 summarizer LLM 生成摘要，
 // 将中间消息折叠为单条 summary 消息。
 // 失败时静默降级（返回原消息不压缩），由 HistoryTruncator 兜底。
+//
+// 直接操作 ai-sdk ModelMessage[]：折叠区整段替换为 summary 消息，
+// 保持剩余消息结构合法（tail 不会以孤儿 tool 消息开头）。
 // ---------------------------------------------------------------------------
 
-import { generateText } from 'ai';
+import { generateText, type ModelMessage } from 'ai';
 import { TokenEstimator } from '../../core/TokenEstimator.js';
 import { withRetry } from '../../core/RetryPolicy.js';
+import { slimContent, slimMessages } from './HistoryTruncator.js';
 import type { Logger } from '../../core/Logger.js';
 import { defaultLogger } from '../../core/Logger.js';
 
@@ -37,7 +41,7 @@ export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
 
 export interface CompactionResult {
   /** 压缩后的消息数组（保持与 ai-sdk 兼容的格式） */
-  messages: any[];
+  messages: ModelMessage[];
   /** 是否执行了压缩 */
   compacted: boolean;
   /** 被折叠的消息数 */
@@ -45,13 +49,6 @@ export interface CompactionResult {
   /** 压缩前后 token 数 */
   beforeTokens: number;
   afterTokens: number;
-}
-
-// ── 内部 ──
-
-interface SlimMsg {
-  role: string;
-  content: string;
 }
 
 // ── 实现 ──
@@ -62,14 +59,14 @@ export class ContextCompactor {
   private summarizerModel: any; // LanguageModel
   private logger: Logger;
   private lastCompactionTime = 0;
-  private archive?: (records: SlimMsg[]) => void;
+  private archive?: (records: ModelMessage[]) => void;
 
   constructor(
     config: Partial<CompactionConfig>,
     estimator: TokenEstimator,
     summarizerModel: any,
     logger?: Logger,
-    archive?: (records: SlimMsg[]) => void,
+    archive?: (records: ModelMessage[]) => void,
   ) {
     this.config = { ...DEFAULT_COMPACTION_CONFIG, ...config };
     this.estimator = estimator;
@@ -82,16 +79,16 @@ export class ContextCompactor {
    * 检查是否需要压缩，若需要则执行。
    * 若经济性不划算（foldable < minFoldableTokens）或距上次压缩不足 minIntervalMs，则跳过。
    *
-   * @param messages 当前完整消息历史（SlimMsg 数组）
+   * @param messages 当前完整消息历史（ModelMessage 数组）
    * @param windowTokens 上下文窗口 token 数
    */
   async maybeCompact(
-    messages: SlimMsg[],
+    messages: ModelMessage[],
     windowTokens: number,
   ): Promise<CompactionResult> {
     if (messages.length <= 2) {
       return {
-        messages: messages as any[],
+        messages,
         compacted: false,
         foldedCount: 0,
         beforeTokens: 0,
@@ -99,12 +96,12 @@ export class ContextCompactor {
       };
     }
 
-    const beforeTokens = this.estimator.estimateMessages(messages);
+    const beforeTokens = this.estimator.estimateMessages(slimMessages(messages));
     const threshold = windowTokens * this.config.compactRatio;
 
     if (beforeTokens <= threshold) {
       return {
-        messages: messages as any[],
+        messages,
         compacted: false,
         foldedCount: 0,
         beforeTokens,
@@ -116,7 +113,7 @@ export class ContextCompactor {
     const now = Date.now();
     if (now - this.lastCompactionTime < this.config.minIntervalMs) {
       return {
-        messages: messages as any[],
+        messages,
         compacted: false,
         foldedCount: 0,
         beforeTokens,
@@ -126,12 +123,12 @@ export class ContextCompactor {
 
     // ── 分区: head(0) | foldable | tail ──
     const head = messages[0]!;
-    const tail: SlimMsg[] = [];
+    const tail: ModelMessage[] = [];
     let tailTokens = 0;
 
     for (let i = messages.length - 1; i >= 1; i--) {
       const msg = messages[i]!;
-      const t = this.estimator.estimate(msg.content) + 4;
+      const t = this.estimator.estimate(slimContent(msg)) + 4;
       if (tailTokens + t <= this.config.tailTokenBudget) {
         tail.unshift(msg);
         tailTokens += t;
@@ -140,13 +137,22 @@ export class ContextCompactor {
       }
     }
 
-    const foldable = messages.slice(1, messages.length - tail.length);
-    const headTokens = this.estimator.estimate(head.content) + 4;
+    // tail 不允许以 tool 消息开头——其对应的 assistant tool-call 在 foldable 中，
+    // 折叠后会留下孤儿 tool 消息。将这类消息并回 foldable 以保持配对完整。
+    let foldableEnd = messages.length - tail.length;
+    while (tail.length > 0 && tail[0]!.role === 'tool') {
+      const moved = tail.shift()!;
+      tailTokens -= this.estimator.estimate(slimContent(moved)) + 4;
+      foldableEnd++;
+    }
+
+    const foldable = messages.slice(1, foldableEnd);
+    const headTokens = this.estimator.estimate(slimContent(head)) + 4;
     const foldableTokens = beforeTokens - headTokens - tailTokens;
 
     if (foldableTokens < this.config.minFoldableTokens || foldable.length === 0) {
       return {
-        messages: messages as any[],
+        messages,
         compacted: false,
         foldedCount: 0,
         beforeTokens,
@@ -168,15 +174,15 @@ export class ContextCompactor {
         }
       }
 
-      const summaryMsg = {
+      const summaryMsg: ModelMessage = {
         role: 'user',
         content: `[对话摘要 — 已压缩 ${foldable.length} 条消息]\n\n${summary}`,
       };
 
-      const result = [head, summaryMsg, ...tail];
+      const result: ModelMessage[] = [head, summaryMsg, ...tail];
       const afterTokens =
         headTokens +
-        this.estimator.estimate(summaryMsg.content) +
+        this.estimator.estimate(summaryMsg.content as string) +
         tailTokens +
         (tail.length + 1) * 4;
 
@@ -185,7 +191,7 @@ export class ContextCompactor {
       );
 
       return {
-        messages: result as any[],
+        messages: result,
         compacted: true,
         foldedCount: foldable.length,
         beforeTokens,
@@ -196,7 +202,7 @@ export class ContextCompactor {
         `[ContextCompactor] summarize failed: ${(err as Error).message} — falling back to truncation`,
       );
       return {
-        messages: messages as any[],
+        messages,
         compacted: false,
         foldedCount: 0,
         beforeTokens,
@@ -209,13 +215,14 @@ export class ContextCompactor {
    * 调用 summmarizer LLM 生成对话摘要。
    * 使用轻量模型（fastModel），限制输出 1000 tokens。
    */
-  private async summarize(messages: SlimMsg[]): Promise<string> {
+  private async summarize(messages: ModelMessage[]): Promise<string> {
     const conversation = messages
       .map((m) => {
+        const content = slimContent(m);
         const truncated =
-          m.content.length > 2000
-            ? m.content.slice(0, 2000) + '…'
-            : m.content;
+          content.length > 2000
+            ? content.slice(0, 2000) + '…'
+            : content;
         return `[${m.role}]: ${truncated}`;
       })
       .join('\n\n');

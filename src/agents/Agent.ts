@@ -41,10 +41,6 @@ export interface AgentStartOptions {
   onStateChange?: (newState: AgentState, oldState: AgentState) => void;
   onQueue?: (queueLength: number) => void;
   onSystemMessage?: (text: string, queueLength: number) => void;
-  sessionResume?: {
-    savedSessionId: string;
-    save: (sessionId: string) => void;
-  };
   systemPrompt?: string;
   kernelModuleName?: string;
   crossModuleRouter?: import('./mcp/McpBackend.js').CrossModuleRouter;
@@ -68,12 +64,27 @@ export interface AgentSendResult {
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
+/** send 的可选参数 */
+export interface AgentSendOptions {
+  /** 外部取消信号：排队项执行前检查，已 abort 则以 Canceled 错误跳过 */
+  signal?: AbortSignal;
+}
+
+/** 构造 Canceled 错误（name='Canceled'），用于取消/超时场景 */
+export function canceledError(message: string): Error {
+  const err = new Error(message);
+  err.name = 'Canceled';
+  return err;
+}
+
 interface QueuedItem {
   blocks: PromptBlock[];
   resolve: (result: AgentSendResult) => void;
   reject: (err: Error) => void;
   /** 入队时的 AsyncLocalStorage 快照（跨模块调用链在排队期间不丢失） */
   snapshot?: <T>(fn: () => T) => T;
+  /** 外部取消信号（出队执行前检查） */
+  signal?: AbortSignal;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,6 +109,8 @@ export class Agent {
   private _queue: QueuedItem[] = [];
   private _draining = false;
   private _lastSendResult: { stopReason: string; content: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } } | null = null;
+  /** setConfigOption 不支持告警只发一次 */
+  private _configSwitchWarned = false;
 
   private constructor(
     name: string,
@@ -168,9 +181,9 @@ export class Agent {
 
     const sessionId = kernel.sessionId;
 
+    // 内核模式没有可上报的配置项，不再伪造 configOptions
     const sessionResult: any = {
       sessionId,
-      configOptions: [],
     };
 
     const agent = new Agent(
@@ -199,30 +212,49 @@ export class Agent {
     return agent;
   }
 
-  async send(blocks: PromptBlock[]): Promise<AgentSendResult> {
+  async send(blocks: PromptBlock[], opts?: AgentSendOptions): Promise<AgentSendResult> {
     if (this._state === AgentState.Stopped) {
       throw new Error(`Agent [${this.name}] is stopped`);
     }
 
-    if (this._state !== AgentState.Idle && this._state !== AgentState.Error) {
+    const signal = opts?.signal;
+    if (signal?.aborted) {
+      throw canceledError(`Agent [${this.name}] send canceled before start`);
+    }
+
+    // Error 状态同样入队串行化：出错后不允许绕过队列直接并发执行
+    if (this._state !== AgentState.Idle) {
       const snapshot = AsyncLocalStorage.snapshot();
       return new Promise<AgentSendResult>((resolve, reject) => {
-        this._queue.push({ blocks, resolve, reject, snapshot });
+        this._queue.push({ blocks, resolve, reject, snapshot, signal });
         const qlen = this._queue.length;
         this._logger.info(
           `Agent [${this.name}] queued message (state=${this._state}, queue=${qlen})`,
         );
         this._onQueue?.(qlen);
+        // Error 状态下没有在途处理，需主动触发队列消费，否则排队项永远滞留
+        if (this._state === AgentState.Error) {
+          void this._drainQueue();
+        }
       });
     }
 
-    return this._processMessage(blocks);
+    return this._processMessage(blocks, signal);
   }
 
   async cancel(): Promise<'cancelled'> {
     if (this._kernel) {
       this._kernel.cancel();
       this._logger.info(`Agent [${this.name}] kernel cancelled`);
+    }
+
+    // 排队中的 send 一并取消：以 Canceled 错误 reject，agent 保持可复用
+    const drained = this._queue.splice(0);
+    for (const item of drained) {
+      item.reject(canceledError(`Agent [${this.name}] send canceled`));
+    }
+    if (drained.length > 0) {
+      this._onQueue?.(0);
     }
     return 'cancelled';
   }
@@ -261,8 +293,19 @@ export class Agent {
     return this._sessionId;
   }
 
-  async setConfigOption(configId: string, value: string): Promise<void> {
-    this._logger.info(`Agent [${this.name}] kernel mode: config ${configId}=${value} (ignored)`);
+  /**
+   * 内核模式不支持运行时 mode/model 切换（无 ACP session/set_config_option）。
+   * @returns 恒为 false（配置未生效），调用方应据此如实反馈
+   */
+  async setConfigOption(configId: string, value: string): Promise<boolean> {
+    if (!this._configSwitchWarned) {
+      this._configSwitchWarned = true;
+      this._logger.warn(
+        `Agent [${this.name}] kernel 模式不支持运行时 mode/model 切换` +
+        `（${configId}=${value} 已忽略；后续同类调用不再重复告警）`,
+      );
+    }
+    return false;
   }
 
   // -----------------------------------------------------------------------
@@ -303,12 +346,26 @@ export class Agent {
   // 内部：消息处理 + 队列消费
   // -----------------------------------------------------------------------
 
-  private async _processMessage(blocks: PromptBlock[]): Promise<AgentSendResult> {
+  private async _processMessage(blocks: PromptBlock[], signal?: AbortSignal): Promise<AgentSendResult> {
+    if (signal?.aborted) {
+      throw canceledError(`Agent [${this.name}] send canceled before start`);
+    }
+
     this._transition(AgentState.Streaming);
 
     if (this._kernel) {
+      // 外部取消信号 → 中止当前内核调用（仅在本条消息在途期间生效）
+      const onAbort = signal ? () => this._kernel?.cancel() : undefined;
+      if (signal && onAbort) {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
       try {
-        this._lastSendResult = await this._kernel.send(blocks);
+        const result = await this._kernel.send(blocks);
+        if (signal?.aborted) {
+          throw canceledError(`Agent [${this.name}] send canceled`);
+        }
+        this._lastSendResult = result;
         if (this._lastSendResult?.usage) {
           this._logger.info(
             `Agent [${this.name}] usage: prompt=${this._lastSendResult.usage.promptTokens} ` +
@@ -320,6 +377,10 @@ export class Agent {
       } catch (err) {
         this._transition(AgentState.Error);
         throw err;
+      } finally {
+        if (signal && onAbort) {
+          signal.removeEventListener('abort', onAbort);
+        }
       }
     }
 
@@ -331,13 +392,22 @@ export class Agent {
     this._draining = true;
 
     try {
-      while (this._state === AgentState.Idle && this._queue.length > 0) {
+      // Error 状态也继续排空：单条消息出错不应卡住后续队列
+      while (
+        (this._state === AgentState.Idle || this._state === AgentState.Error) &&
+        this._queue.length > 0
+      ) {
         const item = this._queue.shift()!;
+        // 出队后先检查取消信号：已取消的排队消息直接跳过，不再执行
+        if (item.signal?.aborted) {
+          item.reject(canceledError(`Agent [${this.name}] send canceled`));
+          continue;
+        }
         this._logger.info(
           `Agent [${this.name}] draining queue (remaining=${this._queue.length})`,
         );
         try {
-          const run = () => this._processMessage(item.blocks);
+          const run = () => this._processMessage(item.blocks, item.signal);
           const result = item.snapshot ? await item.snapshot(run) : await run();
           item.resolve(result);
         } catch (err) {

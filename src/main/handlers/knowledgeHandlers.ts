@@ -9,6 +9,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import { IpcChannel } from '../../protocol/IpcChannels.js';
 import { getUserConfigRoot } from '../../core/ConfigPaths.js';
+import { sanitizeFileName } from './fileNameSanitize.js';
 import type { HandlerContext } from './HandlerContext.js';
 
 export function registerKnowledgeHandlers(ctx: HandlerContext): void {
@@ -19,7 +20,7 @@ export function registerKnowledgeHandlers(ctx: HandlerContext): void {
   }
 
   function sanitizeFilename(name: string): string {
-    return name.replace(/[<>:"/\\|?*]/g, '_') + '.md';
+    return sanitizeFileName(name) + '.md';
   }
 
   function getKnowledgeDirs(): string[] {
@@ -33,8 +34,10 @@ export function registerKnowledgeHandlers(ctx: HandlerContext): void {
   }
 
   function findKnowledgeFile(filename: string): string | null {
+    // 清洗渲染层输入，防 '../' 路径穿越
+    const safeName = sanitizeFileName(filename);
     for (const dir of getKnowledgeDirs()) {
-      const filePath = path.join(dir, filename);
+      const filePath = path.join(dir, safeName);
       if (fs.existsSync(filePath)) return filePath;
     }
     return null;
@@ -98,7 +101,7 @@ export function registerKnowledgeHandlers(ctx: HandlerContext): void {
       if (!projectRoot) return { success: false };
       const knowledgeDir = path.join(projectRoot, '.module-agent', 'knowledge');
       fs.ensureDirSync(knowledgeDir);
-      const filePath = path.join(knowledgeDir, entry.filename);
+      const filePath = path.join(knowledgeDir, sanitizeFileName(entry.filename));
       let content = entry.content;
       if (/^#\s+/m.test(content)) {
         content = content.replace(/^#\s+.*$/m, `# ${entry.name}`);
@@ -136,7 +139,7 @@ export function registerKnowledgeHandlers(ctx: HandlerContext): void {
       const projectRoot = ctx.core.getProjectRoot();
       if (!projectRoot) return { success: false };
       const knowledgeDir = path.join(projectRoot, '.module-agent', 'knowledge');
-      const filePath = path.join(knowledgeDir, filename);
+      const filePath = path.join(knowledgeDir, sanitizeFileName(filename));
       if (fs.existsSync(filePath)) {
         await fs.promises.unlink(filePath);
         return { success: true };

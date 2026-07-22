@@ -225,21 +225,6 @@ export async function startTui(projectRoot: string) {
   import('./config.js').then(async ({ validateModuleAgentJson }) => {
     if (await validateModuleAgentJson(projectRoot)) {
       await (globalThis as any).__tuiInitAgent(projectRoot);
-
-      const { ConfigLoader } = await import('../config/ConfigLoader.js');
-      const workspaceConfig = await ConfigLoader.load(projectRoot);
-      const config = ConfigLoader.getDefaultConfig(workspaceConfig);
-      const hasProjectPath = !!config.projectPath;
-      if (!hasProjectPath) {
-        const msg: ChatMessage = {
-          id: `sys-${Date.now()}`,
-          role: 'system',
-          msgType: 'system',
-          content: 'Enter /setup to configure project path.',
-          time: new Date().toLocaleTimeString(),
-        };
-        tuiState.setMessages([...tuiState.messages(), msg]);
-      }
     } else {
       const msg: ChatMessage = {
         id: `sys-${Date.now()}`,

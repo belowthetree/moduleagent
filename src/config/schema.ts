@@ -11,8 +11,6 @@ export const AgentConfigSchema = z.object({
   model: z.string().optional(),
   defaultMode: z.string().optional(),
   fastModel: z.string().optional(),
-  normalModel: z.string().optional(),
-  autoSwitchModel: z.boolean().optional(),
   provider: z.string().optional(),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
@@ -74,7 +72,10 @@ export const RoleAgentConfigSchema = z.object({
   args: z.array(z.string()).optional(),
   provider: z.string().optional(),
   apiKey: z.string().optional(),
+  baseUrl: z.string().optional(),
   model: z.string().optional(),
+  fastModel: z.string().optional(),
+  contextWindow: z.number().int().positive().optional(),
 });
 
 export type RoleAgentConfig = z.infer<typeof RoleAgentConfigSchema>;

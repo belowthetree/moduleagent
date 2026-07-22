@@ -12,11 +12,20 @@ import { configExplorer } from '../core/ConfigPaths.js';
 
 export class ConfigLoader {
   static async load(projectRoot: string): Promise<WorkspaceConfig> {
+    const { config } = await ConfigLoader.loadWithStatus(projectRoot);
+    return config;
+  }
+
+  /**
+   * 加载配置并暴露失败原因：校验失败/搜索失败时回落默认配置，
+   * 但通过返回值 error 字段告知上游（可提示用户"配置无效，正使用默认值"）。
+   */
+  static async loadWithStatus(projectRoot: string): Promise<{ config: WorkspaceConfig; error?: string }> {
     try {
       const result = await configExplorer.search(projectRoot);
       if (!result || result.isEmpty) {
         defaultLogger.info(`[config] No config found from ${projectRoot}, using defaults`);
-        return { ...DEFAULT_WORKSPACE_CONFIG };
+        return { config: { ...DEFAULT_WORKSPACE_CONFIG } };
       }
 
       defaultLogger.info(`[config] Loading config: ${result.filepath}`);
@@ -31,14 +40,26 @@ export class ConfigLoader {
         if (resolvedProjectPath !== resolvedConfigDir) {
           defaultLogger.warn('[config] projectPath in config differs from config file location');
         }
-        return parsed.data;
+        return { config: parsed.data };
       }
 
+      // zod 校验失败：记录可读的错误详情并随结果暴露
+      const detail = parsed.error.issues
+        .map(issue => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
+        .join('\n');
       defaultLogger.warn('[config] Invalid config format, using defaults');
-      return { ...DEFAULT_WORKSPACE_CONFIG };
-    } catch {
+      defaultLogger.error(`[config] Config validation failed for ${result.filepath}:\n${detail}`);
+      return {
+        config: { ...DEFAULT_WORKSPACE_CONFIG },
+        error: `配置文件 ${result.filepath} 校验失败，正使用默认配置:\n${detail}`,
+      };
+    } catch (err) {
       defaultLogger.warn('[config] Failed to search config, using defaults');
-      return { ...DEFAULT_WORKSPACE_CONFIG };
+      defaultLogger.error(`[config] Config search failed from ${projectRoot}: ${(err as Error).message}`);
+      return {
+        config: { ...DEFAULT_WORKSPACE_CONFIG },
+        error: `配置搜索失败（${(err as Error).message}），正使用默认配置`,
+      };
     }
   }
 

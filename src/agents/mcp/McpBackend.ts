@@ -6,7 +6,6 @@
 import type { PromptBlock } from '../kernel/types.js';
 import { defaultLogger } from '../../core/Logger.js';
 import type { Agent } from '../Agent.js';
-import type { ChatMsg } from '../../types/shared.js';
 import { currentChain, runWithChain } from './CallChain.js';
 
 export interface CrossModuleLimits {
@@ -32,9 +31,11 @@ export interface CrossModuleRouterCallbacks {
   ): void;
   setAgentStatus?(moduleName: string, status: 'idle' | 'streaming' | 'error'): void;
   onLog?(level: 'info' | 'warn' | 'error', message: string): void;
-  startStream?(moduleName: string): void;
-  finishStream?(moduleName: string): { reply: string; thinking: string; tools: string; timeline?: unknown[] } | undefined;
-  saveCrossContext?(moduleName: string, msgs: ChatMsg[]): Promise<void>;
+  /**
+   * 跨模块上下文直接落盘（不经过目标模块的活跃流累积器）。
+   * routeCall 完成后调用，requestText/responseText 由 router 局部累积。
+   */
+  appendCrossContext?(moduleName: string, requestText: string, responseText: string): Promise<void> | void;
   getModuleList?(requestingModule: string): { name: string; description: string; path: string }[];
 }
 
@@ -43,8 +44,8 @@ export type McpBackendCallbacks = CrossModuleRouterCallbacks;
 export class CrossModuleRouter {
   private readonly maxHops: number;
   private readonly timeoutMs: number;
-  /** 等待图：requester → target（用于跨链死锁检测） */
-  private pendingWaits = new Map<string, string>();
+  /** 等待图：requester → targets（用于跨链死锁检测；同一 requester 可并行等待多个 target） */
+  private pendingWaits = new Map<string, Set<string>>();
 
   constructor(
     private callbacks: CrossModuleRouterCallbacks,
@@ -148,67 +149,34 @@ export class CrossModuleRouter {
       );
     }
 
-    if (requestingModule) this.pendingWaits.set(requestingModule, targetModule);
+    if (requestingModule) this._addWaitEdge(requestingModule, targetModule);
+
+    // 超时与此控制器关联：触发超时即 abort，排队/在途的 send 随之取消
+    const abort = new AbortController();
 
     try {
-      this.callbacks.startStream?.(targetModule);
+      // 注意：不再触碰目标模块的共享流累积器（startStream/finishStream），
+      // 避免与用户正在进行的流式对话竞争；回复累积在局部 responseText，
+      // 完成后经 appendCrossContext 直接落盘。
       this.callbacks.setAgentStatus?.(targetModule, 'streaming');
       const promptBlocks = this.callbacks.buildPromptBlocks(targetModule, promptText);
 
       // 走 Agent.send 队列（busy 时排队），并传播调用链上下文
       const sendPromise = runWithChain([...baseChain, targetModule], () =>
-        entry.send(promptBlocks),
+        entry.send(promptBlocks, { signal: abort.signal }),
       );
-      const result = await this._withTimeout(sendPromise, targetModule);
+      const result = await this._withTimeout(sendPromise, targetModule, abort);
       const responseText = result.content || '';
 
       this.callbacks.setAgentStatus?.(targetModule, 'idle');
 
       const isQuery = !!query && !task;
 
-      const acc = this.callbacks.finishStream?.(targetModule);
-      if (acc && this.callbacks.saveCrossContext) {
-        const timeStr = new Date().toLocaleTimeString();
-        const baseId = 'x' + Date.now().toString(36);
-        const msgs: ChatMsg[] = [];
-
-        msgs.push({
-          id: baseId,
-          role: 'user',
-          content: `[跨模块请求 from ${requestingModule || '?'}]\n${taskContent}`,
-          thinking: '',
-          time: timeStr,
-          status: 'sent',
-          moduleName: targetModule,
-          sessionId: entry.sessionId,
-        });
-
-        for (const ev of (acc.timeline || []) as any[]) {
-          if (ev.type === 'tool_call' && ev.content) {
-            msgs.push({
-              id: `tool-${targetModule}-${ev.toolCallId || Math.random().toString(36).slice(2, 6)}`,
-              role: 'system',
-              content: ev.content,
-              thinking: '',
-              time: timeStr,
-              status: 'sent',
-              moduleName: targetModule,
-            });
-          }
-        }
-
-        msgs.push({
-          id: baseId + 'r',
-          role: 'agent',
-          content: acc.reply || responseText,
-          thinking: acc.thinking || '',
-          timeline: [],
-          time: timeStr,
-          status: 'completed',
-          moduleName: targetModule,
-        });
-
-        this.callbacks.saveCrossContext(targetModule, msgs).catch(err => {
+      if (this.callbacks.appendCrossContext) {
+        const requestText = `[跨模块请求 from ${requestingModule || '?'}]\n${taskContent}`;
+        Promise.resolve(
+          this.callbacks.appendCrossContext(targetModule, requestText, responseText),
+        ).catch((err) => {
           this.log('warn', `cross-context: save failed for [${targetModule}]: ${(err as Error).message}`);
         });
       }
@@ -241,26 +209,50 @@ export class CrossModuleRouter {
       this.callbacks.setAgentStatus?.(targetModule, 'error');
       return { success: false, error: `Prompt failed: ${(err as Error).message}` };
     } finally {
-      if (requestingModule) this.pendingWaits.delete(requestingModule);
+      if (requestingModule) this._removeWaitEdge(requestingModule, targetModule);
     }
   }
 
-  /** 死锁检测：从 target 沿 wait-for 图传递遍历，若能回到 requester 则成环 */
+  /** 等待图加边：requester → target */
+  private _addWaitEdge(requester: string, target: string): void {
+    let edges = this.pendingWaits.get(requester);
+    if (!edges) {
+      edges = new Set();
+      this.pendingWaits.set(requester, edges);
+    }
+    edges.add(target);
+  }
+
+  /** 等待图删边：仅移除 requester → target 这一条，保留并行的其他边 */
+  private _removeWaitEdge(requester: string, target: string): void {
+    const edges = this.pendingWaits.get(requester);
+    if (!edges) return;
+    edges.delete(target);
+    if (edges.size === 0) this.pendingWaits.delete(requester);
+  }
+
+  /** 死锁检测：从 target 沿 wait-for 图传递遍历（BFS），若能回到 requester 则成环 */
   private _wouldDeadlock(requester: string, target: string): boolean {
     const seen = new Set<string>();
-    let cur: string | undefined = target;
-    while (cur && this.pendingWaits.has(cur)) {
-      if (seen.has(cur)) return false;
-      seen.add(cur);
-      cur = this.pendingWaits.get(cur);
+    const stack: string[] = [target];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
       if (cur === requester) return true;
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      const edges = this.pendingWaits.get(cur);
+      if (edges) {
+        for (const next of edges) stack.push(next);
+      }
     }
     return false;
   }
 
-  private _withTimeout<T>(promise: Promise<T>, targetModule: string): Promise<T> {
+  private _withTimeout<T>(promise: Promise<T>, targetModule: string, abort: AbortController): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
+        // 先取消再 reject：排队中的 send 会被跳过，在途的 send 会被中止
+        abort.abort();
         reject(
           new Error(
             `跨模块调用超时（${this.timeoutMs}ms）: ${targetModule} 未在限定时间内完成`,

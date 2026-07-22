@@ -62,11 +62,6 @@ export interface ChatMsg {
   crossPhase?: 'request' | 'response';
 }
 
-export interface MigrationData {
-  moduleName: string;
-  msgs: ChatMsg[];
-}
-
 export interface AgentStreamData {
   moduleName: string;
   // sessionId 由 main.ts 在 onSessionUpdate 中发送，但之前缺少在 preload/renderer 回调类型中
@@ -95,8 +90,14 @@ export interface RoleConfigData {
   visibleModulePaths: string[];
   agents: {
     default: {
-      command: string;
+      command?: string;
       args?: string[];
+      provider?: string;
+      apiKey?: string;
+      baseUrl?: string;
+      model?: string;
+      fastModel?: string;
+      contextWindow?: number;
     };
   };
   knowledgeRefs?: { filename: string; name: string }[];
@@ -189,12 +190,6 @@ export interface ModuleAgentApi {
 
   cancelAgent(moduleName: string): Promise<{ accumulated?: { reply: string; thinking: string; tools: string; timeline?: TimelineEvent[]; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>;
 
-  stopAgent(moduleName: string): Promise<{}>;
-
-  isAgentRunning(moduleName: string): Promise<boolean>;
-
-  getRunningAgents(): Promise<{ name: string; status: AgentStatus }[]>;
-
   onAgentStream(callback: (data: AgentStreamData) => void): () => void;
 
   onAgentStatus(callback: (data: AgentStatusData) => void): () => void;
@@ -207,7 +202,7 @@ export interface ModuleAgentApi {
     model: string,
     projectPath?: string,
     summarizationEnabled?: boolean,
-  ): Promise<{ success: boolean }>;
+  ): Promise<{ success: boolean; error?: string }>;
 
   getAgentConfig(projectRoot: string): Promise<{
     provider?: string;
@@ -217,10 +212,6 @@ export interface ModuleAgentApi {
     projectPath?: string;
     summarizationEnabled?: boolean;
   }>;
-
-  migrateCheck(keys: string[]): Promise<{ needed: string[]; streamNeeded: boolean }>;
-
-  migrateData(payload: MigrationData): Promise<void>;
 
   getContext(moduleName: string): Promise<ChatMsg[]>;
 

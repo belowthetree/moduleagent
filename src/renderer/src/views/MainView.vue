@@ -16,7 +16,6 @@ import ContextCards from '../components/ContextCards.vue'
 import ChatInput from '../components/ChatInput.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
-import WorkspaceDiffPanel from '../components/WorkspaceDiffPanel.vue'
 import { useProjectStore } from '../stores/project'
 import { useAgentStore } from '../stores/agent'
 import { useConfigStore } from '../stores/config'
@@ -272,7 +271,6 @@ onMounted(async () => {
   agentStore.ensureStatusListener()
   agentStore.ensureCrossContextListener()
   agentStore.ensureRoleStatusListener()
-  agentStore.ensureDiffListener()
 
   window.addEventListener('mousemove', onWindowMousemove)
   window.addEventListener('mouseup', onWindowMouseup)
@@ -317,14 +315,6 @@ onUnmounted(() => {
         <span class="toolbar-path">{{ configStore.projectPath }}</span>
       </div>
       <div class="toolbar-right">
-        <el-button
-          v-if="agentStore.pendingDiffCount > 0"
-          text
-          type="warning"
-          @click="agentStore.openDiffPanel()"
-        >
-          ⚡ {{ agentStore.pendingDiffCount }} 变更
-        </el-button>
         <el-button text @click="showSettings = true">⚙ 设置</el-button>
         <ThemeToggle />
       </div>
@@ -529,14 +519,6 @@ onUnmounted(() => {
       v-if="showSettings"
       :visible="showSettings"
       @close="showSettings = false"
-    />
-
-    <!-- 工作区变更面板 -->
-    <WorkspaceDiffPanel
-      :module-name="agentStore.selectedModuleName || ''"
-      :visible="agentStore.showDiffPanel"
-      @close="agentStore.closeDiffPanel()"
-      @applied="agentStore.clearDiffNotification()"
     />
   </div>
 </template>

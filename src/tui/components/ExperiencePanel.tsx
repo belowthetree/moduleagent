@@ -7,7 +7,7 @@
 import { createMemo, Show } from 'solid-js';
 import { useKeyboard, useRenderer } from '@opentui/solid';
 import { tuiState } from '../state.js';
-import type { KeyEvent } from '@opentui/core';
+import { TextAttributes, type KeyEvent } from '@opentui/core';
 
 // ── 简易 Markdown → OpenTUI 渲染 ──
 
@@ -17,6 +17,11 @@ interface StyledSegment {
   bg?: string;
   bold?: boolean;
   dim?: boolean;
+}
+
+/** 将片段的 bold/dim 标记合成为 OpenTUI attributes 位掩码 */
+function segmentAttributes(s: StyledSegment): number {
+  return (s.bold ? TextAttributes.BOLD : 0) | (s.dim ? TextAttributes.DIM : 0);
 }
 
 /** 单行解析：将一行文本解析为带样式的片段列表 */
@@ -33,14 +38,15 @@ function parseLine(line: string): StyledSegment[] {
   while (remaining.length > 0) {
     const boldMatch = remaining.match(/^\*\*(.+?)\*\*/);
     if (boldMatch) {
-      segments.push({ text: boldMatch[1], bold: true });
+      // 正则含必填捕获组 (.+?)，匹配成功时组 1 必存在
+      segments.push({ text: boldMatch[1]!, bold: true });
       remaining = remaining.slice(boldMatch[0].length);
       continue;
     }
 
     const codeMatch = remaining.match(/^`([^`]+)`/);
     if (codeMatch) {
-      segments.push({ text: codeMatch[1], fg: '#FFA07A', bg: '#333333' });
+      segments.push({ text: codeMatch[1]!, fg: '#FFA07A', bg: '#333333' });
       remaining = remaining.slice(codeMatch[0].length);
       continue;
     }
@@ -72,11 +78,12 @@ function renderMarkdown(content: string) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (line === undefined) continue;
 
     if (line.trimStart().startsWith('```')) {
       if (inCodeBlock) {
         elements.push(
-          <text fg="#88BB88" dim>{codeContent.trimEnd()}</text>
+          <text fg="#88BB88" attributes={TextAttributes.DIM}>{codeContent.trimEnd()}</text>
         );
         elements.push(<text> </text>);
         codeContent = '';
@@ -93,7 +100,7 @@ function renderMarkdown(content: string) {
     }
 
     if (/^---+\s*$/.test(line)) {
-      elements.push(<text fg="#555555" dim>{'─'.repeat(Math.min(60, process.stdout.columns || 80))}</text>);
+      elements.push(<text fg="#555555" attributes={TextAttributes.DIM}>{'─'.repeat(Math.min(60, process.stdout.columns || 80))}</text>);
       continue;
     }
 
@@ -104,22 +111,23 @@ function renderMarkdown(content: string) {
 
     const hMatch = line.match(/^(#{1,3})\s+(.+)/);
     if (hMatch) {
-      const level = hMatch[1].length;
+      const level = hMatch[1]!.length;
       const text = hMatch[2];
       const fg = level === 1 ? '#FFFFFF' : level === 2 ? '#5BADFF' : '#CCCCCC';
-      elements.push(<text fg={fg} bold>{'# '.repeat(level) + text}</text>);
+      elements.push(<text fg={fg} attributes={TextAttributes.BOLD}>{'# '.repeat(level) + text}</text>);
       continue;
     }
 
     const ulMatch = line.match(/^(\s*)[-*+]\s+(.+)/);
     if (ulMatch) {
-      const indent = ulMatch[1].length ? '  '.repeat(Math.floor(ulMatch[1].length / 2)) : '';
-      const contentLine = ulMatch[2];
+      const indentSrc = ulMatch[1]!;
+      const indent = indentSrc.length ? '  '.repeat(Math.floor(indentSrc.length / 2)) : '';
+      const contentLine = ulMatch[2]!;
       const segments = parseLine(contentLine);
       elements.push(
         <text>
-          <text dim>{indent}• </text>
-          {segments.map(s => <text fg={s.fg} bg={s.bg} bold={s.bold} dim={s.dim}>{s.text}</text>)}
+          <text attributes={TextAttributes.DIM}>{indent}• </text>
+          {segments.map(s => <text fg={s.fg} bg={s.bg} attributes={segmentAttributes(s)}>{s.text}</text>)}
         </text>
       );
       continue;
@@ -127,13 +135,14 @@ function renderMarkdown(content: string) {
 
     const olMatch = line.match(/^(\s*)\d+\.\s+(.+)/);
     if (olMatch) {
-      const indent = olMatch[1].length ? '  '.repeat(Math.floor(olMatch[1].length / 2)) : '';
-      const contentLine = olMatch[2];
+      const indentSrc = olMatch[1]!;
+      const indent = indentSrc.length ? '  '.repeat(Math.floor(indentSrc.length / 2)) : '';
+      const contentLine = olMatch[2]!;
       const segments = parseLine(contentLine);
       elements.push(
         <text>
-          <text dim>{indent}  </text>
-          {segments.map(s => <text fg={s.fg} bg={s.bg} bold={s.bold} dim={s.dim}>{s.text}</text>)}
+          <text attributes={TextAttributes.DIM}>{indent}  </text>
+          {segments.map(s => <text fg={s.fg} bg={s.bg} attributes={segmentAttributes(s)}>{s.text}</text>)}
         </text>
       );
       continue;
@@ -142,7 +151,7 @@ function renderMarkdown(content: string) {
     const segments = parseLine(line);
     elements.push(
       <text>
-        {segments.map(s => <text fg={s.fg} bg={s.bg} bold={s.bold} dim={s.dim}>{s.text}</text>)}
+        {segments.map(s => <text fg={s.fg} bg={s.bg} attributes={segmentAttributes(s)}>{s.text}</text>)}
       </text>
     );
   }
@@ -185,20 +194,20 @@ export default function ExperiencePanel() {
         padding={0}
         backgroundColor="#161b22"
       >
-        <text fg="#58a6ff" bold> 经验浏览 — {currentModuleName()}</text>
-        <text fg="#888888" dim>Esc 返回模块列表</text>
+        <text fg="#58a6ff" attributes={TextAttributes.BOLD}> 经验浏览 — {currentModuleName()}</text>
+        <text fg="#888888" attributes={TextAttributes.DIM}>Esc 返回模块列表</text>
       </box>
 
       <text height={1}> </text>
 
       {/* 分割线 */}
-      <text fg="#555555" dim>{'─'.repeat(Math.min(60, process.stdout.columns || 80))}</text>
+      <text fg="#555555" attributes={TextAttributes.DIM}>{'─'.repeat(Math.min(60, process.stdout.columns || 80))}</text>
 
       <text height={1}> </text>
 
       {/* 经验内容 */}
       <scrollbox flexGrow={1} flexShrink={1}>
-        <Show when={currentEntry()} fallback={<text fg="#888888" dim>  (无经验内容)</text>}>
+        <Show when={currentEntry()} fallback={<text fg="#888888" attributes={TextAttributes.DIM}>  (无经验内容)</text>}>
           {() => (
             <box flexDirection="column">
               {renderMarkdown(currentContent())}

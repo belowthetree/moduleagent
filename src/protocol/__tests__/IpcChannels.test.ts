@@ -24,7 +24,6 @@ describe('IpcChannels', () => {
     expect(IpcChannel.Agent.Start).toBe('agent:start');
     expect(IpcChannel.Agent.Send).toBe('agent:send');
     expect(IpcChannel.Agent.Cancel).toBe('agent:cancel');
-    expect(IpcChannel.Agent.Stop).toBe('agent:stop');
   });
 
   it('has project channels defined', () => {

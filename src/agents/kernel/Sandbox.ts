@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import path from 'path';
+import { realpathSync } from 'fs';
 import fs from 'fs-extra';
 
 export interface VisibilityConfig {
@@ -19,23 +20,65 @@ export class AgentSandbox {
   private excluded: string[];
 
   constructor(visibility: VisibilityConfig) {
-    this.allowed = visibility.allowed.map(p => path.resolve(p).replace(/\\/g, '/'));
-    this.excluded = visibility.excluded.map(p => path.resolve(p).replace(/\\/g, '/'));
+    this.allowed = visibility.allowed.map(p => this.normalizePath(this.toRealPath(path.resolve(p))));
+    this.excluded = visibility.excluded.map(p => this.normalizePath(this.toRealPath(path.resolve(p))));
     this.rootPath = this.allowed[0] || '';
   }
 
   // ── 路径校验 ──────────────────────────────────────────
 
+  /**
+   * 解析为真实路径（跟随 symlink / Windows junction），防止通过链接逃逸沙箱。
+   * 目标不存在时，向上找最近的已存在祖先做 realpath，再拼接剩余部分。
+   */
+  private toRealPath(resolved: string): string {
+    let existing = resolved;
+    const missing: string[] = [];
+    while (!fs.existsSync(existing)) {
+      missing.push(path.basename(existing));
+      const parent = path.dirname(existing);
+      if (parent === existing) break; // 已到达文件系统根
+      existing = parent;
+    }
+    let real: string;
+    try {
+      real = realpathSync.native(existing);
+    } catch {
+      real = existing;
+    }
+    for (const seg of [...missing].reverse()) {
+      real = path.join(real, seg);
+    }
+    return real;
+  }
+
+  /** 统一为 '/' 分隔符并去掉 Windows realpath 可能带出的 \\?\ 前缀 */
+  private normalizePath(p: string): string {
+    let n = p.replace(/\\/g, '/');
+    if (n.startsWith('//?/')) n = n.slice(4);
+    if (n.length > 1 && n.endsWith('/')) n = n.slice(0, -1);
+    return n;
+  }
+
+  /** 比较用规范化：Windows 下路径不区分大小写 */
+  private cmpPath(p: string): string {
+    const n = this.normalizePath(p);
+    return process.platform === 'win32' ? n.toLowerCase() : n;
+  }
+
   resolvePath(filePath: string): string {
     const resolved = path.isAbsolute(filePath)
       ? path.resolve(filePath)
       : path.resolve(this.rootPath, filePath);
-    const normalized = resolved.replace(/\\/g, '/');
+    // 词法解析后再解析符号链接，与 realpath 化的 allowed/excluded 根做比较
+    const realCmp = this.cmpPath(this.toRealPath(resolved));
 
     for (const a of this.allowed) {
-      if (normalized === a || normalized.startsWith(a + '/')) {
+      const cmpA = this.cmpPath(a);
+      if (realCmp === cmpA || realCmp.startsWith(cmpA + '/')) {
         for (const e of this.excluded) {
-          if (normalized === e || normalized.startsWith(e + '/')) {
+          const cmpE = this.cmpPath(e);
+          if (realCmp === cmpE || realCmp.startsWith(cmpE + '/')) {
             throw new Error(
               `访问被拒绝: "${filePath}" 属于子模块目录，不可直接访问。请使用 module_call 委派任务。`,
             );
@@ -46,7 +89,7 @@ export class AgentSandbox {
     }
 
     throw new Error(
-      `访问被拒绝: "${filePath}" (resolved="${normalized}") 不在可见范围内。可见根路径: ${this.allowed.join(', ')}，排除路径: ${this.excluded.join(', ')}`,
+      `访问被拒绝: "${filePath}" (resolved="${this.normalizePath(resolved)}") 不在可见范围内。可见根路径: ${this.allowed.join(', ')}，排除路径: ${this.excluded.join(', ')}`,
     );
   }
 
@@ -145,9 +188,10 @@ export class AgentSandbox {
   }
 
   private isExcludedPath(resolved: string): boolean {
-    const normalized = resolved.replace(/\\/g, '/');
+    const normalized = this.cmpPath(resolved);
     for (const e of this.excluded) {
-      if (normalized === e || normalized.startsWith(e + '/')) {
+      const cmpE = this.cmpPath(e);
+      if (normalized === cmpE || normalized.startsWith(cmpE + '/')) {
         return true;
       }
     }

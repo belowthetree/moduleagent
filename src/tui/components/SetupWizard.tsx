@@ -5,7 +5,7 @@
 
 import { createSignal, createMemo } from "solid-js";
 import { useRenderer, useKeyboard } from "@opentui/solid";
-import type { KeyEvent } from "@opentui/core";
+import { TextAttributes, type KeyEvent } from "@opentui/core";
 import { tuiState } from "../state.js";
 import {
   writeModuleAgentJson,
@@ -37,7 +37,6 @@ export default function SetupWizard(props: SetupWizardProps) {
   const [provider, setProvider] = createSignal("");
   const [model, setModel] = createSignal("");
   const [apiKey, setApiKey] = createSignal("");
-  const [projectPath, setProjectPath] = createSignal("");
 
   const [providerSelIdx, setProviderSelIdx] = createSignal(
     Math.max(0, PROVIDERS.findIndex(p => p.value === (existing.provider || fallbackProvider))),
@@ -75,7 +74,7 @@ export default function SetupWizard(props: SetupWizardProps) {
       }
     }
 
-    if (step >= 1 && step <= 3) {
+    if (step >= 1 && step <= 2) {
       if (key.name === "return" || key.name === "enter") {
         saveStepData(step);
         tuiState.setSetupStep(step + 1);
@@ -90,12 +89,11 @@ export default function SetupWizard(props: SetupWizardProps) {
       }
     }
 
-    if (step === 4) {
+    if (step === 3) {
       if (key.name === "return" || key.name === "enter") {
         handleComplete();
       } else if (key.name === "escape") {
-        saveStepData(4);
-        tuiState.setSetupStep(3);
+        tuiState.setSetupStep(2);
       }
     }
   });
@@ -118,16 +116,13 @@ export default function SetupWizard(props: SetupWizardProps) {
       case 2:
         data.apiKey = apiKey() || fallbackApiKey;
         break;
-      case 3:
-        data.projectPath = projectPath() || fallbackProjectPath;
-        break;
     }
     tuiState.setSetupData(data);
   }
 
   async function handleComplete(): Promise<void> {
     const data = tuiState.setupData();
-    const resolvedProjectPath = data.projectPath || fallbackProjectPath;
+    const resolvedProjectPath = tuiState.workingDir() || process.cwd();
 
     const merged = {
       agents: {
@@ -166,7 +161,7 @@ export default function SetupWizard(props: SetupWizardProps) {
       {step() === 0 && (
         <box flexDirection="column">
           <text>LLM 提供商 (↑↓ 选择, 空格/回车 确认)</text>
-          <text dim>当前: {PROVIDERS.find(p => p.value === (existing.provider || fallbackProvider))?.label || fallbackProvider}</text>
+          <text attributes={TextAttributes.DIM}>当前: {PROVIDERS.find(p => p.value === (existing.provider || fallbackProvider))?.label || fallbackProvider}</text>
 
           <box flexDirection="column" padding={0}>
             {(() => {
@@ -182,10 +177,10 @@ export default function SetupWizard(props: SetupWizardProps) {
                     <text width={2} fg={isSel ? '#58a6ff' : '#555555'}>
                       {isSel ? '▸' : ' '}
                     </text>
-                    <text fg={isSel ? '#58a6ff' : '#c9d1d9'} bold={isSel}>
+                    <text fg={isSel ? '#58a6ff' : '#c9d1d9'} attributes={isSel ? TextAttributes.BOLD : TextAttributes.NONE}>
                       {item.label}
                     </text>
-                    <text dim>  ({item.value})</text>
+                    <text attributes={TextAttributes.DIM}>  ({item.value})</text>
                   </box>
                 );
               });
@@ -197,8 +192,8 @@ export default function SetupWizard(props: SetupWizardProps) {
       {step() === 1 && (
         <>
           <text>模型</text>
-          <text dim>当前: {fallbackModel || '(未设置)'}</text>
-          <text dim>{(() => {
+          <text attributes={TextAttributes.DIM}>当前: {fallbackModel || '(未设置)'}</text>
+          <text attributes={TextAttributes.DIM}>{(() => {
             const sel = PROVIDERS[providerSelIdx()];
             return sel ? `${sel.label} 默认: ${sel.defaultModel || '(无)'}` : '';
           })()}</text>
@@ -208,44 +203,31 @@ export default function SetupWizard(props: SetupWizardProps) {
             placeholder={fallbackModel || PROVIDERS[providerSelIdx()]?.defaultModel || ''}
             onInput={(v: string) => setModel(v)}
           />
-          <text dim>留空则使用提供商默认模型。按 Enter 继续。</text>
+          <text attributes={TextAttributes.DIM}>留空则使用提供商默认模型。按 Enter 继续。</text>
         </>
       )}
 
       {step() === 2 && (
         <>
           <text>API 密钥</text>
-          <text dim>当前: {fallbackApiKey ? '***已配置***' : '(未设置)'}</text>
+          <text attributes={TextAttributes.DIM}>当前: {fallbackApiKey ? '***已配置***' : '(未设置)'}</text>
           <input
             focused={true}
             value={apiKey()}
             placeholder="sk-..."
             onInput={(v: string) => setApiKey(v)}
           />
-          <text dim>存储于项目 .module-agent.json 中。按 Enter 继续。</text>
+          <text attributes={TextAttributes.DIM}>存储于项目 .module-agent.json 中。按 Enter 继续。</text>
         </>
       )}
 
       {step() === 3 && (
         <>
-          <text>项目目录</text>
-          <text dim>输入项目根目录路径。</text>
-          <text dim>.module-agent/module/ 和 .module-agent/workspace/ 将自动创建。</text>
-          <text dim>当前: {fallbackProjectPath}</text>
-          <input
-            focused={true}
-            value={projectPath()}
-            placeholder={fallbackProjectPath}
-            onInput={(v: string) => setProjectPath(v)}
-          />
-          <text dim>按 Enter 继续。</text>
-        </>
-      )}
-
-      {step() === 4 && (
-        <>
           <text>确认设置</text>
           <text>{summaryText()}</text>
+          {!(tuiState.setupData().apiKey || fallbackApiKey) && (
+            <text fg="#d29922">警告: 未设置 API Key，请求可能被拒绝 (403 Forbidden)</text>
+          )}
           <text>按 Enter 开始，Esc 返回修改</text>
         </>
       )}

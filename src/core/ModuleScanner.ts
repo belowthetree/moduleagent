@@ -81,7 +81,9 @@ export class ModuleScanner {
         try {
           const definition = await ModuleParser.parseFile(fullPath);
           const rootPath = path.dirname(fullPath);
-          const relativePath = path.relative(projectRoot, rootPath) || '.';
+          // 统一为 '/' 分隔：path.relative 在 Windows 产出反斜杠，
+          // 模块名需跨平台稳定（跨模块解析、module.md 引用均以 '/' 为准）
+          const relativePath = (path.relative(projectRoot, rootPath) || '.').replace(/\\/g, '/');
           // 模块标识使用相对路径，确保与文件系统和 module.md 中的路径引用一致
           const moduleName = relativePath !== '.' ? relativePath : definition.frontmatter.name;
           modules.push({

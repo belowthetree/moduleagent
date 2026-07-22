@@ -1,10 +1,12 @@
 // ============================================================================
 // projectHandlers — 项目 IPC handler
 // 注册通道: project:scan / project:getTree / project:generateModules
-// 项目扫描、模块树构建、MCP 后端初始化、模块自动生成
+// 项目扫描、模块树构建、模块自动生成
 //
 // AgentStateManager、prompts、agentStatus 已移入 Core 层。
-// project:scan 委托 initAll() 完成初始化，MCP 后端回调使用 core.modules API。
+// project:scan 委托 core.initAll() 一次性完成：模块扫描 + 角色/工作流初始化
+// + MCP 后端装配（跨模块路由器）；Electron 特有的 timeline 跨模块装饰通过
+// onCrossModuleContext 钩子注入（跨模块上下文落盘由 Core 内 appendCrossContext 接线）。
 // ============================================================================
 
 import { ipcMain } from 'electron';
@@ -13,15 +15,14 @@ import fs from 'fs-extra';
 import { IpcChannel } from '../../protocol/IpcChannels.js';
 import type { HandlerContext } from './HandlerContext.js';
 import { ConfigLoader } from '../../config/ConfigLoader.js';
-import { DEFAULT_CONFIG, DEFAULT_MODULE_GEN_ROLE, type RoleConfig } from '../../config/defaults.js';
-import { CrossModuleRouter } from '../../agents/mcp/McpBackend.js';
+import { DEFAULT_MODULE_GEN_ROLE } from '../../config/defaults.js';
 import { ModuleScanner } from '../../core/ModuleScanner.js';
 import { ModuleGraph } from '../../core/ModuleGraph.js';
 import { writeMcpGraphFile } from '../../agents/mcp/McpServerBuilder.js';
-import { buildPromptBlocks } from '../../agents/prompts/PromptBuilder.js';
-import { KernelFactory } from '../../agents/KernelFactory.js';
+import { KernelFactory, type AgentConfig } from '../../agents/KernelFactory.js';
+import { Agent } from '../../agents/Agent.js';
 import type { ModuleGraphNode } from '../../types/module.js';
-import type { ChatMsg, TreeNode } from '../../types/shared.js';
+import type { TreeNode } from '../../types/shared.js';
 
 export function registerProjectHandlers(ctx: HandlerContext): void {
 
@@ -43,45 +44,19 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
       ctx.summarizationEnabled = config.summarization?.enabled ?? false;
       const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
 
-      // 初始化核心和角色（Core.init 内部会创建 AgentStateManager 并加载 prompts）
-      const result = await ctx.core.init(projectRoot);
-      ctx.core.initRoles(config.projectPath, workspaceRoot);
-      ctx.core.initWorkflows(config.projectPath, workspaceRoot);
-
-      const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
-      fs.mkdirSync(moduleScanPath, { recursive: true });
-      const descriptors = await ModuleScanner.scan({
-        projectRoot: moduleScanPath,
-        extraExclude: config.exclude,
-      });
-
-      const graph = new ModuleGraph().build(descriptors, projectRoot);
-
-      // 跨模块通信路由器
-      const crossRouter = new CrossModuleRouter({
-        getAgentEntry(name) {          const e = ctx.core.modules.getAgent(name);
-          return e ? e.agent : undefined;
-        },
-        startAgent(name) {
-          return ctx.core.modules.startAgent(name)
-            .then(() => true)
-            .catch((err) => {
-              ctx.logger.error(`cross-module: failed to auto-start ${name}: ${(err as Error).message}`);
-              return false;
-            });
-        },
-        buildPromptBlocks(name, text) {
-          return ctx.core.modules.buildPromptBlocksForModule(name, text);
-        },
-        sendCrossContext(source, target, direction, phase, content) {
-          const st = ctx.core.modules.getStreamState(source);
+      // 一次性初始化：模块扫描 + 角色/工作流子系统 + MCP 后端（跨模块路由器）。
+      // Electron 特有的 timeline 跨模块装饰通过钩子注入。
+      await ctx.core.initAll(projectRoot, undefined, {
+        onCrossModuleContext: ({ fromModule, toModule, direction, phase, content }) => {
+          // 装饰最近一条 module_call/module_query 工具调用的 timeline 事件
+          const st = ctx.core.modules.getStreamState(fromModule);
           if (st && st.timeline) {
             for (let i = st.timeline.length - 1; i >= 0; i--) {
               const ev = st.timeline[i]!;
               if (ev.type === 'tool_call' && (ev.content.includes('module_call') || ev.content.includes('module_query'))) {
                 if (!ev.crossModule) {
                   ev.crossDirection = direction;
-                  ev.crossModule = target;
+                  ev.crossModule = toModule;
                   ev.crossPhase = phase;
                   ev.detail = content;
                 } else {
@@ -94,8 +69,8 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
           }
           if (ctx.mainWindow && !ctx.mainWindow.isDestroyed()) {
             ctx.mainWindow.webContents.send(IpcChannel.Push.CrossContext, {
-              moduleName: source,
-              crossModule: target,
+              moduleName: fromModule,
+              crossModule: toModule,
               direction,
               phase,
               content,
@@ -103,32 +78,18 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
             });
           }
         },
-        setAgentStatus(name, status) {
-          ctx.core.modules.setAgentStatus(name, status);
-        },
-        startStream: (moduleName) => ctx.core.modules.startStream(moduleName),
-        finishStream: (moduleName) => ctx.core.modules.finishStream(moduleName),
-        saveCrossContext: async (moduleName, msgs) => {
-          const existing = await ctx.core.modules.loadContext(moduleName);
-          existing.push(...msgs);
-          await ctx.core.modules.saveContext(moduleName, existing);
-        },
-        onLog(level, message) {
-          if (level === 'error') ctx.logger.error(message);
-          else if (level === 'warn') ctx.logger.warn(message);
-          else ctx.logger.info(message);
-        },
-        getModuleList: (requestingModule) => ctx.core.modules.getModuleListForBridge(requestingModule),
-      }, ctx.core.modules.crossModuleLimits);
-      ctx.core.modules.crossModuleRouter = crossRouter;
+      });
 
-      ctx.logger.info('Cross-module router initialized');
-
+      // initAll 内部已完成模块扫描，直接取图，避免重复扫描
+      const graph = ctx.core.getGraph();
+      if (!graph) {
+        return { root: '', nodes: {}, moduleCount: 0 };
+      }
       const nodes: Record<string, ModuleGraphNode> = {};
       for (const [name, node] of graph.nodes) {
         nodes[name] = { ...node, workspacePath: workspaceRoot };
       }
-      return { root: graph.root, nodes, moduleCount: descriptors.length };
+      return { root: graph.root, nodes, moduleCount: graph.nodes.size };
     } catch (err) {
       return { error: (err as Error).message };
     }
@@ -170,6 +131,8 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
   });
 
   ipcMain.handle(IpcChannel.Project.GenerateModules, async (_event, projectRoot: string) => {
+    let agent: Agent | null = null;
+    let graphFile: string | null = null;
     try {
       const workspaceConfig = await ConfigLoader.loadOrCreate(projectRoot);
       const config = ConfigLoader.getDefaultConfig(workspaceConfig);
@@ -196,49 +159,31 @@ export function registerProjectHandlers(ctx: HandlerContext): void {
         return { success: false, count: 0, error: 'No root module found after scan' };
       }
 
-      let agentCommand = config.agents.default.command;
-      let agentArgs = config.agents.default.args || [];
-      const modules = config.agents.modules;
-      if (modules && modules[rootNode.name]) {
-        agentCommand = modules[rootNode.name]!.command;
-        agentArgs = modules[rootNode.name]!.args || [];
-      }
+      // 解析 agent 连接配置（模块级覆盖优先，与 resolveAgentConfig 同规则）
+      const def = config.agents.default;
+      const mod = config.agents.modules?.[rootNode.name];
+      const agentConfig: AgentConfig = {
+        provider: mod?.provider || def.provider,
+        apiKey: mod?.apiKey || def.apiKey,
+        baseUrl: mod?.baseUrl || def.baseUrl,
+        model: mod?.model || def.model,
+        maxTokens: mod?.maxTokens ?? def.maxTokens,
+        fastModel: mod?.fastModel || def.fastModel,
+        contextWindow: mod?.contextWindow ?? def.contextWindow,
+      };
 
-      const workspaceRoot = path.join(projectRoot, '.module-agent', 'workspace');
-      let cwd: string;
-      if (rootNode.relativePath === '.') {
-        cwd = path.join(projectRoot, '.module-agent', 'module');
-      } else {
-        cwd = path.join(projectRoot, '.module-agent', 'module');
-      }
+      // 现有模块图写入临时文件，供 agent 读取解析（finally 中负责清理）
+      graphFile = writeMcpGraphFile(graph);
 
-      const subModuleDirs: string[] = [];
-
+      // 启动临时 agent：生成指令以独立 system 角色注入（前缀缓存锚定）
       const launcher = new KernelFactory();
-      const launched = await launcher.create(
-        { command: agentCommand, args: agentArgs },
-        rootNode.name,
-        cwd,
-        '',
-        ctx.logger,
-        { subModuleDirs } as any,
-      );
-
-      const graphFile = writeMcpGraphFile(graph);
-
-      const { sessionId } = await (launched as any).connection.newSession({ cwd, mcpServers: [] });
-
-      const projectName = path.basename(projectRoot);
-      const mainDescriptors = descriptors.filter(
-        d => d.moduleMdPath !== rootModulePath,
-      );
-      const dirs = mainDescriptors
-        .map(d => path.relative(projectRoot, path.dirname(d.moduleMdPath)))
-        .filter(Boolean);
-
-      const systemBlock = {
-        type: 'text' as const,
-        text: `You are a module documentation expert. Your task is to analyze source code directories and generate comprehensive module.md files.
+      agent = await Agent.start({
+        name: rootNode.name,
+        config: agentConfig,
+        cwd: moduleScanPath,
+        launcher,
+        logger: ctx.logger,
+        systemPrompt: `You are a module documentation expert. Your task is to analyze source code directories and generate comprehensive module.md files.
 
 Each module.md must have YAML frontmatter with:
 - name: module name — use the relative path from project root
@@ -247,16 +192,23 @@ Each module.md must have YAML frontmatter with:
 
 Write each module.md to: ${moduleScanPath}/<relative-path>/module.md
 DO NOT overwrite existing module.md files.`,
-      };
+        onNotification: () => { /* 生成任务在后台执行，无需转发通知 */ },
+      });
 
+      const projectName = path.basename(projectRoot);
+      const mainDescriptors = descriptors.filter(
+        d => d.moduleMdPath !== rootModulePath,
+      );
+      const dirs = mainDescriptors
+        .map(d => path.relative(projectRoot, path.dirname(d.moduleMdPath)))
+        .filter(Boolean);
       const dirsList = dirs.length > 0 ? dirs.map(d => `  - ${d}`).join('\n') : '  (root module only)';
-      const userBlock = {
-        type: 'text' as const,
-        text: `Project: ${projectName}\nProject root: ${projectRoot}\n\nPlease analyze the following source directories and generate module.md for each:\n\n${dirsList}`,
-      };
 
-      await (launched as any).connection.prompt({ sessionId, prompt: [systemBlock, userBlock] });
-      try { fs.unlinkSync(graphFile); } catch { /* 忽略 */ }
+      const sendResult = await agent.send([{
+        type: 'text',
+        text: `Project: ${projectName}\nProject root: ${projectRoot}\n\nThe current module graph JSON (from the scan above) is available at: ${graphFile}\nRead it to understand the existing module structure before generating.\n\nPlease analyze the following source directories and generate module.md for each:\n\n${dirsList}`,
+      }]);
+      ctx.logger.info(`[generateModules] agent reply: ${sendResult.content.slice(0, 200)}`);
 
       const newDescriptors = await ModuleScanner.scan({
         projectRoot: moduleScanPath,
@@ -268,6 +220,14 @@ DO NOT overwrite existing module.md files.`,
     } catch (err) {
       ctx.logger.error(`[generateModules] Error: ${(err as Error).message}`);
       return { success: false, count: 0, error: (err as Error).message };
+    } finally {
+      // 内核模式无子进程，停止 agent 即完成清理；临时模块图文件一并删除
+      if (agent) {
+        try { agent.stop(); } catch { /* 忽略 */ }
+      }
+      if (graphFile) {
+        try { fs.unlinkSync(graphFile); } catch { /* 忽略 */ }
+      }
     }
   });
 }

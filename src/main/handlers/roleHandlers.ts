@@ -117,7 +117,11 @@ export function registerRoleHandlers(ctx: HandlerContext): void {
   });
 
   ipcMain.handle(IpcChannel.Role.ClearContext, async (_event, roleName: string) => {
-    const ctxKey = `workrole:${roleName}`;
-    await ctx.core.modules.clearModuleContext(ctxKey);
+    // 委托 RoleAgentSubsystem 完整清理（内存历史 + sessionPrompted + 持久化文件）
+    if (ctx.core.roles) {
+      await ctx.core.roles.clearRoleContext(roleName);
+    } else {
+      await ctx.core.modules.clearModuleContext(`workrole:${roleName}`);
+    }
   });
 }

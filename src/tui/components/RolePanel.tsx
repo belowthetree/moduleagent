@@ -6,7 +6,7 @@
 
 import { createSignal, onMount } from 'solid-js';
 import { useKeyboard, useRenderer } from '@opentui/solid';
-import type { KeyEvent } from '@opentui/core';
+import { TextAttributes, type KeyEvent } from '@opentui/core';
 import { tuiState } from '../state.js';
 import { defaultLogger } from '../../core/Logger.js';
 import type { RoleConfigData } from '../../types/shared.js';
@@ -119,7 +119,7 @@ export default function RolePanel() {
         focused={true}
       >
         <text fg="#58a6ff"> 角色选择</text>
-        <text fg="#888888" dim>
+        <text fg="#888888" attributes={TextAttributes.DIM}>
           {switching() ? '正在切换…' : '↑↓ 导航  Enter 切换  Esc 关闭'}
         </text>
       </box>
@@ -129,7 +129,6 @@ export default function RolePanel() {
       */}
       <input
         width={0}
-        height={0}
         visible={false}
         value=""
         keyBindings={[]}
@@ -137,11 +136,11 @@ export default function RolePanel() {
       <scrollbox ref={(el: any) => { scrollEl = el; }} flexGrow={1}>
         <box flexDirection="column">
           {loading() ? (
-            <text fg="#888888" dim>  加载中…</text>
+            <text fg="#888888" attributes={TextAttributes.DIM}>  加载中…</text>
           ) : roles().length === 0 ? (
             <box flexDirection="column" padding={1}>
               <text fg="#888888">  无可用角色。</text>
-              <text fg="#555555" dim>  请先在 .module-agent.json 中配置 roles。</text>
+              <text fg="#555555" attributes={TextAttributes.DIM}>  请先在 .module-agent.json 中配置 roles。</text>
             </box>
           ) : (
             (() => {
@@ -168,9 +167,9 @@ export default function RolePanel() {
                   >
                     <text fg={isSelected ? '#58a6ff' : '#555555'}>{isSelected ? '→ ' : '  '}</text>
                     <text fg={isRunning ? '#00FF00' : '#555555'}>{isRunning ? '● ' : '◌ '}</text>
-                    <text fg={nameFg} bold={isCurrent}>{role.name}</text>
-                    <text fg="#58a6ff" dim>{isCurrent ? ' [当前]' : ''}</text>
-                    <text fg="#888888" dim>{desc ? ` — ${desc}` : ''}</text>
+                    <text fg={nameFg} attributes={isCurrent ? TextAttributes.BOLD : TextAttributes.NONE}>{role.name}</text>
+                    <text fg="#58a6ff" attributes={TextAttributes.DIM}>{isCurrent ? ' [当前]' : ''}</text>
+                    <text fg="#888888" attributes={TextAttributes.DIM}>{desc ? ` — ${desc}` : ''}</text>
                   </box>
                 );
               });

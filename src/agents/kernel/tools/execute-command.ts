@@ -7,6 +7,33 @@ import type { AgentSandbox } from '../Sandbox.js';
 import type { Tool, ToolInputSchema } from '../types.js';
 import { defaultLogger } from '../../../core/Logger.js';
 
+/**
+ * 子进程环境变量白名单：仅保留运行命令所必需的项，
+ * 避免把 ANTHROPIC_API_KEY 等敏感变量泄漏给任意命令。
+ */
+const ENV_WHITELIST = [
+  'PATH', 'SystemRoot', 'SystemDrive', 'SYSTEMDRIVE', 'COMSPEC', 'WINDIR',
+  'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
+  'TEMP', 'TMP', 'TMPDIR',
+  'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ',
+  'OS', 'PATHEXT', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA',
+  'SHELL', 'TERM', 'COLORTERM',
+  'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE',
+];
+
+/** 按白名单构建子进程环境（Windows 环境变量名不区分大小写） */
+export function buildSafeEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  const isWin = process.platform === 'win32';
+  for (const key of Object.keys(process.env)) {
+    const allowed = ENV_WHITELIST.some(w =>
+      isWin ? key.toUpperCase() === w.toUpperCase() : key === w,
+    );
+    if (allowed) env[key] = process.env[key];
+  }
+  return env;
+}
+
 export function createExecuteCommandTool(sandbox: AgentSandbox): Tool {
   const isWindows = process.platform === 'win32';
 
@@ -31,7 +58,7 @@ export function createExecuteCommandTool(sandbox: AgentSandbox): Tool {
 
   return {
     name: 'execute_command',
-    description: `在沙箱内执行 shell 命令。命令在 ${isWindows ? 'cmd /C' : 'sh -c'} 中运行，工作目录限制在可见范围内。`,
+    description: `在受限工作目录内执行 shell 命令。命令在 ${isWindows ? 'cmd /C' : 'sh -c'} 中运行，工作目录限制在可见范围内，环境变量经白名单过滤；注意命令本身不受文件系统沙箱约束，可读写工作目录之外的路径，请谨慎使用。`,
     inputSchema,
     execute: async (input: Record<string, unknown>) => {
       const command = input.command as string;
@@ -61,7 +88,7 @@ export function createExecuteCommandTool(sandbox: AgentSandbox): Tool {
 
         const proc: ChildProcess = execFile(shell, shellArgs, {
           cwd,
-          env: { ...process.env },
+          env: buildSafeEnv(),
           windowsHide: true,
           timeout: timeoutMs,
           maxBuffer: 10 * 1024 * 1024,

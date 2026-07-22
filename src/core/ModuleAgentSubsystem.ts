@@ -19,6 +19,7 @@ import {
   dedupMessage,
 } from '../agents/prompts/PromptBuilder.js';
 import { SendGuard } from './AgentSubsystemUtils.js';
+import { normalizeCodeSourcePath } from './PathUtils.js';
 import { withRetry } from './RetryPolicy.js';
 import type { PromptBlock } from '../agents/kernel/types.js';
 import type { ModuleGraph as ModuleGraphType } from '../types/module.js';
@@ -34,10 +35,6 @@ export interface AgentEntry {
   modulePath: string;
   /** 模块的源码目录（用于 workspace diff 对比） */
   sourcePath?: string;
-  modeOptions?: { value: string; name: string }[];
-  currentMode?: string;
-  modelOptions?: { value: string; name: string }[];
-  currentModel?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +53,8 @@ export interface ModuleAgentSubsystemOptions {
   onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
   /** Post-send hook: invoked after context save (for summarizer + workspace diff) */
   onPostSend?: (moduleName: string, msgs: ChatMsg[], entry: AgentEntry) => void;
+  /** 忽略配置中的 projectPath，以 init 的 projectRoot 作为项目源码根目录（TUI 使用） */
+  ignoreConfigProjectPath?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +101,7 @@ export class ModuleAgentSubsystem {
   private _onSessionUpdate?: (moduleName: string, sessionId: string, notification: any) => void;
   private _onCrossContext?: (source: string, target: string, direction: string, phase: string, content: string) => void;
   private _onPostSend?: (moduleName: string, msgs: ChatMsg[], entry: AgentEntry) => void;
+  private ignoreConfigProjectPath: boolean;
 
   constructor(options: ModuleAgentSubsystemOptions) {
     this.callbacks = options.callbacks;
@@ -111,6 +111,7 @@ export class ModuleAgentSubsystem {
     this._onSessionUpdate = options.onSessionUpdate;
     this._onCrossContext = options.onCrossContext;
     this._onPostSend = options.onPostSend;
+    this.ignoreConfigProjectPath = options.ignoreConfigProjectPath ?? false;
   }
 
   // -----------------------------------------------------------------------
@@ -127,6 +128,9 @@ export class ModuleAgentSubsystem {
 
     const workspaceConfig = await ConfigLoader.load(projectRoot);
     this.config = ConfigLoader.getDefaultConfig(workspaceConfig);
+    if (this.ignoreConfigProjectPath) {
+      this.config = { ...this.config, projectPath: projectRoot };
+    }
 
     const moduleScanPath = path.join(projectRoot, '.module-agent', 'module');
     fs.ensureDirSync(moduleScanPath);
@@ -298,10 +302,11 @@ export class ModuleAgentSubsystem {
       const entry = this.agents.get(name);
       if (!entry) continue;
       try {
+        // 只取消不删除：cancel() 会 abort 在途调用并以 Canceled 错误 reject 排队项，
+        // agent 保持可复用（与 Electron 路径语义一致）
         await entry.agent.cancel();
-        this.agents.delete(name);
-        this.deleteAgentStatus(name);
-        this.logger.info(`cancel [${name}] → stopped`);
+        this.setAgentStatus(name, 'idle');
+        this.logger.info(`cancel [${name}] → cancelled`);
       } catch (err) {
         this.logger.warn(`cancel [${name}] failed: ${(err as Error).message}`);
       }
@@ -315,24 +320,16 @@ export class ModuleAgentSubsystem {
     if (entry) {
       try {
         const newSessionId = await entry.agent.clearContext();
-        // 保存新 sessionId（回合不变，下次启动可 resume 新会话）
-        this._saveSessionId(name, newSessionId);
         this.logger.info(`clearContext: new session for [${name}], sessionId=${newSessionId}`);
-        // 恢复 mode/model 配置
-        await this._applySessionConfig(name, entry.agent);
       } catch (err) {
-        // newSession 失败回退：杀进程，下次使用时自动重启
-        this.logger.warn(`clearContext: newSession failed for [${name}], killing process: ${(err as Error).message}`);
+        // clearContext 失败回退：停止内核，下次使用时自动重启
+        this.logger.warn(`clearContext: failed for [${name}], stopping agent: ${(err as Error).message}`);
         entry.agent.stop();
         this.agents.delete(name);
         this._agentStatus.delete(name);
-        // 进程已死，删 session 文件避免下次误 resume 死会话
-        this._deleteSessionId(name);
       }
     } else {
-      // agent 未运行：删 sessionId 文件防止下次启动时 resume 旧会话
-      this.logger.info(`clearContext: agent not running, clearing sessionId + context for [${name}]`);
-      this._deleteSessionId(name);
+      this.logger.info(`clearContext: agent not running, clearing persisted context for [${name}]`);
     }
     // 删除持久化的对话上下文文件（否则重启后 loadContext 又读回来）
     await this._stateManager?.clearContext(name);
@@ -436,9 +433,8 @@ export class ModuleAgentSubsystem {
   }
 
   getAgentModes(moduleName: string): { value: string; name: string; current: boolean }[] {
-    const entry = this.agents.get(moduleName);
-    if (!entry?.modeOptions?.length) return [];
-    return entry.modeOptions.map(m => ({ ...m, current: m.value === entry.currentMode }));
+    // 内核模式没有 agent 上报的 mode 列表，如实返回空
+    return [];
   }
 
   /** 更新内存中的 defaultMode（新启动的 agent 会用到） */
@@ -448,26 +444,31 @@ export class ModuleAgentSubsystem {
     }
   }
 
-  async setAgentMode(moduleName: string, modeValue: string): Promise<void> {
+  /** 内核模式不支持运行时 mode 切换，恒返回 false 并记录日志 */
+  async setAgentMode(moduleName: string, modeValue: string): Promise<boolean> {
     const entry = this.agents.get(moduleName);
     if (!entry) throw new Error(`Agent ${moduleName} not running`);
-    await entry.agent.setConfigOption('mode', modeValue);
-    entry.currentMode = modeValue;
-    this.logger.info(`[${moduleName}] mode switched to ${modeValue}`);
+    const applied = await entry.agent.setConfigOption('mode', modeValue);
+    if (!applied) {
+      this.logger.warn(`[${moduleName}] 内核模式不支持运行时 mode 切换（${modeValue} 未生效）`);
+    }
+    return applied;
   }
 
   getAgentModels(moduleName: string): { value: string; name: string; current: boolean }[] {
-    const entry = this.agents.get(moduleName);
-    if (!entry?.modelOptions?.length) return [];
-    return entry.modelOptions.map(m => ({ ...m, current: m.value === entry.currentModel }));
+    // 内核模式没有 agent 上报的模型列表，如实返回空
+    return [];
   }
 
-  async setAgentModel(moduleName: string, modelValue: string): Promise<void> {
+  /** 内核模式不支持运行时 model 切换，恒返回 false 并记录日志 */
+  async setAgentModel(moduleName: string, modelValue: string): Promise<boolean> {
     const entry = this.agents.get(moduleName);
     if (!entry) throw new Error(`Agent ${moduleName} not running`);
-    await entry.agent.setConfigOption('model', modelValue);
-    entry.currentModel = modelValue;
-    this.logger.info(`[${moduleName}] model switched to ${modelValue}`);
+    const applied = await entry.agent.setConfigOption('model', modelValue);
+    if (!applied) {
+      this.logger.warn(`[${moduleName}] 内核模式不支持运行时 model 切换（${modelValue} 未生效）`);
+    }
+    return applied;
   }
 
   // -----------------------------------------------------------------------
@@ -606,6 +607,11 @@ export class ModuleAgentSubsystem {
     await this._stateManager?.saveContext(moduleName, msgs);
   }
 
+  /** 跨模块调用上下文落盘（委托 SessionStore.appendCrossContext，供 CrossModuleRouter 回调） */
+  async appendCrossContext(moduleName: string, requestText: string, responseText: string): Promise<void> {
+    await this._stateManager?.appendCrossContext(moduleName, requestText, responseText);
+  }
+
   /** 清空模块上下文（委托给 clearContext 完成完整清理） */
   async clearModuleContext(moduleName: string): Promise<void> {
     this.logger.info(`clearModuleContext [${moduleName}] → delegating to clearContext`);
@@ -613,40 +619,12 @@ export class ModuleAgentSubsystem {
   }
 
   async clearAllContexts(): Promise<void> {
-    // 1. 递增回合号 → 所有 agent（运行中/已停止/子模块）下次启动全部 fresh start
-    const newRound = (this.config?.sessionRound || 1) + 1;
-    if (this.config) {
-      this.config.sessionRound = newRound;
-      try {
-        await ConfigLoader.upsertEntry(this.projectRoot, this.config, false);
-        this.logger.info(`clearAllContexts: sessionRound → ${newRound}`);
-      } catch (err) {
-        this.logger.warn(`clearAllContexts: failed to save round: ${(err as Error).message}`);
-      }
+    // 1. 运行中的 agent：逐个完整清理（内核上下文重置 + 持久化文件删除）
+    for (const name of [...this.agents.keys()]) {
+      await this.clearContext(name);
     }
 
-    // 2. 运行中的 agent：换新会话 + 存新 sessionId（带新回合号）
-    for (const name of this.agents.keys()) {
-      const entry = this.agents.get(name);
-      if (entry) {
-        try {
-          const newSessionId = await entry.agent.clearContext();
-          this._saveSessionId(name, newSessionId);
-          await this._applySessionConfig(name, entry.agent);
-        } catch (err) {
-          this.logger.warn(`clearAllContexts: newSession failed for [${name}], killing: ${(err as Error).message}`);
-          entry.agent.stop();
-          this.agents.delete(name);
-          this._agentStatus.delete(name);
-        }
-      }
-      await this._stateManager?.clearContext(name);
-      this.sessionPrompted.delete(name);
-      this.lastSent.delete(name);
-      this.toolNameById.clear();
-    }
-
-    // 3. 清理残留的 context 文件（已停止的 agent）
+    // 2. 清理残留的 context 文件（已停止的 agent）
     await this._stateManager?.clearAllContexts();
     this.logger.info('clearAllContexts: all agents + files cleared');
   }
@@ -659,9 +637,10 @@ export class ModuleAgentSubsystem {
   private _getSourcePath(moduleName: string): string | null {
     const node = this.graph?.nodes.get(moduleName);
     if (!node || !this.config?.projectPath) return null;
+    // normalizeCodeSourcePath：防非 Windows 平台把 Windows 盘符路径当相对路径解析
     return node.relativePath === '.'
-      ? this.config.projectPath
-      : path.join(this.config.projectPath, node.relativePath);
+      ? normalizeCodeSourcePath(this.config.projectPath)
+      : normalizeCodeSourcePath(path.join(this.config.projectPath, node.relativePath));
   }
 
   private async _startAgentInternal(moduleName: string): Promise<AgentEntry> {
@@ -714,7 +693,7 @@ export class ModuleAgentSubsystem {
           const block = data.content as { type?: string; text?: string } | undefined;
           if (block?.text) self.callbacks.onStreamChunk(moduleName, block.text, 'thought');
         } else if (update === 'tool_call') {
-          self.logger.info(`[${moduleName}] tool_call: ${(data as { title?: string }).title || 'unknown'} ${JSON.stringify(notification)}`);
+          self.logger.info(`[${moduleName}] tool_call: ${(data as { title?: string }).title || 'unknown'} ${formatNotificationForLog(notification)}`);
           const tc = data as { title?: string; status?: string; name?: string; toolName?: string; toolCallId?: string; input?: Record<string, unknown>; arguments?: Record<string, unknown>; params?: Record<string, unknown>; toolCall?: Record<string, unknown> };
           const toolName = tc.title || tc.toolName || tc.name || 'unknown';
           const toolStatus = tc.status || 'running';
@@ -797,25 +776,7 @@ export class ModuleAgentSubsystem {
             `[${moduleName}] system message queued (queue=${qlen}): ${text.slice(0, 80)}`,
           );
         },
-        sessionResume: {
-          savedSessionId: this._loadSessionId(moduleName) || '',
-          save: (id: string) => this._saveSessionId(moduleName, id),
-        },
       });
-
-      // 应用 session 配置（mode / model）
-      const savedModes = await this._applySessionConfig(moduleName, agent);
-
-      // 提取当前 mode
-      const savedCurrentMode = (agent.sessionResult?.configOptions as any[])
-        ?.find((o: any) => o.id === 'mode' || o.category === 'mode')
-        ?.currentValue;
-
-      // 提取模型选项（agent 上报的可用模型列表）
-      const configOpts = (agent.sessionResult?.configOptions as any[]) || [];
-      const modelOpt = configOpts.find((o: any) => o.id === 'model' || o.category === 'model');
-      const modelOptions: { value: string; name: string }[] = modelOpt?.options?.map((o: any) => ({ value: o.value, name: o.name })) || [];
-      const currentModel: string = modelOpt?.currentValue || agentConfig.model || '';
 
       this.sessionPrompted.delete(moduleName);
 
@@ -825,10 +786,6 @@ export class ModuleAgentSubsystem {
         sourcePath: node && projectPath
           ? this._getSourcePath(moduleName) || cwd
           : cwd,
-        modeOptions: savedModes,
-        currentMode: savedCurrentMode,
-        modelOptions,
-        currentModel,
       };
       this.agents.set(moduleName, entry);
 
@@ -843,71 +800,6 @@ export class ModuleAgentSubsystem {
   }
 
   // -----------------------------------------------------------------------
-  // Session 持久化（用于 resume）
-  // -----------------------------------------------------------------------
-
-  private _sessionStoreDir(): string {
-    return path.join(this.projectRoot, '.module-agent', 'sessions');
-  }
-
-  private _sanitizeFileName(name: string): string {
-    return name.replace(/[<>:"/\\|?*]/g, '_');
-  }
-
-  private _saveSessionId(moduleName: string, sessionId: string): void {
-    try {
-      const dir = this._sessionStoreDir();
-      fs.ensureDirSync(dir);
-      const file = path.join(dir, `${this._sanitizeFileName(moduleName)}.json`);
-      const round = this.config?.sessionRound || 1;
-      fs.writeJsonSync(file, { sessionId, savedAt: new Date().toISOString(), round });
-      this.logger.info(`[session] saved ${moduleName} → ${sessionId} (round=${round})`);
-    } catch (err) {
-      this.logger.warn(`[session] failed to save sessionId: ${(err as Error).message}`);
-    }
-  }
-
-  /** 在 cwd 创建 .git 目录结构，防止 opencode 向上追溯 */
-  private _ensureGitAnchor(cwd: string): void {
-    try {
-      const gitDir = path.join(cwd, '.git');
-      if (!fs.existsSync(gitDir)) {
-        fs.mkdirSync(path.join(gitDir, 'refs', 'heads'), { recursive: true });
-        fs.mkdirSync(path.join(gitDir, 'objects'), { recursive: true });
-        fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
-      }
-    } catch { /* ignore */ }
-  }
-
-  private _deleteSessionId(moduleName: string): void {
-    try {
-      const file = path.join(this._sessionStoreDir(), `${this._sanitizeFileName(moduleName)}.json`);
-      if (fs.existsSync(file)) {
-        fs.unlinkSync(file);
-        this.logger.info(`[session] deleted sessionId for [${moduleName}]`);
-      }
-    } catch (err) {
-      this.logger.warn(`[session] failed to delete sessionId: ${(err as Error).message}`);
-    }
-  }
-
-  private _loadSessionId(moduleName: string): string | null {
-    try {
-      const file = path.join(this._sessionStoreDir(), `${this._sanitizeFileName(moduleName)}.json`);
-      if (fs.existsSync(file)) {
-        const data = fs.readJsonSync(file) as { sessionId: string; round?: number };
-        const currentRound = this.config?.sessionRound || 1;
-        if (data.round !== undefined && data.round !== currentRound) {
-          this.logger.info(`[session] ${moduleName} round mismatch (file=${data.round}, config=${currentRound}) → skip resume`);
-          return null;
-        }
-        return data.sessionId || null;
-      }
-    } catch { /* ignore */ }
-    return null;
-  }
-
-  // -----------------------------------------------------------------------
   // 消息路由（从 AgentRouter 而来）
   // -----------------------------------------------------------------------
 
@@ -915,9 +807,19 @@ export class ModuleAgentSubsystem {
     // 关键词匹配：@moduleName 或 模块: name
     const keyword = this._extractModuleKeyword(message);
     if (keyword) {
-      const target = this._findModule(keyword);
-      if (target && this.agents.has(target)) {
-        return { targetName: target, prompt: message };
+      const found = this._findModule(keyword);
+      // 目标模块存在即路由（未启动时由 sendMessage 自动 startAgent），不再静默降级到当前模块
+      if (found && this.graph?.nodes.has(found.name)) {
+        if (found.fuzzy) {
+          // 模糊命中：给用户可见提示，避免"以为发给 A 实际发给 B"
+          this.callbacks.onMessage({
+            id: `route-${Date.now()}`,
+            role: 'system',
+            content: `未找到精确匹配的模块「${keyword}」，已按模糊匹配路由到「${found.name}」。`,
+            time: new Date().toLocaleTimeString(),
+          });
+        }
+        return { targetName: found.name, prompt: message };
       }
     }
 
@@ -925,7 +827,7 @@ export class ModuleAgentSubsystem {
     const pathMatch = this._extractFilePath(message);
     if (pathMatch) {
       const target = this._findModuleByFile(pathMatch);
-      if (target && target !== this.graph?.root && this.agents.has(target)) {
+      if (target && target !== this.graph?.root && this.graph?.nodes.has(target)) {
         return { targetName: target, prompt: message };
       }
     }
@@ -949,72 +851,14 @@ export class ModuleAgentSubsystem {
     return match ? match[1]! : null;
   }
 
-  /** 应用 session 配置：mode + model，返回 modeOptions */
-  private async _applySessionConfig(
-    moduleName: string,
-    agent: Agent,
-  ): Promise<{ value: string; name: string }[]> {
-    const sessionResult = agent.sessionResult;
-    const agentConfig = agent.config;
-
-    // mode
-    try {
-      const configOptions = sessionResult?.configOptions as any[];
-      if (configOptions) {
-        const modeOpt = configOptions.find((o: any) => o.id === 'mode' || o.category === 'mode');
-        if (modeOpt) {
-          const ids = modeOpt.options?.map((o: any) => `${o.value}(${o.name})`).join(', ') || '(none)';
-          this.logger.info(`[${moduleName}] configOptions mode: current=${modeOpt.currentValue}, available=[${ids}]`);
-          // 优先用配置的 defaultMode，其次找含 ask/permission 的，再回退到第一个非 current
-          const configured = agentConfig.defaultMode
-            ? modeOpt.options?.find((o: any) => o.value === agentConfig.defaultMode || o.name === agentConfig.defaultMode)
-            : null;
-          const preferred = configured
-            || modeOpt.options?.find((o: any) =>
-                o.value.includes('ask') || o.value.includes('permission') || o.name.toLowerCase().includes('ask'));
-          const target = preferred || modeOpt.options?.find((o: any) => o.value !== modeOpt.currentValue) || modeOpt.options?.[0];
-          if (target && target.value !== modeOpt.currentValue) {
-            await agent.setConfigOption('mode', target.value);
-            this.logger.info(`[${moduleName}] setSessionConfigOption mode=${target.value}`);
-          } else {
-            this.logger.info(`[${moduleName}] mode already=${modeOpt.currentValue}, keeping`);
-          }
-          return modeOpt.options?.map((o: any) => ({ value: o.value, name: o.name })) || [];
-        }
-      } else {
-        const blindModes = [agentConfig.defaultMode, 'ask', 'ask-mode', 'permission', 'safe'].filter(Boolean) as string[];
-        for (const tryMode of blindModes) {
-          try {
-            await agent.setConfigOption('mode', tryMode);
-            this.logger.info(`[${moduleName}] setSessionConfigOption mode=${tryMode}`);
-            break;
-          } catch { /* try next */ }
-        }
-      }
-    } catch (err) {
-      this.logger.info(`[${moduleName}] setSessionConfigOption(mode): ${(err as Error).message}`);
-    }
-
-    // model
-    if (agentConfig.model) {
-      try {
-        await agent.setConfigOption('model', agentConfig.model);
-        this.logger.info(`[${moduleName}] setSessionConfigOption model=${agentConfig.model}`);
-      } catch (err) {
-        this.logger.info(`[${moduleName}] setSessionConfigOption(model): ${(err as Error).message}`);
-      }
-    }
-
-    return [];
-  }
-
-  private _findModule(keyword: string): string | undefined {
+  /** 按关键词查找模块：精确匹配优先，模糊（includes）命中时标记 fuzzy 供调用方提示用户 */
+  private _findModule(keyword: string): { name: string; fuzzy: boolean } | undefined {
     const lower = keyword.toLowerCase();
     for (const [name] of this.graph?.nodes || []) {
-      if (name.toLowerCase() === lower) return name;
+      if (name.toLowerCase() === lower) return { name, fuzzy: false };
     }
     for (const [name] of this.graph?.nodes || []) {
-      if (name.toLowerCase().includes(lower)) return name;
+      if (name.toLowerCase().includes(lower)) return { name, fuzzy: true };
     }
     return undefined;
   }
@@ -1035,4 +879,37 @@ export class ModuleAgentSubsystem {
   private setStatus(status: CoreStatus): void {
     this.callbacks.onStatusChange(status);
   }
+}
+
+// ---------------------------------------------------------------------------
+// 日志脱敏 + 截断（tool_call 通知可能含工具输入 = 文件内容 / 密钥）
+// ---------------------------------------------------------------------------
+
+/** 敏感参数键名（值在日志中替换为 ***） */
+const SENSITIVE_KEY = /api[-_]?key|token|secret|password/i;
+/** 通知日志序列化的最大长度 */
+const NOTIFICATION_LOG_MAX_CHARS = 500;
+
+/** 递归脱敏：敏感键的值替换为 ***（限制深度防止过深遍历） */
+function maskSensitiveForLog(value: unknown, depth = 0): unknown {
+  if (value === null || typeof value !== 'object' || depth > 3) return value;
+  if (Array.isArray(value)) return value.map((v) => maskSensitiveForLog(v, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = SENSITIVE_KEY.test(k) ? '***' : maskSensitiveForLog(v, depth + 1);
+  }
+  return out;
+}
+
+/** 通知日志序列化：脱敏 + 截断（避免完整工具输入写入日志） */
+function formatNotificationForLog(notification: unknown): string {
+  let json: string;
+  try {
+    json = JSON.stringify(maskSensitiveForLog(notification));
+  } catch {
+    json = String(notification);
+  }
+  return json.length > NOTIFICATION_LOG_MAX_CHARS
+    ? json.slice(0, NOTIFICATION_LOG_MAX_CHARS) + '…'
+    : json;
 }

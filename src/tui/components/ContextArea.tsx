@@ -5,6 +5,7 @@
 
 import { createMemo, createSignal, onCleanup } from "solid-js";
 import { useKeyboard, useRenderer } from "@opentui/solid";
+import { TextAttributes } from "@opentui/core";
 import { tuiState } from "../state.js";
 import type { ChatMessage, MessageType } from "../types.js";
 
@@ -179,13 +180,13 @@ export default function ContextArea() {
                       justifyContent="space-between"
                       onMouseDown={isThought ? (e: any) => { toggle?.(); e?.preventDefault?.(); } : undefined}
                     >
-                      <text fg={fg} style={{ italic: true }}>
+                      <text fg={fg} attributes={TextAttributes.ITALIC}>
                         {isThought ? (collapsed ? '▸ ' : '▾ ') : ''}{label}
                       </text>
                       {msg.time ? <text fg="#666666">{msg.time}</text> : null}
                     </box>
                     {collapsed ? (
-                      <text fg="#555555" dim selectable>
+                      <text fg="#555555" attributes={TextAttributes.DIM} selectable>
                         {msg.content.length > 60
                           ? msg.content.slice(0, 60).replace(/\n/g, ' ') + '…'
                           : msg.content.replace(/\n/g, ' ')}
@@ -222,15 +223,15 @@ export default function ContextArea() {
                     onMouseDown={(e: any) => { toggle(); e?.preventDefault?.(); }}
                   >
                     <box flexDirection="row" justifyContent="space-between">
-                      <text fg="#5BADFF" style={{ italic: true }}>
+                      <text fg="#5BADFF" attributes={TextAttributes.ITALIC}>
                         {collapsed ? '▸ ' : '▾ '}跨模块通信
                       </text>
                       {msg.time ? <text fg="#666666">{msg.time}</text> : null}
                     </box>
-                    <text fg="#5BADFF" dim selectable>{firstLine}</text>
+                    <text fg="#5BADFF" attributes={TextAttributes.DIM} selectable>{firstLine}</text>
                     {collapsed ? (
                       bodyLines ? (
-                        <text fg="#555555" dim selectable>
+                        <text fg="#555555" attributes={TextAttributes.DIM} selectable>
                           {bodyLines.length > 60
                             ? bodyLines.slice(0, 60).replace(/\n/g, ' ') + '…'
                             : bodyLines.replace(/\n/g, ' ')}
@@ -248,7 +249,7 @@ export default function ContextArea() {
             return (
               <box flexDirection="column" padding={0}>
                 <box flexDirection="row" justifyContent="space-between">
-                  <text fg="#888888" selectable={true} dim>
+                  <text fg="#888888" selectable={true} attributes={TextAttributes.DIM}>
                     {msg.content}
                   </text>
                   {msg.time ? <text fg="#666666">{msg.time}</text> : null}

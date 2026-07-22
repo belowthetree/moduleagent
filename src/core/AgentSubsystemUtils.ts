@@ -17,23 +17,33 @@ export interface StreamAccumulator {
 }
 
 export class SendGuard {
-  private locks = new Map<string, Promise<void>>();
+  private chains = new Map<string, Promise<void>>();
 
+  /**
+   * 标准 promise-chain mutex：同一 name 的获取严格串行。
+   * 每个等待者挂在前序持有者的链尾，只有自己前序释放后才获得锁，
+   * ≥3 个并发等待者时也不会出现同时"持锁"。
+   */
   async acquire(name: string): Promise<() => void> {
-    const prev = this.locks.get(name);
-    if (prev) {
-      try { await prev; } catch { /* 忽略 */ }
-    }
+    const prev = this.chains.get(name) ?? Promise.resolve();
     let release: () => void = () => {};
-    this.locks.set(name, new Promise<void>((r) => { release = r; }));
+    const current = new Promise<void>((r) => { release = r; });
+    // 链尾 = 前序释放 + 自己释放后才完成
+    const tail = prev.then(() => current);
+    this.chains.set(name, tail);
+    // 等待前序持有者释放（链上 promise 只 resolve 不 reject）
+    await prev;
     return () => {
       release();
-      this.locks.delete(name);
+      // 仅当没有后续等待者时清理，避免 Map 无限增长
+      if (this.chains.get(name) === tail) {
+        this.chains.delete(name);
+      }
     };
   }
 
   clear(): void {
-    this.locks.clear();
+    this.chains.clear();
   }
 }
 

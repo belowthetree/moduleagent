@@ -26,10 +26,6 @@ export { ToolOutputTruncator, TOOL_TRUNCATION_RULES } from './ToolOutputTruncato
 export { createModuleContextTools } from './tools/module-context.js';
 export { createKernelToolRegistry, createRootKernelToolRegistry, createBuiltinTools, createModuleFileTools } from './tools/index.js';
 
-export { buildSystemPrompt, loadPromptTemplates } from '../prompts/system.js';
-export type { SystemPromptContext } from '../prompts/system.js';
-export { loadModuleBody, loadPatternsContent, loadExperienceContent } from '../prompts/context.js';
-
 export type {
   Tool,
   ToolDefinition,

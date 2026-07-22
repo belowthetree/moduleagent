@@ -8,9 +8,6 @@ import path from 'path';
 import { defaultLogger, LogLevel } from '../core/Logger.js';
 import { ElectronBridge } from './bridge.js';
 
-defaultLogger.configure('logs', LogLevel.INFO);
-defaultLogger.info('ModuleAgent starting...');
-
 let mainWindow: BrowserWindow | null = null;
 let bridge: ElectronBridge | null = null;
 
@@ -45,11 +42,11 @@ function createWindow() {
   }
 
   mainWindow.webContents.on('did-fail-load', (_event, code, desc, url) => {
-    console.error('[main] FAILED TO LOAD:', code, desc, url);
+    defaultLogger.error(`[main] FAILED TO LOAD: ${code} ${desc} ${url}`);
   });
 
   mainWindow.webContents.on('console-message', (_event, _level, msg) => {
-    console.log('[renderer console]', msg);
+    defaultLogger.info(`[renderer console] ${msg}`);
   });
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -62,6 +59,11 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // 日志目录固定在 userData 下：打包后不依赖 cwd，避免日志散落
+  // （app.getPath('userData') 需在 ready 后使用，故 configure 移到此处）
+  defaultLogger.configure(path.join(app.getPath('userData'), 'logs'), LogLevel.INFO);
+  defaultLogger.info('ModuleAgent starting...');
+
   Menu.setApplicationMenu(null);
   createWindow();
 
@@ -74,6 +76,17 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  bridge?.cleanup().catch(() => {});
-  if (process.platform !== 'darwin') app.quit();
+  // 退出前顺序执行：await bridge.cleanup()（内部 await core.dispose()，
+  // 等待进行中的 context 保存完成）→ 关闭日志流 → app.quit()
+  void (async () => {
+    try {
+      await bridge?.cleanup();
+    } catch (err) {
+      defaultLogger.error(`cleanup failed: ${(err as Error).message}`);
+    }
+    if (process.platform !== 'darwin') {
+      await defaultLogger.close();
+      app.quit();
+    }
+  })();
 });

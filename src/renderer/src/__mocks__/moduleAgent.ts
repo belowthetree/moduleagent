@@ -8,11 +8,9 @@ import type {
   AgentStreamData,
   AgentStatusData,
   CrossContextData,
-  AgentStatus,
   ScanResult,
   TreeNode,
   ChatMsg,
-  MigrationData,
 } from '../../../types/shared';
 
 interface MockInternals {
@@ -84,18 +82,6 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
       return Promise.resolve({ accumulated: { reply: '', thinking: '', tools: '', finished: true, sections: { thinking: false, tools: false, reply: false } } });
     },
 
-    stopAgent: (_moduleName: string): Promise<{}> => {
-      return Promise.resolve({});
-    },
-
-    isAgentRunning: (_moduleName: string): Promise<boolean> => {
-      return Promise.resolve(false);
-    },
-
-    getRunningAgents: (): Promise<{ name: string; status: AgentStatus }[]> => {
-      return Promise.resolve([]);
-    },
-
     onAgentStream: (callback: (data: AgentStreamData) => void): (() => void) => {
       internals.streamCallbacks.push(callback);
       return () => {
@@ -145,14 +131,6 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
           internals.crossContextCallbacks.splice(idx, 1);
         }
       };
-    },
-
-    migrateCheck: (_keys: string[]): Promise<{ needed: string[]; streamNeeded: boolean }> => {
-      return Promise.resolve({ needed: [], streamNeeded: false });
-    },
-
-    migrateData: (_payload: MigrationData): Promise<void> => {
-      return Promise.resolve();
     },
 
     getContext: (_moduleName: string): Promise<ChatMsg[]> => {

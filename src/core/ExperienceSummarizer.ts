@@ -6,6 +6,7 @@
 import path from 'path';
 import fs from 'fs';
 import { KernelFactory, type AgentConfig } from '../agents/KernelFactory.js';
+import { Agent } from '../agents/Agent.js';
 import { defaultLogger, type Logger } from './Logger.js';
 import type { ChatMsg } from '../types/shared.js';
 import type { PromptBlock } from '../agents/kernel/types.js';
@@ -42,48 +43,35 @@ export class ExperienceSummarizer {
     this.logger.info(`ExperienceSummarizer: starting for [${moduleName}] (${chatMsgs.length} msgs)`);
 
     const launcher = new KernelFactory();
-    let launched: Awaited<ReturnType<typeof launcher.create>> | null = null;
+    let agent: Agent | null = null;
 
     try {
       const cwd = params.agentCwd || path.join(projectRoot, '.module-agent', 'module');
-      this._ensureGitAnchor(cwd);
 
-      launched = await launcher.create(
-        agentConfig,
-        `summarizer-${moduleName}`,
+      // 启动临时 agent：总结指令以独立 system 角色注入（前缀缓存锚定）
+      agent = await Agent.start({
+        name: `summarizer-${moduleName}`,
+        config: agentConfig,
         cwd,
-        '',
-        this.logger,
-      );
-
-      const { sessionId } = await (launched as any).connection.newSession({
-        cwd,
-        mcpServers: [],
+        launcher,
+        logger: this.logger,
+        systemPrompt: this.summarizerPrompt,
+        onNotification: () => { /* 总结在后台执行，无需转发通知 */ },
       });
 
       const blocks = this.buildPrompt(moduleName, chatMsgs, projectRoot);
       this.logger.info(`ExperienceSummarizer: sending prompt [${moduleName}] (${blocks.length} blocks)`);
 
-      await (launched as any).connection.prompt({ sessionId, prompt: blocks });
+      await agent.send(blocks);
       this.logger.info(`ExperienceSummarizer: completed for [${moduleName}]`);
     } catch (err) {
       this.logger.error(`ExperienceSummarizer: failed for [${moduleName}]: ${(err as Error).message}`);
     } finally {
-      if (launched) {
-        try { (launched as any).process.kill(); } catch { /* 忽略 */ }
+      // 内核模式无子进程，停止 agent 即完成清理
+      if (agent) {
+        try { agent.stop(); } catch { /* 忽略 */ }
       }
     }
-  }
-
-  private _ensureGitAnchor(cwd: string): void {
-    try {
-      const gitDir = path.join(cwd, '.git');
-      if (!fs.existsSync(gitDir)) {
-        fs.mkdirSync(path.join(gitDir, 'refs', 'heads'), { recursive: true });
-        fs.mkdirSync(path.join(gitDir, 'objects'), { recursive: true });
-        fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
-      }
-    } catch { /* ignore */ }
   }
 
   private loadPrompt(configDir: string): void {
@@ -103,9 +91,8 @@ export class ExperienceSummarizer {
   private buildPrompt(moduleName: string, chatMsgs: ChatMsg[], projectRoot: string): PromptBlock[] {
     const blocks: PromptBlock[] = [];
 
-    if (this.summarizerPrompt) {
-      blocks.push({ type: 'text', text: this.summarizerPrompt + '\n\n---\n\n' });
-    }
+    // 注意：总结指令（summarizerPrompt）已通过 Agent.start({ systemPrompt }) 独立注入，
+    // 不在此重复拼入 user blocks（前缀缓存锚定）。
 
     const conversationSummary = this.formatConversation(chatMsgs);
     const contextDir = path.join(projectRoot, '.module-agent', 'module', moduleName);

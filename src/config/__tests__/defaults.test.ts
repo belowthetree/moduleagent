@@ -14,8 +14,10 @@ import { WorkspaceConfigSchema, ProjectConfigSchema } from '../schema.js';
 
 describe('defaults', () => {
   describe('DEFAULT_CONFIG', () => {
-    it('has a valid command', () => {
-      expect(DEFAULT_CONFIG.agents.default.command).toBeTruthy();
+    it('has default provider and model (kernel mode — no command/args)', () => {
+      // 内核模式 command/args 已失效，默认配置应提供 provider + model
+      expect(DEFAULT_CONFIG.agents.default.provider).toBeTruthy();
+      expect(DEFAULT_CONFIG.agents.default.model).toBeTruthy();
     });
 
     it('is the same as DEFAULT_CONFIG_ENTRY (backward compat)', () => {

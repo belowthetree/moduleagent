@@ -5,7 +5,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 import { IpcChannel } from '../protocol/IpcChannels.js';
-import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, AgentStatus, ChatMsg, MigrationData, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus } from '../types/shared.js';
+import type { ModuleAgentApi, AgentStreamData, AgentStatusData, CrossContextData, ScanResult, TreeNode, ChatMsg, RoleConfigData, KnowledgeEntry, KnowledgeListItem, WorkflowListItem, WorkflowDetail, WorkflowStepResultItem, WorkflowStatus } from '../types/shared.js';
 
 const api: ModuleAgentApi = {
   selectDir: (title: string) => ipcRenderer.invoke(IpcChannel.Dialog.SelectDir, title) as Promise<string | null>,
@@ -16,7 +16,7 @@ const api: ModuleAgentApi = {
   generateModules: (projectRoot: string) =>
     ipcRenderer.invoke(IpcChannel.Project.GenerateModules, projectRoot) as Promise<{ success: boolean; count: number; error?: string }>,
 
-  getTree: () => ipcRenderer.invoke(IpcChannel.Project.GetTree) as Promise<Record<string, unknown> | null>,
+  getTree: () => ipcRenderer.invoke(IpcChannel.Project.GetTree) as Promise<TreeNode | null>,
 
   // Agent API
   startAgent: (moduleName: string, cmd: string, args: string[], cwd: string) =>
@@ -26,12 +26,6 @@ const api: ModuleAgentApi = {
     ipcRenderer.invoke(IpcChannel.Agent.Send, moduleName, text, cwd) as Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason: string }; error?: string }>,
 
   cancelAgent: (moduleName: string) => ipcRenderer.invoke(IpcChannel.Agent.Cancel, moduleName) as Promise<{ accumulated?: { reply: string; thinking: string; tools: string; finished?: boolean; sections: { thinking: boolean; tools: boolean; reply: boolean } } }>,
-
-  stopAgent: (moduleName: string) => ipcRenderer.invoke(IpcChannel.Agent.Stop, moduleName) as Promise<{}>,
-
-  isAgentRunning: (moduleName: string) => ipcRenderer.invoke(IpcChannel.Agent.IsRunning, moduleName) as Promise<boolean>,
-
-  getRunningAgents: () => ipcRenderer.invoke(IpcChannel.Agent.GetRunning) as Promise<{ name: string; status: AgentStatus }[]>,
 
   onAgentStream: (callback: (data: AgentStreamData) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: AgentStreamData) => callback(data);
@@ -47,15 +41,10 @@ const api: ModuleAgentApi = {
 
   // 配置 API
   saveAgentConfig: (projectRoot: string, provider: string, apiKey: string, baseUrl: string, model: string, projectPath?: string, summarizationEnabled?: boolean) =>
-    ipcRenderer.invoke(IpcChannel.Config.Save, projectRoot, { provider, apiKey, baseUrl, model, projectPath, summarizationEnabled }) as Promise<{ success: boolean }>,
+    ipcRenderer.invoke(IpcChannel.Config.Save, projectRoot, { provider, apiKey, baseUrl, model, projectPath, summarizationEnabled }) as Promise<{ success: boolean; error?: string }>,
 
   getAgentConfig: (projectRoot: string) =>
     ipcRenderer.invoke(IpcChannel.Config.Get, projectRoot) as Promise<{ provider?: string; apiKey?: string; baseUrl?: string; model?: string; projectPath?: string; summarizationEnabled?: boolean }>,
-
-  // 迁移 API
-  migrateCheck: (keys: string[]) => ipcRenderer.invoke(IpcChannel.Migrate.Check, keys) as Promise<{ needed: string[]; streamNeeded: boolean }>,
-
-  migrateData: (payload: MigrationData) => ipcRenderer.invoke(IpcChannel.Migrate.Data, payload) as Promise<void>,
 
   // 上下文 API
   getContext: (moduleName: string) => ipcRenderer.invoke(IpcChannel.Context.Get, moduleName) as Promise<ChatMsg[]>,

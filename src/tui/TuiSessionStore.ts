@@ -143,6 +143,8 @@ export class TuiSessionStore {
   /**
    * 将 TUI 的 ChatMessage[] 逆转换为 Core 的 ChatMsg[]。
    * 连续的 agent_reply / agent_thought（同一 base id）合并为单条 ChatMsg。
+   * ChatMsg.moduleName 为必填，但此处无法获知目标模块（调用方 saveSession 才知道），
+   * 置空串占位：持久化文件名即模块名，加载侧（formatFromCore / 渲染端 contextMap）均不读取该字段。
    */
   formatForCore(msgs: ChatMessage[]): ChatMsg[] {
     const result: ChatMsg[] = [];
@@ -151,7 +153,7 @@ export class TuiSessionStore {
       const m = msgs[i]!;
       switch (m.msgType) {
         case 'user':
-          result.push({ id: m.id, role: 'user', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          result.push({ id: m.id, role: 'user', content: m.content, thinking: '', time: m.time, status: 'sent', moduleName: '' });
           i++;
           break;
         case 'agent_reply': {
@@ -161,7 +163,7 @@ export class TuiSessionStore {
           if (i > 0 && msgs[i - 1]!.msgType === 'agent_thought' && msgs[i - 1]!.id === baseId + '-thought') {
             thinking = msgs[i - 1]!.content;
           }
-          result.push({ id: baseId, role: 'agent', content: m.content, thinking, time: m.time, status: 'completed', timeline: [] });
+          result.push({ id: baseId, role: 'agent', content: m.content, thinking, time: m.time, status: 'completed', timeline: [], moduleName: '' });
           i++;
           break;
         }
@@ -171,25 +173,25 @@ export class TuiSessionStore {
             i++; // 跳过，由下一条 agent_reply 分支合并
           } else {
             // 孤立的 thought（无配套 reply），仍保留
-            result.push({ id: m.id, role: 'agent', content: '', thinking: m.content, time: m.time, status: 'completed', timeline: [] });
+            result.push({ id: m.id, role: 'agent', content: '', thinking: m.content, time: m.time, status: 'completed', timeline: [], moduleName: '' });
             i++;
           }
           break;
         }
         case 'tool_call':
-          result.push({ id: m.id, role: 'tool', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          result.push({ id: m.id, role: 'tool', content: m.content, thinking: '', time: m.time, status: 'sent', moduleName: '' });
           i++;
           break;
         case 'system':
-          result.push({ id: m.id, role: 'system', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          result.push({ id: m.id, role: 'system', content: m.content, thinking: '', time: m.time, status: 'sent', moduleName: '' });
           i++;
           break;
         case 'cross_context':
-          result.push({ id: m.id, role: 'cross', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          result.push({ id: m.id, role: 'cross', content: m.content, thinking: '', time: m.time, status: 'sent', moduleName: '' });
           i++;
           break;
         default:
-          result.push({ id: m.id, role: 'system', content: m.content, thinking: '', time: m.time, status: 'sent' });
+          result.push({ id: m.id, role: 'system', content: m.content, thinking: '', time: m.time, status: 'sent', moduleName: '' });
           i++;
           break;
       }

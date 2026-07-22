@@ -23,9 +23,6 @@ export const IpcChannel = {
     Start: 'agent:start',
     Send: 'agent:send',
     Cancel: 'agent:cancel',
-    Stop: 'agent:stop',
-    IsRunning: 'agent:isRunning',
-    GetRunning: 'agent:getRunning',
   },
 
   // ── 上下文 ──
@@ -67,12 +64,6 @@ export const IpcChannel = {
     Execute: 'workflow:execute',
     Cancel: 'workflow:cancel',
     Status: 'workflow:status',
-  },
-
-  // ── 迁移 ──
-  Migrate: {
-    Check: 'migrate:check',
-    Data: 'migrate:data',
   },
 
   // ── 知识 ──

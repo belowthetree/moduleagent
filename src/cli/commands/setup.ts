@@ -120,28 +120,20 @@ export async function runSetup(
     config.projectPath = projectRoot;
     console.log(`  项目路径: ${projectRoot}`);
 
-    // 确保 module.md 存在（项目解析时静默自动生成）
-    if (!fs.existsSync(path.join(projectRoot, 'module.md'))) {
+    // 确保根模块 module.md 存在（扫描目录为 projectRoot/.module-agent/module）
+    const moduleDocsDir = path.join(projectRoot, '.module-agent', 'module');
+    const moduleMdPath = path.join(moduleDocsDir, 'module.md');
+    if (!fs.existsSync(moduleMdPath)) {
       try {
+        fs.mkdirSync(moduleDocsDir, { recursive: true });
         const content = await ModuleGenerator.generate({ dirPath: projectRoot, projectRoot });
-        fs.writeFileSync(path.join(projectRoot, 'module.md'), content, 'utf-8');
+        fs.writeFileSync(moduleMdPath, content, 'utf-8');
         console.log(`  已自动生成 module.md`);
         log.info(`Setup: auto-generated module.md (${content.length} chars)`);
       } catch (err) {
         console.log(`  生成 module.md 失败: ${(err as Error).message}`);
         log.error(`Setup: module.md generation failed: ${(err as Error).message}`);
       }
-    }
-
-    // 2. Agent 命令
-    const cmd = await reader.readLine(`  Agent 命令 [${config.agents.default.command}]: `);
-    if (cmd.trim()) config.agents.default.command = cmd.trim();
-
-    // 4. Agent 参数
-    const currentArgs = (config.agents.default.args || []).join(' ');
-    const argsStr = await reader.readLine(`  Agent 参数 [${currentArgs}]: `);
-    if (argsStr.trim()) {
-      config.agents.default.args = argsStr.trim().split(/\s+/);
     }
 
     // 以新数组格式保存配置
@@ -165,7 +157,7 @@ export async function runSetup(
   console.log(`  项目路径:      ${projectRoot}`);
   console.log(`  模块目录:      ${path.join(projectRoot, '.module-agent/module/')}`);
   console.log(`  工作目录:      ${path.join(projectRoot, '.module-agent/workspace/')}`);
-  console.log(`  Agent:        ${config.agents.default.command} ${(config.agents.default.args || []).join(' ')}`);
+  console.log(`  模型:          ${config.agents.default.model || '(默认)'} (${config.agents.default.provider || 'anthropic'})`);
   console.log('');
 
   saveLastProject(projectRoot);

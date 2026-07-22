@@ -84,6 +84,59 @@ describe('ConfigLoader', () => {
     })
   })
 
+  describe('loadWithStatus()', () => {
+    it('exposes readable error details when zod validation fails', async () => {
+      const invalidConfig = {
+        configs: [{ name: 42, agents: { default: {} }, exclude: 'not-an-array' }],
+        defaultConfig: 'd',
+      }
+      mockSearchResult = { config: invalidConfig, filepath: '/test/.module-agent.json', isEmpty: false }
+      const errorSpy = vi.spyOn(defaultLogger, 'error')
+
+      const { config, error } = await ConfigLoader.loadWithStatus('/test')
+
+      expect(config).toEqual(DEFAULT_WORKSPACE_CONFIG)
+      expect(error).toBeDefined()
+      expect(error).toContain('校验失败')
+      expect(error).toContain('.module-agent.json')
+      // zod issue 详情应写入 error 日志
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Config validation failed'),
+      )
+      errorSpy.mockRestore()
+    })
+
+    it('exposes error when config search throws', async () => {
+      const { configExplorer } = await import('../../core/ConfigPaths.js')
+      vi.mocked(configExplorer.search).mockRejectedValueOnce(new Error('read error'))
+
+      const { config, error } = await ConfigLoader.loadWithStatus('/test')
+
+      expect(config).toEqual(DEFAULT_WORKSPACE_CONFIG)
+      expect(error).toContain('read error')
+    })
+
+    it('returns no error for valid config', async () => {
+      const mockConfig = {
+        configs: [
+          {
+            name: 'd',
+            projectPath: '/proj',
+            agents: { default: { command: 'c' } },
+            exclude: [],
+          },
+        ],
+        defaultConfig: 'd',
+      }
+      mockSearchResult = { config: mockConfig, filepath: '/test/.module-agent.json', isEmpty: false }
+
+      const { config, error } = await ConfigLoader.loadWithStatus('/test')
+
+      expect(error).toBeUndefined()
+      expect(config.configs[0]).toHaveProperty('projectPath', '/proj')
+    })
+  })
+
   describe('loadOrCreate()', () => {
     it('creates config file when none exists and returns defaults', async () => {
       mockSearchResult = null

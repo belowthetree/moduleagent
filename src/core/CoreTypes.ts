@@ -36,6 +36,8 @@ export interface CoreCallbacks {
   onCrossModuleMessage?: (source: string, target: string, direction: 'sent' | 'received', phase: 'request' | 'response', content: string) => void;
   /** 模块状态变更通知（由跨模块通信触发） */
   onModuleStatusChange?: (moduleName: string, status: 'idle' | 'streaming' | 'error') => void;
+  /** 错误上报（如 init 扫描失败回落空图、配置无效等），message 为可读描述 */
+  onError?: (message: string, error: Error) => void;
 }
 
 // ============================================================================
