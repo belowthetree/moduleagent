@@ -37,7 +37,7 @@ export interface ModuleAgentCoreOptions {
   basePath: string;
   configDir?: string;
   logger?: Logger;
-  /** Optional external session-update listener (e.g. AgentStateManager in Electron) */
+  /** Optional external session-update listener (e.g. SessionStore in Electron) */
   onSessionUpdate?: (moduleName: string, sessionId: string, notification: any) => void;
   /** Optional role session-update listener */
   onRoleSessionUpdate?: (roleName: string, sessionId: string, notification: any) => void;

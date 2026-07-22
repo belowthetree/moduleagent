@@ -6,7 +6,7 @@
 //   2. 管理流式消息块的实时追加（replyId/thoughtId 追踪）
 //   3. 将格式转换后的数据同步到 tuiState（SolidJS signals）
 //
-// 不做：消息持久化（由 Core AgentStateManager 负责）、Agent 操作（由 Core 负责）
+// 不做：消息持久化（由 Core SessionStore 负责）、Agent 操作（由 Core 负责）
 // ---------------------------------------------------------------------------
 
 import type { ChatMsg } from '../types/shared.js';

@@ -92,7 +92,7 @@ export class RoleAgentSubsystem {
         onSessionUpdate(roleName, sessionId, notification) {
           const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
           const data = notification.update as Record<string, unknown>;
-          if (update) self.logger.info(`[ACP:role] ${roleName} ← ${update}`);
+          if (update) self.logger.info(`[Role] ${roleName} ← ${update}`);
 
           if (update === 'agent_message_chunk') {
             const block = data.content as { type?: string; text?: string } | undefined;

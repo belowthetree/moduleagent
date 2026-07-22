@@ -3,7 +3,7 @@
 // 注册通道: project:scan / project:getTree / project:generateModules
 // 项目扫描、模块树构建、模块自动生成
 //
-// AgentStateManager、prompts、agentStatus 已移入 Core 层。
+// SessionStore、prompts、agentStatus 已移入 Core 层。
 // project:scan 委托 core.initAll() 一次性完成：模块扫描 + 角色/工作流初始化
 // + MCP 后端装配（跨模块路由器）；Electron 特有的 timeline 跨模块装饰通过
 // onCrossModuleContext 钩子注入（跨模块上下文落盘由 Core 内 appendCrossContext 接线）。

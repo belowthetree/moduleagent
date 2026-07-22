@@ -98,7 +98,7 @@ export class WorkflowSubsystem {
       callbacks: {
         onSessionUpdate(agentName, sessionId, notification) {
           const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;
-          if (update) self.logger.info(`[ACP:wf] ${agentName} ← ${update}`);
+          if (update) self.logger.info(`[Workflow] ${agentName} ← ${update}`);
           const data = notification.update as Record<string, unknown>;
 
           if (update === 'agent_message_chunk') {

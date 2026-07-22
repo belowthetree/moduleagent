@@ -6,7 +6,7 @@
 //   2. 构建 HandlerContext（仅 IPC/传输层资源）
 //   3. 委托 8 个领域 handler 注册全部 37 个 IPC 通道
 //
-// 状态管理（AgentStateManager、agentStatus、sendLock、prompts）已移入 Core 层。
+// 状态管理（SessionStore、agentStatus、sendLock、prompts）已移入 Core 层。
 // Post-send 逻辑（summarizer）通过 PostSendHooks 注入 Core。
 // ============================================================================
 

@@ -1,6 +1,6 @@
 # TuiBridge — TUI 桥接层
 
-> 文件：`src/tui/bridge.ts` | 类：`TuiBridge` | 最后更新: 2026-07-18
+> 文件：`src/tui/bridge.ts` | 类：`TuiBridge` | 最后更新: 2026-07-22
 
 ## 概述
 
@@ -156,6 +156,8 @@ App.tsx
     └── QuickPanel      — 浮层（Ctrl+P 快捷面板)
 ```
 
+**文本样式约定**：TUI 组件中文本样式统一使用 `attributes={TextAttributes.*}`（来自 `@opentui/core`，如 `TextAttributes.DIM` / `BOLD` / `ITALIC`）。`<text>` 的 `dim` / `bold` / `italic` / `height` prop 与 `"round"` 边框值已废弃（此前运行时静默无效），正确写法是 `attributes={TextAttributes.DIM}` 与 `borderStyle="rounded"`；`<input>` 高度恒为 1。
+
 ## 命令系统
 
 ### 模块命令
@@ -164,8 +166,8 @@ App.tsx
 - `/rescan` — 重新扫描模块
 - `/get <name>` — 查看模块详情
 - `/module <name>` — 切换到指定模块
-- `/mode <value>` — 切换/设置 agent 模式
-- `/model <value>` — 切换/设置 agent 模型
+- `/mode [value]` — 查看/设置 agent 模式（内核模式不支持运行时切换，见下文）
+- `/model [value]` — 查看/设置默认模型（只写全局默认配置，对运行中 agent 不生效）
 - `/new` — 创建新会话
 
 ### 角色命令
@@ -199,7 +201,7 @@ App.tsx
 | `Ctrl+X T` | 切换模块树 |
 | `Ctrl+X R` | 切换角色选择 |
 | `Ctrl+X H` | 切换经验浏览 |
-| `Ctrl+C` | 流式输出中取消当前请求 |
+| `Ctrl+C` | 流式输出中取消当前请求（只 abort 在途调用并以 Canceled reject 排队项，不销毁 agent，可继续复用） |
 | `Ctrl+D` | 保存并退出 |
 | `↑` / `↓` | 输入历史导航 |
 
@@ -221,7 +223,7 @@ App.tsx
 | `src/tui/components/InputBox.tsx` | 输入框 + 历史导航 + 粘贴处理 |
 | `src/tui/components/StatusBar.tsx` | 状态栏（类型：agent | M:N R:N W:N | cwd） |
 | `src/tui/components/CommandPalette.tsx` | / 命令候选面板 + 子命令推荐 |
-| `src/tui/components/SetupWizard.tsx` | 设置向导（命令→模型→参数→项目目录→确认） |
+| `src/tui/components/SetupWizard.tsx` | 设置向导（LLM 提供商→模型→API 密钥→确认） |
 | `src/tui/components/ModuleTree.tsx` | 交互式模块树面板 + 经验浏览模式 |
 | `src/tui/components/ExperiencePanel.tsx` | 模块经验查看（Markdown 渲染） |
 | `src/tui/components/QuickPanel.tsx` | Ctrl+P 快捷面板（模块树/经验/角色选择入口） |
@@ -232,10 +234,11 @@ App.tsx
 
 ### Agent Mode / Model 管理
 
-- `/mode` 查看/切换 agent 会话模式
-- `/mode <value>` 全局设置默认 mode：写入 `.module-agent.json` + 应用到所有运行中的 agent
-- `/model` 查看/切换 agent 模型
-- `/model <value>` 全局设置默认 model
+内核模式（进程内 AgentLoop）不支持运行时 mode/model 切换，命令行为如实反映这一点：
+
+- `/mode`：内核模式无 agent 上报的 mode 列表（`getAgentModes()` 恒返回 `[]`），提示「当前 agent 无可用模式（内核模式不支持运行时 mode 切换）」
+- `/model`：同理 `getAgentModels()` 恒返回 `[]`，提示模型来自 `.module-agent.json` 配置，可用 `/setup` 修改
+- `/mode <value>` / `/model <value>`：仅在存在可用列表时可切换；写入全局默认配置（`ConfigLoader.upsertEntry`）并对所有运行中的 agent 尝试 `setAgentMode/setAgentModel`——内核模式恒返回 `false` 并记录 warn 日志，即**只对后续启动的 agent 生效，运行中的 agent 不受影响**（命令提示已如实说明）
 
 ### 角色选择界面
 
@@ -259,10 +262,10 @@ App.tsx
 |------|---------------|-----------|
 | 通信机制 | Electron IPC (`ipcMain.handle`) | 直接函数调用 |
 | 状态管理 | Pinia stores (Vue 3) | SolidJS signals |
-| 流式累加 | AgentStateManager | TuiSessionStore（按 msgType 累加） |
-| 角色 Agent | 9 个 IPC 通道 | 直接调用 RoleAgentSubsystem |
-| 工作流 | 9 个 IPC 通道 | 直接调用 WorkflowSubsystem |
-| MCP 后端 | McpBackendServer (HTTP) | McpBackendServer (Core 自动启动) |
-| 对话持久化 | AgentStateManager + FileStore | Core SessionStore + TuiSessionStore（展示缓存） |
+| 流式累加 | Core StreamAccumulator（bridge 取快照转发） | Core StreamAccumulator + TuiSessionStore（按 msgType 累加） |
+| 角色 Agent | 10 个 IPC 通道 | 直接调用 RoleAgentSubsystem |
+| 工作流 | 10 个 IPC 通道 | 直接调用 WorkflowSubsystem |
+| MCP 后端 | Core initAll 自动启动 | Core initAll 自动启动 |
+| 对话持久化 | Core SessionStore | Core SessionStore + TuiSessionStore（展示缓存） |
 | 输入历史 | 浏览器原生 | InputHistoryPersistence |
 | 跨模块通信通知 | IPC cross-context 推送 | 系统消息 |

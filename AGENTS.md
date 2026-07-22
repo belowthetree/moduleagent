@@ -36,7 +36,7 @@ Both paths share the same **in-process agent kernel** (`src/agents/`): `Agent` (
 
 - **Windows path normalization**: Always call `cwd.replace(/\\/g, '/')` before passing cwd to kernels. Done in `KernelFactory.create()`.
 - **Windows absolute paths on WSL/Linux**: `path.resolve('E:\\foo\\bar')` on Linux does NOT recognize the drive letter as absolute — it treats the whole thing as relative and prepends `cwd`. Use `normalizeCodeSourcePath()` from `src/core/PathUtils.ts` to convert `E:\foo\bar` → `/mnt/e/foo/bar` when `process.platform !== 'win32'`.
-- **CSP in main process**: Content Security Policy is set in `src/main/index.ts` via `session.defaultSession.webRequest.onHeadersReceived()`, NOT in HTML `<meta>` tags. For dev mode (Vite HMR), the CSP must allow `ws://` and inline scripts for HMR to function.
+- **CSP not configured**: The app currently does NOT set any Content Security Policy (neither via `onHeadersReceived` nor HTML `<meta>` tags). The renderer only loads local content (dev-mode Vite HMR uses `ws://` + inline scripts), so no CSP is required today. If you add one, set it in the main process via `session.defaultSession.webRequest.onHeadersReceived()` and remember to allow `ws://` + inline scripts in dev mode.
 - **`@` alias paths**: In renderer (Vue components), `@` resolves to `src/renderer/src/`. In main process, `@` resolves to `src/`. These are configured separately in `electron.vite.config.ts`.
 - **Map serialization**: Module graph uses `Map`. When serializing to JSON, convert to object with `Object.fromEntries(map)`. Deserialize with `new Map(Object.entries(obj))`.
 - **System prompt vs first message**: System prompts (mainagent/subagent/roleagent) are injected as a **separate `system` role message** via `Agent.start({ systemPrompt })` (prefix-cache pinning) — do NOT also inject them into the first user message. The first user message carries module context only (Tier-1 summary when `progressiveDisclosure` is on). Tracked via `sessionPrompted` Set.
@@ -47,13 +47,13 @@ Both paths share the same **in-process agent kernel** (`src/agents/`): `Agent` (
 
 ## Project config
 
-`.module-agent.json` at the **user's project root** (not this repo's root) configures the agent command, args, exclusions, and project root. Schema in `src/config/schema.ts`. Note: the repo's own `.module-agent.json` is a sample for self-hosting.
+`.module-agent.json` at the **user's project root** (not this repo's root) configures LLM settings, exclusions, and project root. Schema in `src/config/schema.ts`. Note: the repo's own `.module-agent.json` is a sample for self-hosting.
 
 ### Config fields
 
 | Field | Purpose |
 |-------|---------|
-| `agents.default.command` / `args` | Agent executable and arguments |
+| ~~`agents.default.command` / `args`~~ | **Obsolete** — ACP-era fields, ignored by the in-process kernel. Still accepted by the schema for backward compat |
 | `agents.default.model` / `fastModel` / `provider` / `apiKey` / `baseUrl` / `maxTokens` / `contextWindow` | LLM settings (per-module overrides via `agents.modules`) |
 | `exclude` | Directory/pattern list to skip during module scanning |
 | `projectPath` | Root project directory |
@@ -62,11 +62,12 @@ Both paths share the same **in-process agent kernel** (`src/agents/`): `Agent` (
 | `crossModule` | Cross-module call limits: `maxHops` (3) / `timeoutMs` (120000) |
 | `contextHistoryLimit` | SessionStore per-module persisted message cap (default 200) |
 | `progressiveDisclosure` | First-message Tier-1 summary only; full docs via `module_context_*` tools (default true) |
-| `roles` | Array of role agent configs (name, description, visibleModulePaths, agents.default) |
+| `roles` | Array of role agent configs (name, description, visibleModulePaths, agents.default — supports role-level `provider` / `apiKey` / `baseUrl` / `model` / `fastModel` / `contextWindow`) |
 
 When changing the schema, update both `src/config/schema.ts` (Zod) and `src/config/defaults.ts` (TypeScript interface + `DEFAULT_CONFIG`). Then ensure all config consumers are updated:
-- `src/tui/services/AgentService.ts` (TUI path)
-- `src/main/index.ts` `config:save` / `config:get` / `project:scan` (Electron path)
+- `src/core/ModuleAgentSubsystem.ts` (unified config resolution)
+- `src/main/bridge.ts` `config:save` / `config:get` / `project:scan` (Electron path)
+- `src/tui/bridge.ts` + `src/tui/config.ts` (TUI path)
 - `src/cli/commands/setup.ts` (CLI interactive setup)
 
 ## Key directories
@@ -101,7 +102,7 @@ When changing the schema, update both `src/config/schema.ts` (Zod) and `src/conf
 ## Build details
 
 - **Renderer**: `electron-vite` (Vite + Vue plugin) → `out/renderer/`
-- **Main**: `electron-vite` → CJS to `out/main/`, externals: `electron`, `fs-extra`, `gray-matter`, `marked`, `simple-git`, `zod`, `@agentclientprotocol/sdk`, etc.
+- **Main**: `electron-vite` → CJS to `out/main/`, externals: `electron`, `fs-extra`, `gray-matter`, `marked`, `zod`, `path`, `url`, `esbuild`
 - **Preload**: `electron-vite` → CJS to `out/preload/`, external: `electron`
 - **CLI**: `esbuild` → CJS bundle → `dist/cli.cjs`
 - Output files in `out/` and `dist/` are gitignored

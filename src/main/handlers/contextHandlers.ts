@@ -1,7 +1,7 @@
 // ============================================================================
 // contextHandlers — 上下文 IPC handler
 // 注册通道: context:get / context:clear / context:clearAll
-// 委托给 core.modules（AgentStateManager 已移入 Core）
+// 委托给 core.modules（SessionStore 已移入 Core）
 // ============================================================================
 
 import { ipcMain } from 'electron';

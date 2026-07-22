@@ -1,6 +1,12 @@
 # WorkspaceIsolator — 工作空间隔离
 
-> 文件：`src/agents/WorkspaceIsolator.ts`
+> ⚠️ **已过时（组件已删除）**：`src/agents/WorkspaceIsolator.ts` 已随进程内内核重构删除（ACP 层于 commit `e1fcc0d` 移除后，模块级工作空间隔离机制随之废弃，2026-07 修复轮清理完毕）。模块 Agent 现在直接在项目源码目录运行，由内核 `Sandbox` 做 realpath 路径防护，不再有每模块源码拷贝。
+>
+> 当前仅存的隔离机制是**工作流步骤隔离**：`src/agents/lifecycle/WorkflowWorkspace.ts` 将可见模块源码拷贝到 `.module-agent/workspace/workflow/<workflow>/<step>/` 供步骤 Agent 执行。与本文描述的机制不同。
+>
+> 当前架构以 [ARCHITECTURE.md](./ARCHITECTURE.md) 与 [AGENTS.md](../AGENTS.md) 为准。以下内容为历史存档。
+
+> 文件：`src/agents/WorkspaceIsolator.ts`（已删除）
 
 ## 概述
 

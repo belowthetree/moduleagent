@@ -22,6 +22,8 @@ module-agent <command> [options]
 | `get` | `module-agent get <name> [--project <path>]` | 获取单个模块详情 |
 | `serve` | `module-agent serve [--project <path>]` | 进入 stdio 服务模式 |
 
+> 另有 `tui`（交互式终端 UI，需 Bun）和 `config`（交互式配置向导）两个顶层命令，均为交互模式，不遵循本节 JSON one-shot 约定。
+
 ### 通用选项
 
 | 选项 | 说明 |
@@ -57,6 +59,8 @@ module-agent <command> [options]
 ## 2. NDJSON 持久化服务协议
 
 `serve` 命令启动后，进程保持运行，通过 stdin/stdout 以 **NDJSON**（Newline-Delimited JSON）格式通信。stderr 仅用于日志输出。
+
+启动时扫描的模块目录为 `<projectRoot>/.module-agent/module/`（目录不存在会自动创建），模块图基于此目录下的 module.md 构建。
 
 ### 2.1 请求格式
 
@@ -186,9 +190,10 @@ stdout 每行一个 JSON 对象：
 
 ## 3. 项目根目录发现策略
 
-1. 使用了 `--project <path>` → 验证路径存在
-2. 从 `cwd` 向上查找 `.module-agent.json` 或 `module.md`
-3. 都找不到 → 报错退出
+1. 使用了 `--project <path>` → 验证路径存在，并记入 `.module-agent/state.json` 的 `lastProject`
+2. 从 `cwd` 向上查找含有效 `lastProject` 的 `.module-agent/state.json`（上次使用的项目）
+3. 回退：从 `cwd` 向上查找 `.module-agent.json` 或 `module.md`
+4. 都找不到 → 报错退出
 
 ---
 

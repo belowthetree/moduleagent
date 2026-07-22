@@ -1,6 +1,12 @@
 # ContextManager — 对话上下文持久化
 
-> 文件：`src/context/ContextManager.ts`, `src/context/FileStore.ts`
+> ⚠️ **已过时（组件已删除）**：`src/context/` 整个目录（`ContextManager.ts`、`FileStore.ts`）已于 2026-07 修复轮删除——该目录原本就无生产引用。本文描述的 `ContextStore` 接口、`.module-agent/contexts/` 目录结构均已不存在。
+>
+> 当前等价物：对话历史持久化由 `SessionStore`（`src/agents/StreamAccumulator.ts`）统一承担，Electron 与 TUI 双路径共用，存储在 `.module-agent/context/`（每模块 200 条 / 5MB 上限，可由 `contextHistoryLimit` 配置，溢出归档到 `.module-agent/archives/`）。
+>
+> 当前架构以 [ARCHITECTURE.md](./ARCHITECTURE.md) 与 [AGENTS.md](../AGENTS.md) 为准。以下内容为历史存档。
+
+> 文件：`src/context/ContextManager.ts`, `src/context/FileStore.ts`（均已删除）
 
 ---
 

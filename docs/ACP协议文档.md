@@ -1,5 +1,9 @@
 # Agent Client Protocol (ACP) 协议文档
 
+> ⚠️ **已过时（不再适用于本项目）**：ModuleAgent 已重构为**进程内 Agent 内核**（Agent → KernelFactory → AgentKernel → AgentLoop，基于 ai-sdk），不再作为 ACP Client 启动外部 Agent 子进程。整个 ACP 子进程层（`src/protocol/acp/`、`@agentclientprotocol/sdk` 依赖）已于 commit `e1fcc0d` 移除，2026-07 修复轮又清理了相关残留。本文仅作为 ACP 协议本身的外部参考资料存档，**不描述本项目任何现存代码**。
+>
+> 当前架构以 [ARCHITECTURE.md](./ARCHITECTURE.md) 与仓库根目录 [AGENTS.md](../AGENTS.md) 为准。
+
 > 来源: https://agentclientprotocol.com  
 > 整理日期: 2026-04-27
 
@@ -1123,7 +1127,9 @@ ACP 深度集成了 [Model Context Protocol (MCP)](https://modelcontextprotocol.
 
 ---
 
-## 本项目的 ACP 实现
+## 本项目的 ACP 实现（已失效）
+
+> **（已失效）** 以下实现已随 ACP 子进程层一并删除（commit `e1fcc0d`），所列文件均不存在于当前代码库。保留此节仅为历史对照。
 
 ModuleAgent 使用 `@agentclientprotocol/sdk` v0.20 作为 ACP 客户端实现。关键文件：
 

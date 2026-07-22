@@ -7,17 +7,17 @@
 # Test info
 
 - Name: smoke.spec.ts >> app loads and shows setup screen
-- Location: e2e/smoke.spec.ts:3:1
+- Location: e2e\smoke.spec.ts:8:1
 
 # Error details
 
 ```
-Error: browserType.launch: Executable doesn't exist at /home/zgg/.cache/ms-playwright/chromium_headless_shell-1217/chrome-headless-shell-linux64/chrome-headless-shell
+Error: browserType.launch: Executable doesn't exist at C:\Users\ZGG\AppData\Local\ms-playwright\chromium_headless_shell-1223\chrome-headless-shell-win64\chrome-headless-shell.exe
 ╔════════════════════════════════════════════════════════════╗
 ║ Looks like Playwright was just installed or updated.       ║
 ║ Please run the following command to download new browsers: ║
 ║                                                            ║
-║     npx playwright install                                 ║
+║     pnpm exec playwright install                           ║
 ║                                                            ║
 ║ <3 Playwright Team                                         ║
 ╚════════════════════════════════════════════════════════════╝

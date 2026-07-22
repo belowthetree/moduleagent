@@ -2,6 +2,12 @@
 
 > OpenTUI 是一个用 Zig 编写的原生终端 UI 核心，提供 TypeScript 绑定。它基于组件架构，具有灵活的布局能力，可用于创建复杂的终端应用程序。
 
+> **本项目约定（ModuleAgent TUI，`@opentui/core` 0.2.x + Solid 绑定）**：
+> - 文本样式一律使用 `attributes={TextAttributes.*}`（来自 `@opentui/core`），如 `attributes={TextAttributes.DIM}`、`attributes={TextAttributes.BOLD | TextAttributes.ITALIC}`。`<text>` 上的 `dim` / `bold` / `italic` / `height` prop 在此版本中**无效（运行时静默忽略）**，不要使用。
+> - 边框圆角的正确写法是 `borderStyle="rounded"`；`border="round"` 之类的写法无效。
+> - `<input>` 的类型签名 `Omit<TextareaOptions, "height" | "minHeight" | "maxHeight" | ...>`——**高度恒为 1**，传 `height` 不会生效；需要多行输入请用 `<textarea>`。
+> - 下文为上游官方文档整理，示例中的 `height` 均为容器类组件（Box/ScrollBox/Select/Textarea 等）的合法布局属性，与上述废弃 prop 无关；`SyntaxStyle.fromStyles` 里的 `bold: true` / `italic: true` 是语法高亮样式的合法字段，也不是 `<text>` prop。
+
 ---
 
 ## 目录

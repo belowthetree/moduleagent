@@ -6,7 +6,7 @@
 //   2. 将 CoreCallbacks 翻译为 store 操作 + tuiState signals
 //   3. 用户操作委托给 Core，展示数据从 Core 查询
 //
-// 消息存储/持久化由 Core 层 AgentStateManager 负责，TUI 只做格式转换和展示。
+// 消息存储/持久化由 Core 层 SessionStore 负责，TUI 只做格式转换和展示。
 // ---------------------------------------------------------------------------
 
 import path from 'path';
@@ -420,7 +420,7 @@ export class TuiBridge implements IAgentBridge {
     const name = moduleName || this.core.getCurrentAgent();
     if (!name) return;
 
-    // 1. 清除 Core 上下文（sessionId 文件 + AgentStateManager + context 文件）
+    // 1. 清除 Core 上下文（sessionId 文件 + SessionStore + context 文件）
     await this.core.clearContext(name);
 
     // 2. 清空 TUI store
@@ -430,7 +430,7 @@ export class TuiBridge implements IAgentBridge {
   }
 
   async clearAllContexts(): Promise<void> {
-    // 委托 Core 清理所有持久化上下文（AgentStateManager + sessionId + context 文件）
+    // 委托 Core 清理所有持久化上下文（SessionStore + sessionId + context 文件）
     await this.core.modules.clearAllContexts();
     this.store.clear();
     this.store.syncTo(tuiState);

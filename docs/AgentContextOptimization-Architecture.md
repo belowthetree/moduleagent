@@ -2,6 +2,7 @@
 
 > 基于 `DeepSeek-Reasonix-Optimization.md` 对标 + 当前架构分析
 > 设计日期: 2026-07-16
+> **修订: 2026-07-22** — 本文所述 P0–P3 优化已全部落地（另新增方案外的 `ToolResultSnipper` 与 `ArchiveWriter`），本文已按实现现状（as-built）修订：消息历史全程为 ai-sdk `ModelMessage[]`（compact/truncate 直接操作结构化消息，保持 tool-call/tool-result 配对），`response.messages` 只含本次新生成的消息、必须**追加**而非替换。与代码冲突时以 `src/agents/kernel/` 为准。
 
 ---
 
@@ -27,29 +28,33 @@
 └─────────────────────────────────────────────────┘
 ```
 
-### 1.2 优化切入点总览
+### 1.2 优化切入点总览（as-built）
 
 ```
                     ┌──────────────────────┐
-                    │   TokenEstimator     │  P0 新建: 自适应 Token 估算
+                    │   TokenEstimator     │  已实现: 自适应 Token 估算
                     ├──────────────────────┤
-                    │   HistoryTruncator   │  P0 新建: 滑动窗口截断
+                    │   ToolResultSnipper  │  已实现(方案外新增): 60% 旧工具结果 snip
                     ├──────────────────────┤
-  AgentLoop ────────┤   ContextCompactor   │  P2 新建: 在线压缩
+  AgentLoop ────────┤   ContextCompactor   │  已实现: 在线压缩（70%）
   (send 管道)       ├──────────────────────┤
-                    │   ModelRouter        │  P2 新建: 快/慢模型路由
+                    │   HistoryTruncator   │  已实现: 滑动窗口截断（80%）
                     ├──────────────────────┤
-                    │   StormBreaker       │  P3 新建: 死循环检测
+                    │   ModelRouter        │  已实现: 快/慢模型路由
+                    ├──────────────────────┤
+                    │   StormBreaker       │  已实现: 死循环检测
+                    ├──────────────────────┤
+                    │   ArchiveWriter      │  已实现(方案外新增): 丢弃内容 jsonl 存档
                     └──────────────────────┘
 
                     ┌──────────────────────┐
-  ToolAdapter ──────┤   ToolOutputTruncator│  P1 新建: 工具输出截断
+  ToolAdapter ──────┤   ToolOutputTruncator│  已实现: 工具输出截断
                     └──────────────────────┘
 
                     ┌──────────────────────┐
-  PromptBuilder ────┤   CacheFriendlyPrompt│  P1 改造: 缓存友好结构
+  PromptBuilder ────┤   CacheFriendlyPrompt│  已实现: system prompt 独立注入
                     ├──────────────────────┤
-                    │   ProgressiveDisclose│  P1 改造: 渐进式披露
+                    │   ProgressiveDisclose│  已实现: Tier-1 摘要 + module_context_* 工具
                     └──────────────────────┘
 ```
 
@@ -82,10 +87,10 @@ export class TokenEstimator {
 
   // ── 公开 API ──
 
-  /** 从 Provider 返回的真实 usage 反推校准 */
-  calibrate(usage: TokenUsage, promptText: string): void {
-    if (usage.promptTokens <= 0 || promptText.length === 0) return;
-    const r = usage.promptTokens / promptText.length;
+  /** 从 Provider 返回的真实 usage 反推校准（as-built: 第二参数为字符数） */
+  calibrate(usage: TokenUsage, promptChars: number): void {
+    if (usage.promptTokens <= 0 || promptChars <= 0) return;
+    const r = usage.promptTokens / promptChars;
     if (r < 0.05 || r > 2) return;  // 异常值拒绝
     this.tokPerChar = (1 - this.emaAlpha) * this.tokPerChar + this.emaAlpha * r;
     this.calibrated = true;
@@ -124,7 +129,7 @@ AgentLoop.constructor()
 
 AgentLoop.send() — LLM 调用完成后:
   └→ const usage = result.usage  // { promptTokens, completionTokens }
-  └→ this.tokenEstimator.calibrate(usage, promptText)
+  └→ this.tokenEstimator.calibrate(usage, promptChars)  // promptChars = 全部消息 slim 文本 + systemPrompt 字符数
   └→ logger.info(`[AgentLoop] tokens: prompt=${usage.promptTokens} completion=${usage.completionTokens}`)
 
 ModuleAgentSubsystem.sendMessage() — 透传:
@@ -163,19 +168,19 @@ AgentLoop        TokenEstimator        Provider (ai-sdk)
 ### 3.2 接口
 
 ```typescript
-// src/agents/kernel/HistoryTruncator.ts
+// src/agents/kernel/HistoryTruncator.ts（as-built）
 
 export interface TruncationConfig {
   /** 上下文窗口总 token 数（从 provider 配置获取，默认 128K） */
   contextWindow: number;
-  /** 触发截断的阈值比例（默认 0.8） */
+  /** 触发截断的阈值比例（默认 0.8，对齐 Reasonix compactRatio） */
   truncateRatio: number;
-  /** 截断后保留最近消息的 token 预算（默认 16384，对齐 Reasonix） */
+  /** 截断后保留最近消息的 token 预算（默认 16384，对齐 Reasonix tail_tokens） */
   tailTokenBudget: number;
   /** 最小保留消息数（默认 2，对齐 Reasonix minRecentKeep） */
   minKeepMessages: number;
-  /** 截断时注入的占位文本 */
-  truncationMarker: string;
+  // 注：占位文本不再是配置字段，改为构造函数参数 marker
+  // （默认 '[… 较早的对话已被截断以节省上下文空间 …]'）
 }
 
 export const DEFAULT_TRUNCATION_CONFIG: TruncationConfig = {
@@ -183,12 +188,11 @@ export const DEFAULT_TRUNCATION_CONFIG: TruncationConfig = {
   truncateRatio: 0.8,
   tailTokenBudget: 16_384,
   minKeepMessages: 2,
-  truncationMarker: '[… 较早的对话已被截断以节省上下文 …]\n\n',
 };
 
 export interface TruncationResult {
-  /** 截断后的消息数组 */
-  messages: Array<{ role: string; content: string }>;
+  /** 截断结果 [marker?, ...tail]——不包含 head，head 由调用方（AgentLoop）单独保留拼接 */
+  messages: ModelMessage[];
   /** 被移除的消息数 */
   truncatedCount: number;
   /** 截断前估算 token 数 */
@@ -197,103 +201,84 @@ export interface TruncationResult {
   afterTokens: number;
 }
 
-export class HistoryTruncator {
-  private config: TruncationConfig;
-  private estimator: TokenEstimator;
+// token 估算辅助：ModelMessage 的结构化 content 序列化为纯文本
+export function slimContent(msg: ModelMessage): string;
+export function slimMessages(messages: ModelMessage[]): Array<{ role: string; content: string }>;
 
-  constructor(config: Partial<TruncationConfig> = {}, estimator: TokenEstimator) {
-    this.config = { ...DEFAULT_TRUNCATION_CONFIG, ...config };
-    this.estimator = estimator;
-  }
+export class HistoryTruncator {
+  constructor(
+    config: Partial<TruncationConfig> = {},
+    estimator: TokenEstimator,
+    marker?: string,
+    logger?: Logger,
+    archive?: (records: ModelMessage[]) => void,  // 被丢弃消息存档（ArchiveWriter）
+  );
 
   /**
-   * 截断消息历史。
+   * 截断消息历史（直接操作 ai-sdk ModelMessage[]）。
    *
-   * 保留规则 (对齐 Reasonix planCompaction):
-   * 1. 始终保留第一条 user message（包含 module context 注入）
+   * 保留规则（对齐 Reasonix planCompaction）：
+   * 1. 始终保留第一条 user message（head，承载 module context 注入）——
+   *    head 不在返回值中，调用方自行拼接 [head, ...result]
    * 2. 从尾部向前累计，直到达到 tailTokenBudget 或 minKeepMessages
-   * 3. 被截断的消息合并为一条 truncationMarker 占位消息
-   *
-   * @param messages 完整消息历史（role + content）
-   * @returns 截断结果
+   * 3. 被截断的中间消息合并为一条 marker 占位消息（role: 'user'）
+   * 4. tail 不允许以 tool 消息开头——其对应的 assistant tool-call 已被截断，
+   *    孤儿 tool 消息会破坏 ModelMessage 序列结构（丢弃尾部前导 tool 消息）
+   * 5. 被丢弃的中间消息经 archive 回调写入 archives/history-truncated.jsonl
    */
-  truncate(messages: Array<{ role: string; content: string }>): TruncationResult {
-    const totalTokens = this.estimator.estimateMessages(messages);
-    const threshold = this.config.contextWindow * this.config.truncateRatio;
+  truncate(messages: ModelMessage[]): TruncationResult;
 
-    if (totalTokens <= threshold) {
-      return { messages, truncatedCount: 0, beforeTokens: totalTokens, afterTokens: totalTokens };
-    }
-
-    // ── 分区: 头(第一条) | 中间(可折叠) | 尾(tail budget) ──
-    const head = messages[0]!;
-    const tail: typeof messages = [];
-    let tailTokens = 0;
-
-    // 从尾部倒序遍历
-    for (let i = messages.length - 1; i >= 1; i--) {
-      const msg = messages[i]!;
-      const msgTokens = this.estimator.estimate(msg.content) + 4;
-      if (tailTokens + msgTokens <= this.config.tailTokenBudget || tail.length < this.config.minKeepMessages) {
-        tail.unshift(msg);
-        tailTokens += msgTokens;
-      } else {
-        break;
-      }
-    }
-
-    const truncatedCount = messages.length - 1 - tail.length;
-    if (truncatedCount <= 0) {
-      return { messages, truncatedCount: 0, beforeTokens: totalTokens, afterTokens: totalTokens };
-    }
-
-    const marker = { role: 'user' as const, content: this.config.truncationMarker };
-    const result = [head, marker, ...tail];
-    const afterTokens = this.estimator.estimateMessages(result);
-
-    return { messages: result, truncatedCount, beforeTokens: totalTokens, afterTokens };
-  }
+  /** 更新配置（运行时调整） */
+  updateConfig(partial: Partial<TruncationConfig>): void;
 }
 ```
 
-### 3.3 集成点 — AgentLoop.send() 改造
+### 3.3 集成点 — AgentLoop.send()（as-built）
 
 ```
-当前流程:
-  send(blocks) {
-    const userText = blocks.map(b => b.text).join('\n');
-    this.messages.push({ role: 'user', content: userText });     // ← push
-    const result = await generateText({ messages: this.messages }); // ← 全量发送
-    this.messages = [...result.response.messages];                 // ← 更新历史
+send(blocks) {
+  const userText = blocks.map(b => b.text).join('\n');
+  this.messages.push({ role: 'user', content: userText });       // ← push
+
+  // Step 0: 旧工具结果 snip（ToolResultSnipper，60% 阈值，零 LLM 成本，原地修改）
+  this.toolResultSnipper.snipStale(this.messages, this.contextWindow);
+
+  // Step 1: 在线压缩（ContextCompactor，70% 阈值，仅 compaction.enabled 且有 fastModel 时）
+  //         成功则 this.messages = compactResult.messages（head + summary + tail）
+
+  // Step 2: 滑动窗口截断（HistoryTruncator，80% 阈值）
+  const truncResult = this.historyTruncator.truncate(this.messages);
+  if (truncResult.truncatedCount > 0) {
+    // 返回值不含 head——用原 head 拼接 [head, marker, ...tail]
+    this.messages = [this.messages[0], ...truncResult.messages];
   }
 
-改造后:
-  send(blocks) {
-    const userText = blocks.map(b => b.text).join('\n');
-    this.messages.push({ role: 'user', content: userText });      // ← push
-    // ── 新增: 截断检查 ──
-    const truncResult = this.historyTruncator.truncate(this.messages);
-    if (truncResult.truncatedCount > 0) {
-      this.logger.warn(`[AgentLoop] truncated ${truncResult.truncatedCount} msgs, tokens: ${truncResult.beforeTokens}→${truncResult.afterTokens}`);
-    }
-    // ── 发送截断后的消息 ──
-    const result = await generateText({ messages: truncResult.messages });
-    // ⚠️ 关键: 用 result.response.messages 替换 this.messages (ai-sdk 返回完整历史)
-    this.messages = [...result.response.messages];
-    // ── 新增: token 校准 ──
-    if (result.usage) {
-      this.tokenEstimator.calibrate(result.usage, userText);
-    }
-  }
+  // Step 3: ModelRouter 选择 fastModel / 主模型
+
+  // Step 4: generateText（withRetry 外层重试，stepsCompleted===0 门控）
+  const result = await withRetry(() => generateText({
+    model: activeModel,
+    system: this.systemPrompt,
+    messages: this.messages,
+    ...
+  }));
+
+  // ⚠️ 关键（ai-sdk v7）: response.messages 只含本次调用新生成的消息，
+  // 必须【追加】而非替换——替换会丢弃刚 push 的 user 消息与全部历史
+  this.messages.push(...result.response.messages);
+
+  // token 校准（promptChars = slim 消息文本 + systemPrompt 字符数）
+  if (result.usage) this.tokenEstimator.calibrate(result.usage, promptChars);
+}
 ```
 
-### 3.4 ⚠️ 关键注意事项
+### 3.4 ⚠️ 关键注意事项（as-built 定论）
 
-1. **ai-sdk 的 `result.response.messages`** 会自动管理 messages 数组（包含 tool_call/tool_result），**截断后的 messages 传给 generateText 后，返回的 response.messages 是 LLM 视角的完整历史**。直接用 `result.response.messages` 覆盖 `this.messages` 即可保持后续轮次正确。
+1. **ai-sdk v7 的 `result.response.messages` 只包含本次调用新生成的消息**（assistant + tool 消息），不含传入的历史。必须用 `this.messages.push(...result.response.messages)` **追加**；早期的「替换」写法会每轮丢弃 user 消息与全部历史——这是 2026-07 修复轮修掉的关键 bug。
 
-2. **第一条 user message 必须保留**：它承载了 `buildPromptBlocks` 注入的全部 module context。若截断它，后续轮次丢失模块上下文。
+2. **第一条 user message 必须保留**：它承载了 `buildPromptBlocks` 注入的全部 module context。若截断它，后续轮次丢失模块上下文。`truncate()` 返回值刻意不含 head，由 AgentLoop 拼接 `[head, ...result]`。
 
-3. **截断后 ai-sdk 可能报错**：因为 tool_call 和 tool_result 的配对关系被打破。需测试：当截断边界恰好切断 tool_call↔tool_result 配对时，ai-sdk 的行为。
+3. **tool_call↔tool_result 配对保护已实现**：`HistoryTruncator` 与 `ContextCompactor` 直接操作 `ModelMessage[]`（不再 JSON 字符串化），并保证 tail 不以孤儿 tool 消息开头（其 assistant tool-call 落在被截断/折叠区），保持消息序列结构合法。
 
 ---
 
@@ -307,7 +292,9 @@ export class HistoryTruncator {
 
 ### 4.2 关键认知
 
-当前架构的问题：
+> 状态：**已完成改造**。以下为改造前（2026-07 之前）的问题描述；现 system prompt 经 `Agent.start({ systemPrompt })` 以独立 `system` 角色消息注入，`PromptBuilder.buildPromptBlocks()` 不再将其混入首条 user 消息（前缀缓存锚定）。
+
+改造前架构的问题：
 ```
 // 当前 AgentLoop.send():
 const userText = blocks.map(b => b.text).join('\n');  // system prompt + module context 混在 user text 里
@@ -324,7 +311,10 @@ await generateText({
 
 ### 4.3 方案：分离 system prompt 到独立 system 消息
 
+> as-built：落地路径与设计略有不同——`PromptBuilder.buildPromptBlocks()` 不返回 `BuildResult`，而是 system prompt 经 `Agent.start({ systemPrompt })` → `KernelFactory` → `AgentLoopConfig.systemPrompt` 独立传递，由 `AgentLoop` 在每次 `generateText({ system })` 时注入；`buildPromptBlocks()` 的首个 block 只含 module context（Tier-1 摘要），`sessionPrompted` 集合保证每会话仅注入一次。
+
 ```
+设计要点（与实现一致的部分）：
 改造后的 PromptBuilder.buildPromptBlocks():
 
 // 不再把 system prompt 混入 blocks
@@ -354,7 +344,9 @@ class AgentLoop {
 }
 ```
 
-### 4.4 工具 Schema 排序（补充）
+### 4.4 工具 Schema 排序（补充，已实现）
+
+`AgentLoop` 构造时按工具名排序后再 `convertToolsToAISDK`，保证 schema 字节级稳定：
 
 ```typescript
 // AgentLoop.constructor() 中:
@@ -365,7 +357,9 @@ const sortedTools = [...config.tools].sort((a, b) => a.name.localeCompare(b.name
 this.tools = convertToolsToAISDK(sortedTools);   // ← 排序后 JSON 稳定
 ```
 
-### 4.5 Cache 诊断日志
+### 4.5 Cache 诊断日志（未实现）
+
+> 状态：**未落地**（依赖 Provider 返回的缓存字段，见 OptimizationPlan §8.5 遗留事项）。以下为设计草案。
 
 ```typescript
 // AgentLoop.send() — LLM 调用后:
@@ -426,115 +420,40 @@ Tier 2 — 按需 (通过工具获取)
   └── module_context_read_experience → experience.md (最近 N 条)
 ```
 
-### 5.3 接口设计
+### 5.3 接口设计（as-built）
+
+未新建 `ProgressiveDisclosure.ts`——功能拆在两个现有模块中：
 
 ```typescript
-// src/agents/prompts/ProgressiveDisclosure.ts
+// src/agents/prompts/PromptBuilder.ts — Tier-1 摘要注入
+const TIER1_SUMMARY_CHARS = 2000;
 
-export interface DisclosureTiers {
-  tier0: string;   // system prompt 全文
-  tier1: string;   // 首条消息摘要
-  tier2: {         // 按需工具定义
-    moduleContext: string;     // module.md 全文
-    patterns: string;          // patterns.md 全文
-    experience: string;        // experience.md 全文
-  };
-}
+// buildPromptBlocks() 内：progressiveDisclosure（默认 true）且非根模块时，
+// 首条 user 消息只注入 module.md 前 2000 字符摘要 + 按需工具指引，
+// 而非完整 module.md / patterns.md / experience.md
+function buildTier1SummaryBlock(moduleName: string, body: string): string;
 
-export function buildDisclosureTiers(options: {
-  moduleName: string;
-  graph: ModuleGraph;
-  configDir: string;
-}): DisclosureTiers {
-  const node = options.graph.nodes.get(options.moduleName);
-  const body = node?.definition?.body || '';
-  const summary = body.length > 2000
-    ? body.slice(0, 2000) + '\n\n... (使用 module_context_read_full 获取完整文档)'
-    : body;
-
-  return {
-    tier0: loadSystemPrompt(options.configDir, options.moduleName, options.graph.root),
-    tier1: [
-      `# Module: ${options.moduleName}`,
-      '',
-      summary,
-      '',
-      '---',
-      '可用工具:',
-      '- `module_context_read_full` — 获取完整模块文档',
-      '- `module_context_read_patterns` — 获取修改规范',
-      '- `module_context_read_experience` — 获取近期经验',
-    ].join('\n'),
-    tier2: {
-      moduleContext: body,
-      patterns: loadPatternsContent(node?.absolutePath),
-      experience: loadExperienceContent(node?.absolutePath, 3),
-    },
-  };
-}
+// src/agents/kernel/tools/module-context.ts — Tier-2 按需工具
+// 工具在【调用时】从模块文档目录（.module-agent/module/<name>/）惰性读取文件，
+// 而非像设计中那样在启动时预加载 DisclosureTiers
+export function createModuleContextTools(moduleDir: string): Tool[];
+//   ├─ module_context_read_full       → 读 module.md 全文
+//   ├─ module_context_read_patterns   → 读 patterns.md 全文
+//   └─ module_context_read_experience → 读 experience.md，按 '## ' 分节取最近 N 条（默认 3）
 ```
 
-### 5.4 MCP 工具注册
+### 5.4 工具注册（as-built）
 
-```typescript
-// src/agents/kernel/tools/module-context.ts (新建)
+三个工具的定义与设计的参数/行为一致（`module_context_read_experience` 支持 `count` 参数，默认 3），差别仅在内容来源：调用时经 `fs.readFile` 从 `moduleDir` 读取，文件不存在时返回「(暂无 …)」占位文本。完整实现见 `src/agents/kernel/tools/module-context.ts`。
 
-import type { Tool } from '../types.js';
-import type { DisclosureTiers } from '../../prompts/ProgressiveDisclosure.js';
+### 5.5 集成点 — AgentKernel（as-built）
 
-export function createModuleContextTools(tiers: DisclosureTiers): Tool[] {
-  return [
-    {
-      name: 'module_context_read_full',
-      description: '获取当前模块的完整文档（module.md）。当需要了解模块的完整 API、依赖、职责时调用。',
-      inputSchema: { type: 'object', properties: {}, required: [] },
-      async execute() {
-        return { content: tiers.moduleContext || '(无模块文档)' };
-      },
-    },
-    {
-      name: 'module_context_read_patterns',
-      description: '获取当前模块的修改规范（patterns.md），包含联动修改规律。',
-      inputSchema: { type: 'object', properties: {}, required: [] },
-      async execute() {
-        return { content: tiers.patterns || '(无修改规范)' };
-      },
-    },
-    {
-      name: 'module_context_read_experience',
-      description: '获取当前模块的近期开发经验（experience.md），包含踩坑记录和决策理由。',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          count: { type: 'number', description: '获取最近 N 条经验，默认 3' },
-        },
-        required: [],
-      },
-      async execute(input) {
-        const count = (input as any).count || 3;
-        const sections = tiers.experience.split(/\n(?=## )/);
-        const entries = sections.filter(s => s.trim().startsWith('## '));
-        const recent = entries.slice(-count);
-        return { content: recent.join('\n') || '(无近期经验)' };
-      },
-    },
-  ];
+```
+// AgentKernel 构造函数 — options.moduleDir 存在时注册：
+if (options.moduleDir) {
+  const ctxTools = createModuleContextTools(options.moduleDir);
+  this.registry.registerAll(ctxTools);   // 3 个 module_context_* 工具
 }
-```
-
-### 5.5 集成点 — AgentKernel 改造
-
-```
-// AgentKernel.constructor() — 工具注册阶段:
-
-// 当前:
-this.registry = createKernelToolRegistry(sandbox, crossModuleRouter, requestingModule);
-
-// 改造后:
-const disclosureTiers = buildDisclosureTiers({ moduleName, graph, configDir });
-this.registry = createKernelToolRegistry(sandbox, crossModuleRouter, requestingModule);
-// 额外注册 3 个 module_context:* 工具
-this.registry.registerAll(createModuleContextTools(disclosureTiers));
 ```
 
 ---
@@ -547,6 +466,8 @@ this.registry.registerAll(createModuleContextTools(disclosureTiers));
 - 对标 Reasonix：`maxToolOutputBytes = 32KB` + §9.2 Stale Tool Result snip
 
 ### 6.2 接口
+
+> as-built：接口与设计一致；`TOOL_TRUNCATION_RULES` 另有追加条目——`file_write`/`file_edit`（4K）、`module_call`（50K）/`module_query`（20K）/`module_list`（10K）、`module_context_read_*`（20K–100K，按需文档尽量保留）。该规则表同时被 `ToolResultSnipper` 复用。
 
 ```typescript
 // src/agents/kernel/ToolOutputTruncator.ts
@@ -647,6 +568,8 @@ export function convertToolsToAISDK(tools: Tool[]): Record<string, any> {
 
 ### 7.2 接口
 
+> as-built：分类规则与设计一致（6 条规则同序）；关键词表略有扩充（fast 增加 'how to'/'怎么'/'如何'，codeAction 增加 'debug'/'调试'/'optimize'/'优化'），每次判定经 logger 输出 reason。
+
 ```typescript
 // src/agents/kernel/ModelRouter.ts
 
@@ -722,16 +645,16 @@ AgentLoop.constructor():
     ? resolveLanguageModel({ ...config.kernelConfig, model: config.kernelConfig.fastModel })
     : null;
 
-AgentLoop.send() — 选择模型:
+AgentLoop.send() — 选择模型（as-built: 私有 selectModel(userText) 方法）:
   const routeCtx: RouteContext = {
     userText,
-    hasFileReferences: /[@\.\/\\]/.test(userText) || /\.(go|js|ts|py|rs|java)/.test(userText),
-    hasCodeActions: /fix|修复|create|创建|write|写|edit|修改|delete|删除/.test(userText),
+    hasFileReferences: /[@.\/\\]/.test(userText) || /\.(go|js|ts|py|rs|java|md)/.test(userText),
+    hasCodeActions: /fix|修复|create|创建|write|写|edit|修改|delete|删除|refactor|重构|implement|实现/.test(userText),
     messageLength: userText.length,
     turnNumber: this.messages.filter(m => m.role === 'user').length,
   };
-  const route = this.modelRouter.classify(routeCtx);
-  const activeModel = route === 'fast' && this.fastModel ? this.fastModel.model : this.model;
+  const decision = this.modelRouter.classify(routeCtx);
+  const activeModel = decision === 'fast' ? this.fastModel : this.model;  // fastModel 字段本身即解析后的 model
 
   const result = await generateText({
     model: activeModel,  // ← 动态选择
@@ -745,152 +668,93 @@ AgentLoop.send() — 选择模型:
 
 ### 8.1 设计目标
 
-- 对标 Reasonix §1 分层压缩：`maybeCompact()` → `planCompaction()` → `summarize()`
-- **异步执行**：不阻塞 Agent 主循环
+- 对标 Reasonix §1 分层压缩：`maybeCompact()` → 分区 → `summarize()`
 - **降级安全**：总结失败时回退到 HistoryTruncator 的机械截断
-- 必须与 HistoryTruncator 协同：compactor 在截断之前先尝试"智能压缩"
+- 与 HistoryTruncator 协同：compactor 在截断之前先尝试"智能压缩"
+- as-built 注记：仅当 `compaction.enabled` 且配置了 `fastModel` 时才创建（fastModel 即 summarizer）；`maybeCompact()` 在 `send()` 管道内同步 await（设计中的"异步不阻塞"未采用），但 summarizer 调用带 `withRetry`（最多 2 次）与 `minIntervalMs` 频率控制
 
-### 8.2 接口
+### 8.2 接口（as-built）
 
 ```typescript
 // src/agents/kernel/ContextCompactor.ts
 
 export interface CompactionConfig {
-  /** 触发压缩的 token 阈值比例 */
-  compactRatio: number;         // 默认 0.7
-  /** 压缩后的目标 token 比例 */
-  compactTarget: number;        // 默认 0.4
-  /** 保留原文的尾部 token 预算 */
-  tailTokenBudget: number;      // 默认 16384
-  /** 至少折叠多少 token 才值得调用总结 LLM */
-  minFoldableTokens: number;    // 默认 400
-  /** 两次压缩的最小间隔 (ms) */
-  minIntervalMs: number;        // 默认 60000
+  /** 触发压缩的 token 阈值比例（默认 0.7） */
+  compactRatio: number;
+  /** 保留原文的尾部 token 预算（默认 16384，对齐 Reasonix） */
+  tailTokenBudget: number;
+  /** 至少折叠多少 token 才值得调用总结 LLM（默认 400，对齐 Reasonix foldEconomics） */
+  minFoldableTokens: number;
+  /** 两次压缩的最小间隔（ms，默认 60000） */
+  minIntervalMs: number;
+  // 注：设计中的 compactTarget 未进入实现
 }
 
 export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
   compactRatio: 0.7,
-  compactTarget: 0.4,
-  tailTokenBudget: 16384,
+  tailTokenBudget: 16_384,
   minFoldableTokens: 400,
-  minIntervalMs: 60000,
+  minIntervalMs: 60_000,
 };
 
 export interface CompactionResult {
-  /** 压缩后的消息数组 */
-  messages: Array<{ role: string; content: string }>;
-  /** 是否执行了压缩 */
+  /** 压缩后的消息数组（ModelMessage[]：head + summary + tail） */
+  messages: ModelMessage[];
   compacted: boolean;
-  /** 被折叠的消息数 */
   foldedCount: number;
-  /** 压缩前后 token 数 */
   beforeTokens: number;
   afterTokens: number;
 }
 
 export class ContextCompactor {
-  private config: CompactionConfig;
-  private estimator: TokenEstimator;
-  private summarizerModel: LanguageModel;
-  private lastCompactionTime = 0;
-
-  constructor(config: Partial<CompactionConfig>, estimator: TokenEstimator, summarizerModel: LanguageModel) {
-    this.config = { ...DEFAULT_COMPACTION_CONFIG, ...config };
-    this.estimator = estimator;
-    this.summarizerModel = summarizerModel;
-  }
+  constructor(
+    config: Partial<CompactionConfig>,
+    estimator: TokenEstimator,
+    summarizerModel: LanguageModel,   // 即 fastModel
+    logger?: Logger,
+    archive?: (records: ModelMessage[]) => void,  // 被折叠消息存档（archives/compacted.jsonl）
+  );
 
   /**
-   * 检查是否需要压缩，如果需要则执行。
-   * 若经济性不划算（foldable < minFoldableTokens）则跳过。
+   * 直接操作 ai-sdk ModelMessage[]，关键行为：
+   * 1. beforeTokens <= windowTokens * compactRatio → 跳过
+   * 2. 距上次压缩 < minIntervalMs → 跳过（频率控制）
+   * 3. 分区 head | foldable | tail（tail 按 tailTokenBudget 从尾部累计）；
+   *    tail 不允许以 tool 消息开头——孤儿 tool 消息会被并回 foldable，
+   *    保持 tool-call/tool-result 配对完整
+   * 4. foldableTokens < minFoldableTokens → 跳过（经济性判断）
+   * 5. summarize(foldable) 成功 → 折叠区整段替换为一条 user 摘要消息
+   *    （'[对话摘要 — 已压缩 N 条消息]'），foldable 原文经 archive 存档
+   * 6. summarize 失败 → 返回原消息不压缩，由 HistoryTruncator 兜底
    */
-  async maybeCompact(
-    messages: Array<{ role: string; content: string }>,
-    windowTokens: number,
-  ): Promise<CompactionResult> {
-    const beforeTokens = this.estimator.estimateMessages(messages);
-    const threshold = windowTokens * this.config.compactRatio;
-    if (beforeTokens <= threshold) {
-      return { messages, compacted: false, foldedCount: 0, beforeTokens, afterTokens: beforeTokens };
-    }
+  async maybeCompact(messages: ModelMessage[], windowTokens: number): Promise<CompactionResult>;
 
-    const now = Date.now();
-    if (now - this.lastCompactionTime < this.config.minIntervalMs) {
-      return { messages, compacted: false, foldedCount: 0, beforeTokens, afterTokens: beforeTokens };
-    }
-
-    // 分区
-    const head = messages[0]!;
-    const tail: typeof messages = [];
-    let tailTokens = 0;
-    for (let i = messages.length - 1; i >= 1; i--) {
-      const msg = messages[i]!;
-      const t = this.estimator.estimate(msg.content) + 4;
-      if (tailTokens + t <= this.config.tailTokenBudget) { tail.unshift(msg); tailTokens += t; }
-      else break;
-    }
-
-    const foldable = messages.slice(1, messages.length - tail.length);
-    const foldableTokens = beforeTokens - tailTokens - this.estimator.estimate(head.content);
-    if (foldableTokens < this.config.minFoldableTokens) {
-      return { messages, compacted: false, foldedCount: 0, beforeTokens, afterTokens: beforeTokens };
-    }
-
-    // 调用 summarizer LLM 生成摘要
-    try {
-      const summary = await this.summarize(foldable);
-      this.lastCompactionTime = now;
-      const summaryMsg = { role: 'user', content: `[对话摘要]\n\n${summary}` };
-      const result = [head, summaryMsg, ...tail];
-      const afterTokens = this.estimator.estimateMessages(result);
-      return { messages: result, compacted: true, foldedCount: foldable.length, beforeTokens, afterTokens };
-    } catch (err) {
-      // 回退: 不压缩，让 HistoryTruncator 机械截断
-      return { messages, compacted: false, foldedCount: 0, beforeTokens, afterTokens: beforeTokens };
-    }
-  }
-
-  /**
-   * 调用轻量模型生成对话摘要
-   */
-  private async summarize(messages: Array<{ role: string; content: string }>): Promise<string> {
-    const conversation = messages
-      .map(m => `[${m.role}]: ${m.content.slice(0, 2000)}`)
-      .join('\n\n');
-
-    const result = await generateText({
-      model: this.summarizerModel,
-      system: '你是一个对话摘要器。将以下 Agent 对话压缩为简洁摘要，保留关键决策、文件修改、错误和解决方案。',
-      prompt: `请摘要以下对话（保留关键信息）：\n\n${conversation}`,
-      maxTokens: 1000,
-    });
-
-    return result.text || '(摘要生成失败)';
-  }
+  /** 每条消息 slimContent 截 2000 字符后拼接，withRetry(2) 调 fastModel，maxOutputTokens: 1000 */
+  private async summarize(messages: ModelMessage[]): Promise<string>;
 }
 ```
 
-### 8.3 与 HistoryTruncator 的协同
+### 8.3 与 HistoryTruncator 的协同（as-built）
 
 ```
 AgentLoop.send():
 
-  // Step 1: 先尝试智能压缩
-  const compactResult = await this.compactor.maybeCompact(this.messages, contextWindow);
-  if (compactResult.compacted) {
-    this.messages = compactResult.messages;
-    logger.info(`[AgentLoop] compacted ${compactResult.foldedCount} msgs, tokens: ${compactResult.beforeTokens}→${compactResult.afterTokens}`);
-  } else {
-    // Step 2: 压缩不成功 → 机械截断
-    const truncResult = this.historyTruncator.truncate(this.messages);
-    if (truncResult.truncatedCount > 0) {
-      this.messages = truncResult.messages;
-      logger.warn(`[AgentLoop] truncated ${truncResult.truncatedCount} msgs`);
-    }
+  // Step 0: 旧工具结果 snip（60%，零 LLM 成本，原地修改）
+  this.toolResultSnipper.snipStale(this.messages, this.contextWindow);
+
+  // Step 1: 先尝试智能压缩（70%，仅在 compaction.enabled 且有 fastModel 时）
+  const compactResult = await this.contextCompactor?.maybeCompact(this.messages, contextWindow);
+  if (compactResult?.compacted) {
+    this.messages = compactResult.messages;   // head + summary + tail
   }
 
-  // Step 3: 发送
-  const result = await generateText({ messages: this.messages, ... });
+  // Step 2: 机械截断兜底（80%；压缩未触发或失败都会走到这里）
+  const truncResult = this.historyTruncator.truncate(this.messages);
+  if (truncResult.truncatedCount > 0) {
+    this.messages = [this.messages[0], ...truncResult.messages];  // 返回值不含 head
+  }
+
+  // Step 3: ModelRouter 选模型 → generateText
 ```
 
 ---
@@ -904,63 +768,28 @@ AgentLoop.send():
 
 ### 9.2 接口
 
-```typescript
-// src/agents/kernel/StormBreaker.ts
+> as-built：与设计一致，细微差异——构造函数 `StormBreaker(maxStorms = 3, logger?)`；干预消息带有连续失败次数、工具名与错误摘要；`normalizeError` 额外处理 Windows 反斜杠路径。
 
-export class StormBreaker {
-  private stormSig = '';
-  private stormCount = 0;
-  private readonly maxStorms = 3;
-  private readonly interventionMessage = 
-    '[系统提示] 你似乎陷入了循环——连续多次相同操作失败。请尝试不同的方法或向用户寻求帮助。';
-
-  /** 检测并返回是否应干预 */
-  detect(toolName: string, error: string): { intervene: boolean; message?: string } {
-    const sig = `${toolName}:${this.normalizeError(error)}`;
-    if (sig === this.stormSig) {
-      this.stormCount++;
-      if (this.stormCount >= this.maxStorms) {
-        return { intervene: true, message: this.interventionMessage };
-      }
-    } else {
-      this.stormSig = sig;
-      this.stormCount = 1;
-    }
-    return { intervene: false };
-  }
-
-  /** 任何成功操作复位计数器 */
-  reset(): void {
-    this.stormSig = '';
-    this.stormCount = 0;
-  }
-
-  private normalizeError(error: string): string {
-    // 去参数化：移除路径、数字、UUID 等变化部分
-    return error
-      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<UUID>')
-      .replace(/\/[^\s]+\/[^\s]+/g, '<PATH>')
-      .replace(/\d+/g, '<N>');
-  }
-}
-```
-
-### 9.3 集成点 — AgentLoop.onStepFinish
+### 9.3 集成点 — AgentLoop.onStepFinish（as-built）
 
 ```
 AgentLoop.send() — onStepFinish 回调:
 
+  // ⚠️ 关键：generateText 执行期间直接 push 进 this.messages 不会被本次调用感知，
+  // 且会被后续的 response.messages 合并覆盖。干预消息先缓冲到 interventions，
+  // 待 this.messages.push(...result.response.messages) 合并完成后再按序追加，
+  // 确保下一轮调用能看到干预。
+  const interventions: ModelMessage[] = [];
+
   onStepFinish: (event) => {
-    // ... 现有逻辑 ...
+    // ... 现有逻辑（tool_call / reasoning 通知） ...
     if (event.toolResults) {
       for (const tr of event.toolResults) {
         const isError = !!(tr as any).error;
         if (isError) {
           const { intervene, message } = this.stormBreaker.detect(tr.toolName, (tr as any).error);
           if (intervene && message) {
-            // 注入干预消息到 messages
-            this.messages.push({ role: 'user', content: message });
-            logger.warn(`[StormBreaker] intervened after ${this.stormBreaker.maxStorms} repeated failures`);
+            interventions.push({ role: 'user', content: message });   // ← 缓冲，不直接 push
           }
         } else {
           this.stormBreaker.reset();
@@ -968,45 +797,59 @@ AgentLoop.send() — onStepFinish 回调:
       }
     }
   },
+
+  // generateText 返回后：
+  this.messages.push(...result.response.messages);
+  if (interventions.length > 0) this.messages.push(...interventions);
 ```
 
 ---
 
-## 10. 完整改造后的 AgentLoop.send() 管道
+## 10. 完整改造后的 AgentLoop.send() 管道（as-built）
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │              AgentLoop.send(blocks)                       │
 ├──────────────────────────────────────────────────────────┤
-│  1. pushUserMessage(userText)                             │
-│     └── this.messages.push({ role: 'user', content })     │
+│  1. this.messages.push({ role: 'user', content })         │
 │                                                           │
-│  2. 【新】ModelRouter.classify()                          │
-│     └── 选择 fastModel / normalModel                      │
+│  2. ToolResultSnipper.snipStale()                         │
+│     └── 60% 阈值：旧工具结果截为头+尾，零 LLM 成本，        │
+│         原文存档 archives/tool-results.jsonl               │
 │                                                           │
-│  3. 【新】ContextCompactor.maybeCompact()                  │
-│     └── 智能压缩：调用 summarizer LLM                     │
-│     └── 降级：↓                                           │
+│  3. ContextCompactor.maybeCompact()（仅 enabled+fastModel）│
+│     └── 70% 阈值：fastModel 摘要折叠中段                   │
+│     └── 失败/不划算 → 降级到下一步                         │
 │                                                           │
-│  4. 【新】HistoryTruncator.truncate()                      │
-│     └── 机械截断：保留 head + tail                        │
+│  4. HistoryTruncator.truncate()                           │
+│     └── 80% 阈值：保留 head + tail（tail token 预算）      │
+│     └── 丢弃段存档 archives/history-truncated.jsonl        │
+│     └── （另有 50% 软警告 onContextUsage，0.5/0.4 滞回）   │
 │                                                           │
-│  5. generateText({                                        │
+│  5. ModelRouter.classify() → 选择 fastModel / 主模型       │
+│                                                           │
+│  6. withRetry(generateText({                              │
 │       model: activeModel,                                 │
-│       system: this.systemPrompt,    // 【改】缓存友好      │
-│       messages: this.messages,                            │
-│       tools: this.tools,            // 【改】排序稳定      │
-│       stopWhen: stepCountIs(...),                         │
+│       system: this.systemPrompt,    // 缓存友好            │
+│       messages: this.messages,      // ModelMessage[]      │
+│       tools: this.tools,            // 构造时按名排序       │
+│       stopWhen: stepCountIs(maxToolRounds + 1),            │
+│       abortSignal, maxRetries: 2,                          │
+│       maxOutputTokens / temperature,  // 仅配置存在时传递   │
 │       onStepFinish: (event) => {                          │
-│         // 【新】StormBreaker.detect()                    │
-│         // 【不改】现有 tool_call / reasoning 通知        │
+│         // StormBreaker.detect() → 干预消息先入缓冲         │
+│         // tool_call / tool_result / reasoning 通知        │
+│         // stepsCompleted++（外层重试门控：===0 才重试）    │
 │       },                                                  │
-│     })                                                    │
+│     }), { maxAttempts: 3, shouldRetry: stepsCompleted===0  │
+│           && isRetryableError })                          │
 │                                                           │
-│  6. 【新】TokenEstimator.calibrate(usage, promptText)      │
-│     └── this.messages = result.response.messages          │
+│  7. TokenEstimator.calibrate(usage, promptChars)           │
+│     this.messages.push(...result.response.messages)        │
+│       // ⚠️ ai-sdk v7：只含新生成消息，必须追加而非替换     │
+│     this.messages.push(...interventions)                   │
 │                                                           │
-│  7. return { stopReason, content, usage }                  │
+│  8. return { stopReason, content, usage }                  │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -1014,29 +857,32 @@ AgentLoop.send() — onStepFinish 回调:
 
 ## 11. 文件清单与改动量估算
 
-### 新建文件
+### 新建文件（as-built 落地情况）
 
-| 文件 | 行数(估) | 优先级 | 依赖 |
+| 文件 | 行数(估) | 优先级 | 落地 |
 |------|---------|--------|------|
-| `src/core/TokenEstimator.ts` | ~80 | P0 | 无 |
-| `src/agents/kernel/HistoryTruncator.ts` | ~100 | P0 | TokenEstimator |
-| `src/agents/kernel/ToolOutputTruncator.ts` | ~90 | P1 | Tool 类型 |
-| `src/agents/kernel/tools/module-context.ts` | ~70 | P1 | Sandbox |
-| `src/agents/kernel/ModelRouter.ts` | ~80 | P2 | 无 |
-| `src/agents/kernel/ContextCompactor.ts` | ~150 | P2 | TokenEstimator, ai-sdk |
-| `src/agents/kernel/StormBreaker.ts` | ~60 | P3 | 无 |
+| `src/core/TokenEstimator.ts` | ~105 | P0 | ✅ 已建 |
+| `src/agents/kernel/HistoryTruncator.ts` | ~210 | P0 | ✅ 已建 |
+| `src/agents/kernel/ToolOutputTruncator.ts` | ~106 | P1 | ✅ 已建 |
+| `src/agents/kernel/tools/module-context.ts` | ~127 | P1 | ✅ 已建（改为调用时惰性读文件） |
+| `src/agents/kernel/ModelRouter.ts` | ~105 | P2 | ✅ 已建 |
+| `src/agents/kernel/ContextCompactor.ts` | ~243 | P2 | ✅ 已建 |
+| `src/agents/kernel/StormBreaker.ts` | ~86 | P3 | ✅ 已建 |
+| ~~`src/agents/prompts/ProgressiveDisclosure.ts`~~ | — | P1 | ❌ 未建（Tier-1 摘要并入 `PromptBuilder.ts`，见 §5.3） |
+| `src/agents/kernel/ToolResultSnipper.ts` | ~163 | 方案外 | ✅ 已建（60% snip 层） |
+| `src/agents/kernel/ArchiveWriter.ts` | — | 方案外 | ✅ 已建（丢弃内容 jsonl 存档） |
 
 ### 修改文件
 
 | 文件 | 改动范围 | 优先级 | 风险 |
 |------|---------|--------|------|
 | `AgentLoop.ts` | 较大 — 集成所有新模块 | P0-P3 | ⚠️ 高 |
-| `AgentKernel.ts` | 小 — 透传新参数 | P1 | 低 |
-| `PromptBuilder.ts` | 中 — 分离 system prompt + 分层注入 | P1 | ⚠️ 中 |
+| `AgentKernel.ts` | 小 — 透传新参数 + 注册 module_context 工具 | P1 | 低 |
+| `PromptBuilder.ts` | 中 — 分离 system prompt + Tier-1 摘要 | P1 | ⚠️ 中 |
 | `ToolAdapter.ts` | 小 — 包装 ToolOutputTruncator | P1 | 低 |
 | `types.ts` (kernel) | 小 — 新增类型接口 | P0-P2 | 低 |
 | `defaults.ts` + `schema.ts` | 小 — 新增配置字段 | P0 | 低 |
-| `ModuleAgentSubsystem.ts` | 小 — 透传 usage | P0 | 低 |
+| `ModuleAgentSubsystem.ts` | 小 — 透传 usage / truncation / compaction | P0 | 低 |
 | `ProviderResolver.ts` | 小 — 支持双模型 | P2 | 低 |
 
 ---

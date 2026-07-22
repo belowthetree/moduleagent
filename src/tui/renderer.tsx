@@ -100,7 +100,6 @@ export async function startTui(projectRoot: string) {
     bindings: [
       { key: 'ctrl+x t', cmd: 'toggle-tree' },
       { key: 'ctrl+x r', cmd: 'toggle-roles' },
-      { key: 'ctrl+x d', cmd: 'toggle-diff' },
       { key: 'ctrl+x h', cmd: 'toggle-experience' },
       // Ctrl+P 在下方 renderer.keyInput 中直接处理（避免 keymap consume 事件）
     ],

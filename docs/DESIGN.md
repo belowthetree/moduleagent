@@ -1,5 +1,9 @@
 # ModuleAgent 设计方案
 
+> 📜 **历史文档（规划时点设计，非现状）**：本文是项目早期（ACP 子进程时代）的设计方案。其中大量设计已不再成立：ACP Client / 子进程 Agent（已于 commit `e1fcc0d` 移除，现为进程内内核）、Ink CLI（现为 Electron + Vue 3 主路径与 @opentui TUI 次路径）、stdio MCPServer 子进程（现为进程内内核工具）、`agents.default.command/args` 配置（已失效，内核模式忽略）、bun 单文件打包、simple-git 等依赖（已卸载）。
+>
+> 当前架构以 [ARCHITECTURE.md](./ARCHITECTURE.md) 与仓库根目录 [AGENTS.md](../AGENTS.md) 为准；当前配置字段见 `src/config/schema.ts`。本文保留作设计演化的历史对照，**请勿据本文修改代码**。
+
 ## 1. 项目概述
 
 **ModuleAgent** 是一个模块化 Agent 编排框架。它以 `module.md` 为项目模块描述文件，将项目按模块组织，为每个模块创建独立的工作空间和对应的 Agent，主 Agent 负责承接用户对话并分发任务。充当 **ACP Client** 角色，以子进程方式启动和管理现有 Agent 应用（Claude CLI、CodeBuddy 等），通过 ACP 协议通信；通过 MCP 协议为模块 Agent 提供跨模块通信能力。
@@ -15,6 +19,8 @@
 ---
 
 ## 2. 总体架构
+
+（已失效：下图反映 ACP 子进程时代的规划架构，当前实现见 [ARCHITECTURE.md](./ARCHITECTURE.md)）
 
 ```
                           ┌──────────────────────────────────┐

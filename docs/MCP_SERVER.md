@@ -1,6 +1,12 @@
 # MCPServer & RoleMCPServer — MCP 服务端
 
-> 文件：`src/protocol/mcp/MCPServer.ts`, `src/protocol/mcp/RoleMCPServer.ts`
+> ⚠️ **已过时（组件已删除）**：本文描述的两个 stdio MCP 子进程服务器（`src/protocol/mcp/MCPServer.ts`、`RoleMCPServer.ts`，构建产物 `dist/mcp-server.cjs` / `dist/mcp-role-server.cjs` 及对应 build 脚本）已随 ACP 子进程层一并移除（commit `e1fcc0d` 起，2026-07 修复轮清理完毕）。`@modelcontextprotocol/server` 依赖已卸载，`package.json` 中已无 `build:mcp-server*` 脚本。
+>
+> 当前等价物：`module_list` / `module_call` / `module_query` 是**进程内内核工具**（`src/agents/kernel/tools/mcp-bridge.ts`），由 `CrossModuleRouter`（`src/agents/mcp/McpBackend.ts`）在同进程内路由到目标 `Agent.send` 队列，不经 stdio、HTTP 或子进程。角色/工作流 Agent 的文件读写由内核 `file_read` / `file_write` 工具 + `Sandbox` 承担。
+>
+> 当前架构以 [ARCHITECTURE.md](./ARCHITECTURE.md) 与 [AGENTS.md](../AGENTS.md) 为准。以下内容为历史存档。
+
+> 文件：`src/protocol/mcp/MCPServer.ts`, `src/protocol/mcp/RoleMCPServer.ts`（均已删除）
 
 ---
 

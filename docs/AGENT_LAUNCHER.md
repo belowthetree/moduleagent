@@ -1,6 +1,15 @@
 # AgentLauncher & AgentStateManager — Agent 启动与状态管理
 
-> 文件：`src/agents/AgentLauncher.ts`, `src/agents/AgentStateManager.ts`
+> ⚠️ **已过时（组件已删除）**：`AgentLauncher` 随 ACP 子进程层于 commit `e1fcc0d` 删除，`AgentStateManager` 也在后续重构中被取代；`src/agents/AgentLauncher.ts`、`src/agents/AgentStateManager.ts`、`src/protocol/acp/` 均已不存在。2026-07 修复轮进一步清理了相关配置与残留。
+>
+> 当前等价物：
+> - **Agent 启动**：进程内内核，无子进程。`Agent`（`src/agents/Agent.ts`）→ `KernelFactory` → `AgentKernel` → `AgentLoop`（ai-sdk `generateText`）。
+> - **流式累加 / 上下文持久化**：`SessionStore`（`src/agents/StreamAccumulator.ts`），由 `ModuleAgentSubsystem` 持有，持久化到 `.module-agent/context/`。
+> - **文件系统路径防护**：内核 `Sandbox`（`src/agents/kernel/Sandbox.ts`，realpath 包含校验）。
+>
+> 当前架构以 [ARCHITECTURE.md](./ARCHITECTURE.md) 与 [AGENTS.md](../AGENTS.md) 为准。以下内容为历史存档。
+
+> 文件：`src/agents/AgentLauncher.ts`, `src/agents/AgentStateManager.ts`（均已删除）
 
 ---
 

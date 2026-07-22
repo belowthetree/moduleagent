@@ -1,5 +1,7 @@
 # ModuleAgent Agent 上下文优化方案
 
+> 📜 **历史文档（规划方案 + 实施状态记录）**：本文是 2026-07-16 制订的优化方案，§1–§7 为规划时点设计，§8 为 2026-07-18 的实施状态快照。方案中的 P0–P3 项绝大部分已落地（见 §8.1），落地后的 as-built 细节以 [AgentContextOptimization-Architecture.md](./AgentContextOptimization-Architecture.md)（已按实现修订）与 [ARCHITECTURE.md](./ARCHITECTURE.md) 为准。
+
 > 基于 [DeepSeek-Reasonix 优化机制分析](./DeepSeek-Reasonix-Optimization.md) 对标制订
 > 制订日期: 2026-07-16
 > **实施状态更新: 2026-07-18**（见文末 [§8 实施状态](#8-实施状态2026-07-18-更新)）
@@ -618,4 +620,4 @@ Week 7+: P3 完善
 2. **Cache 诊断日志**（3.1 的 cacheHit/miss 归因，依赖 Provider 返回字段）
 3. **90% 强制压缩层**（Reasonix compactForceRatio，当前 truncate 兜底已覆盖）
 4. **Checkpoint/Rewind**（本期决议不做）
-5. 验证方式：`pnpm run typecheck`（错误数与基线一致）、`pnpm run test`（失败项与基线一致，均为既有 TUI/Windows 路径问题）
+5. 验证方式：`pnpm run typecheck`、`pnpm run test`（截至 2026-07 修复轮：typecheck 317 → 0 错误全绿，vitest 158 用例全过）

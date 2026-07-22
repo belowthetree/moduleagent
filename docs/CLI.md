@@ -67,7 +67,7 @@ module-agent tui [--project <path>]
 启动基于 OpenTUI (SolidJS) 的交互式终端界面，提供模块树、对话面板、命令面板等功能。
 
 **实现**：
-- Node.js 环境下：检测 `bun` CLI → `spawn('bun', ['run', 'src/tui/tui-entry.ts'])`
+- Node.js 环境下：检测 `bun` CLI → `spawn('bun', ['run', '--cwd', 'src/tui', '../cli/tui-entry.ts', ...])`
 - Bun 环境下：直接 `import('../tui/renderer.js').startTui(root)`
 
 **依赖**：需要 Bun 运行时（`@opentui/solid` 依赖 Bun）
@@ -81,6 +81,14 @@ module-agent config [--project <path>]
 交互式安装向导，引导用户创建或更新 `.module-agent.json`。
 
 **实现**：`src/cli/commands/setup.ts` — `runSetup(projectFlag)`
+
+向导流程（与 GUI 设置页字段对齐）：
+
+1. 确认项目路径（`.module-agent/module/` 与 `.module-agent/workspace/` 自动创建）
+2. 根模块 `module.md` 不存在时，由 `ModuleGenerator` 自动生成到 `<projectRoot>/.module-agent/module/module.md`
+3. 以 `configs` 数组格式写入 `.module-agent.json`
+
+内核模式不再需要外部 agent 进程，向导**不再询问 agent 命令/参数**（`agents.default.command/args` 已被内核忽略）。结束时打印总结：项目路径、模块目录、工作目录、模型（provider）。
 
 ---
 

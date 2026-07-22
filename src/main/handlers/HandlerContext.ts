@@ -4,7 +4,7 @@
 // 每个 handler 文件导出 registerXxxHandlers(ctx) 函数，
 // 通过此上下文访问主进程资源（Core、窗口、共享缓存等）。
 //
-// 状态管理（AgentStateManager、agentStatus、sendLock 等）已移入 Core 层，
+// 状态管理（SessionStore、agentStatus、sendLock 等）已移入 Core 层，
 // HandlerContext 仅保留 IPC/传输层必需的资源。
 // ============================================================================
 

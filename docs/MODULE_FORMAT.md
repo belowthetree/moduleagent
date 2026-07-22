@@ -1,6 +1,6 @@
 # Module.md 文件规范
 
-`module.md` 是 ModuleAgent 的**模块描述文件**，每个模块目录下放置一个。它定义模块的元信息和子模块结构，但**不包含模块的源代码** — 项目路径在 `.module-agent.json` 的 `projectPath` 字段中统一配置。
+`module.md` 是 ModuleAgent 的**模块描述文件**，每个模块目录下放置一个。它定义模块的元信息和子模块结构，但**不包含模块的源代码** — 模块描述树集中存放在项目根目录的 `.module-agent/module/` 下，项目源码路径在 `.module-agent.json` 的 `projectPath` 字段中统一配置。
 
 ## 核心概念
 
@@ -9,31 +9,33 @@ ModuleAgent 中涉及项目目录及其自动创建的子目录，职责分离�
 ```
 项目目录 (projectRoot)
 ─────────────────────────
-存放 module.md 和项目源码
-定义模块层级结构
+存放项目源码与 .module-agent.json
+.module-agent/module/ 下存放模块描述树（module.md），目录结构镜像源码树
 代码即项目源码本身
-自动创建 .module-agent/ 子目录管理扫描与隔离
 
 projectRoot/
-├── module.md
-├── agent-cli/
-│   └── acp/module.md
-├── server/module.md
+├── .module-agent.json
 ├── .module-agent/
-│   ├── module/           ← 模块扫描目录
-│   └── workspace/        ← Agent 工作空间
-└── ...
+│   ├── module/           ← 模块描述树（扫描入口）
+│   │   ├── module.md         ← 根模块
+│   │   ├── server/module.md
+│   │   └── frontend/module.md
+│   ├── workspace/        ← 工作流步骤隔离工作空间
+│   └── context/          ← 会话上下文持久化
+├── server/               ← 项目源码
+└── frontend/
 ```
 
-- **项目目录**：存放 `module.md` 文件和项目源码，Agent 在此目录下工作。
-- **`.module-agent/` 子目录**：自动创建。`module/` 为模块扫描入口，`workspace/` 为 Agent 隔离工作空间。子模块代码被物理隔离复制到 `.module-agent/workspace/<相对路径>/` 下。
+- **项目目录**：存放项目源码，子模块 Agent 直接在源码目录下工作。
+- **`.module-agent/module/`**：自动创建的模块描述树，`ModuleScanner` 的扫描入口。目录结构镜像源码树——例如 `module/server/module.md` 描述 `<projectPath>/server/`。
+- **`.module-agent/workspace/`**：工作流步骤执行的隔离工作空间（模块 Agent 不再使用，见「工作目录与沙箱」）。
 
 ## 文件位置
 
 模块以树形结构组织，每个目录可以包含一个 `module.md`：
 
 ```
-project-root/
+<projectRoot>/.module-agent/module/
 ├── module.md              # 根模块（主 Agent 负责）
 ├── server/
 │   ├── module.md          # server 模块
@@ -53,7 +55,7 @@ project-root/
     └── module.md          # shared 模块
 ```
 
-包含 `module.md` 的目录即被识别为一个模块，模块名和层级关系由文件系统中的目录位置决定。
+包含 `module.md` 的目录即被识别为一个模块。**模块名 = 相对 `.module-agent/module/` 根的路径，分隔符恒为 `/`**（`path.relative` 在 Windows 产出的反斜杠已统一替换，Windows 模块名同样不含 `\`）。唯一例外是**根模块**（相对路径为 `.`），其名称取 frontmatter 的 `name` 字段。父子关系由 frontmatter 的 `submodules` 声明建立。
 
 ## 文件格式
 
@@ -84,7 +86,7 @@ submodules:
 
 | 字段 | 必填 | 类型 | 说明 |
 |---|---|---|---|
-| `name` | 是 | string | 模块名称，用于 Agent 识别和跨模块通信 |
+| `name` | 是 | string | 模块名称。**仅根模块用作模块标识**；非根模块的标识恒为目录相对路径（见「文件位置」），此字段作展示与解析回退用途 |
 | `description` | 是 | string | 模块的简要描述，显示在模块树和 `module_list` 中 |
 | `submodules` | 否 | array | 子模块列表，每个子模块包含 `name`、`path`、`description` |
 
@@ -93,10 +95,10 @@ submodules:
 | 字段 | 必填 | 类型 | 说明 |
 |---|---|---|---|
 | `name` | 是 | string | 子模块名称 |
-| `path` | 是 | string | 子模块路径，相对于父模块目录，同时也是 Agent 工作目录的子路径 |
+| `path` | 是 | string | 子模块路径，相对于父模块目录，与描述树中的目录位置一致 |
 | `description` | 否 | string | 子模块描述 |
 
-> **重要**：子模块必须在 frontmatter 中显式声明其路径。`path` 字段决定了子模块的工作目录位置，`name` 用于跨模块通信。
+> **重要**：子模块必须在 frontmatter 中显式声明其路径。`path` 字段用于在描述树中定位子模块并建立父子关系（`ModuleGraph.findModuleByName` 按「父路径+path → 父路径+name → 全局 name」的顺序解析）。
 
 ### Markdown 正文
 
@@ -104,7 +106,7 @@ submodules:
 
 #### 模块说明
 
-第一个二级标题（`## `）为 "模块说明" 或 "Description" 时，其后的第一个段落会被提取为模块描述文本，在 Agent 首次消息中随系统提示词一起注入。
+第一个二级标题（`## `）为 "模块说明" 或 "Description" 时，其后的第一个段落会被提取为模块描述文本，在 Agent 首次消息中随模块上下文一起注入。
 
 ```markdown
 ## 模块说明
@@ -184,14 +186,14 @@ description: API 路由和控制层，定义了所有 REST 端点
 
 ## 解析流程
 
-1. `ModuleScanner` 从项目根目录递归扫描所有 `module.md` 文件
+1. `ModuleScanner` 从 `<projectRoot>/.module-agent/module/` 递归扫描所有 `module.md` 文件
 2. `ModuleParser.parseFile()` 对每个文件：
    - 使用 `gray-matter` 解析 frontmatter（`name`、`description`、`submodules`）
    - 子模块优先从 frontmatter 读取，若无则回退到解析 Markdown 正文中的 `## 子模块` 列表（兼容旧格式）
    - 使用 `marked` 解析 Markdown，提取 `## 模块说明` 段落
-3. `ModuleGraph.build()` 将所有模块描述符构建为树形图
-4. 运行时，Agent 首次消息中自动注入对应模块的 `module.md` 正文
-5. Agent 的 cwd 根据 frontmatter 中声明的 `path` 字段（即模块目录的相对路径）确定
+3. `ModuleGraph.build()` 将所有模块描述符构建为树形图（模块名 = 相对路径、`/` 分隔；仅根模块用 frontmatter `name`）
+4. 运行时，Agent 首次消息自动注入对应模块的 `module.md` 正文——`progressiveDisclosure` 开启（默认）时非根模块仅注入 Tier-1 摘要，完整文档与 patterns/experience 由模型经 `module_context_read_*` 工具按需获取；系统提示词经 `Agent.start({ systemPrompt })` 以独立 system 角色注入
+5. Agent 的 cwd：根模块为 `.module-agent/module/`，子模块为 `<projectPath>/<模块相对路径>/`
 
 ## 项目路径配置
 
@@ -204,9 +206,9 @@ description: API 路由和控制层，定义了所有 REST 端点
 }
 ```
 
-系统自动在项目根目录下创建 `.module-agent/module/` 和 `.module-agent/workspace/` 子目录。每个模块的代码路径由「项目根目录 + 模块相对路径」组合而成。
+系统自动在项目根目录下创建 `.module-agent/module/` 等子目录。每个模块的代码路径由「projectPath + 模块相对路径」组合而成（经 `normalizeCodeSourcePath` 归一化，防非 Windows 平台误解盘符路径）。
 
-> **重要**：`projectPath` 必须配置为项目根目录，否则模块扫描和隔离功能无法正常工作。
+> **重要**：`projectPath` 必须配置为项目根目录，否则模块源码定位无法正常工作。
 
 ### 路径示例
 
@@ -223,58 +225,41 @@ projectPath = /path/to/project
 
 | 目录 | 用途 |
 |---|---|
-| `projectPath/.module-agent/module/` | 模块扫描入口，ModuleScanner 在此发现 `module.md` |
-| `projectPath/.module-agent/workspace/` | Agent 隔离工作空间，模块代码被复制到此运行 |
+| `projectRoot/.module-agent/module/` | 模块描述树，ModuleScanner 在此发现 `module.md` |
+| `projectRoot/.module-agent/workspace/` | 工作流步骤执行的隔离工作空间（模块 Agent 不使用） |
+| `projectRoot/.module-agent/context/` | Agent 会话上下文持久化 |
+| `projectRoot/.module-agent/archives/` | 上下文精简（snip/compact/truncate）丢弃内容的归档 |
 
-## 工作区隔离
+## 工作目录与沙箱
 
-当配置了 `projectPath` 后，每次 Agent 启动时会自动执行以下流程：
+模块 Agent **不再物理复制源码**到隔离工作空间（`.module-agent/workspace/` 现仅供工作流步骤执行使用）。每次 Agent 启动时执行以下流程：
 
-### 隔离流程
-
-```
-1. 计算源码路径:  <projectPath>/<模块相对路径>/
-2. 计算目标路径:  <projectPath>/.module-agent/workspace/<模块相对路径>/
-   （根模块使用模块名作为子目录）
-3. 复制源码到目标路径（过滤 node_modules、.git）
-4. 在目标路径启动 Agent
-```
-
-Agent 的工作目录由模块的相对路径决定，该路径与父模块 frontmatter 中声明的 `submodules[].path` 一致。
-
-### 目录结构
+### 启动流程
 
 ```
-<projectPath>/.module-agent/workspace/
-├── config/
-│   ├── mainagentprompt.md  # 主 Agent 系统提示词
-│   └── subagentprompt.md   # 子 Agent 系统提示词
-├── my-app/                # 根模块（使用模块名）
-│   ├── src/...
-│   ├── server/
-│   └── frontend/
-├── server/                # 子模块（使用相对路径）
-│   ├── src/...            # ← 从项目源码复制
-│   └── api/
-│       └── src/...
-└── frontend/              # 子模块（使用相对路径）
-    ├── src/...            # ← 从项目源码复制
-    └── components/
-        └── src/...
+1. 计算源码路径: <projectPath>/<模块相对路径>/
+   （经 normalizeCodeSourcePath 归一化）
+2. 计算 cwd:
+   - 根模块: <projectRoot>/.module-agent/module/
+   - 子模块: 源码路径本身（直接在真实源码目录工作）
+3. 构建 AgentSandbox:
+   - 根模块: allowed = [.module-agent/module/]（不可访问项目源码）
+   - 子模块: allowed = [自身源码路径]，excluded = [各直接子模块的源码路径]
+4. 在 cwd 启动进程内 Agent 内核；
+   文件工具经 Sandbox 校验（realpath 包含检查，符号链接/junction 无法逃逸）
 ```
 
-### 隔离规则
+### 可见范围
 
 | Agent 角色 | 工作目录 | 可见范围 |
 |---|---|---|
-| 主 Agent（根模块） | `.module-agent/workspace/<模块名>/` | 可见所有子模块文件夹，用于协调调度 |
-| 子 Agent | `.module-agent/workspace/<相对路径>/` | 仅可见自己模块的文件 |
+| 主 Agent（根模块） | `.module-agent/module/` | 仅模块描述树，用于协调调度；不可访问项目源码 |
+| 子 Agent | `<projectPath>/<相对路径>/` | 自身模块源码，排除直接子模块的源码目录 |
 
 ### 错误处理
 
 | 场景 | 行为 |
 |---|---|
-| `projectPath` 未配置 | 打印 `no project path configured, skipping isolation` 警告，跳过复制 |
-| 源码目录不存在 | 复制失败，回退到模块描述文件所在目录 |
-| `.module-agent/workspace/` 不存在 | 自动创建 |
-| 复制成功 | Agent 在隔离的工作目录中启动 |
+| `projectPath` 未配置 | 子模块 cwd 回退到模块描述文件所在目录 |
+| 源码目录不存在 | 由 AgentSandbox/文件工具在实际访问时报错，不影响 Agent 启动 |
+| `.module-agent/module/` 不存在 | 初始化时自动创建 |

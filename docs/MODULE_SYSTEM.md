@@ -38,11 +38,18 @@ ModuleScanner.scan({ projectRoot, extraExclude })
 ```typescript
 interface ModuleDescriptor {
   rootPath: string;        // 模块物理目录的绝对路径
-  relativePath: string;    // 相对于扫描根目录的路径
-  name: string;            // 模块名称
+  relativePath: string;    // 相对于扫描根目录的路径（分隔符恒为 '/'，Windows 已归一化）
+  name: string;            // 模块名称（见下「模块标识语义」）
+  moduleMdPath: string;    // module.md 文件的绝对路径
   definition: ModuleDefinition;  // 解析后的模块定义
 }
 ```
+
+### 模块标识语义
+
+**模块名 = 相对 `.module-agent/module/` 扫描根的路径，分隔符恒为 `/`**（`path.relative` 在 Windows 产出的反斜杠已统一替换，Windows 模块名同样不含 `\`）。唯一例外是**根模块**（`relativePath === '.'`），其名称取 frontmatter 的 `name` 字段。
+
+模块名跨平台稳定，跨模块解析（`ModuleGraph.findModuleByName`）、`module.md` 中的路径引用、`@module` 路由均以 `/` 分隔的相对路径为准。
 
 ---
 
@@ -63,10 +70,11 @@ ModuleParser.parseFile(filePath)
   │
   ├─ parseFrontmatter(data)
   │   → { name, description, submodules }
-  │   ├─ 优先使用 frontmatter 中的 submodules 字段
-  │   └─ 回退到 Markdown 正文中的 "子模块" 列表
   │
   ├─ marked.lexer(content) → 解析 Markdown tokens
+  │
+  ├─ 子模块列表：优先 frontmatter 的 submodules 字段，
+  │   缺失时回退到正文 "## 子模块" 列表（兼容旧格式）
   │
   ├─ parseDescription(tokens)
   │   → 从 "## 模块说明" 段落提取描述
@@ -129,11 +137,13 @@ interface ModuleGraphNode {
 ```
 ModuleGraph.build(descriptors, projectRoot)
   │
-  ├─ 遍历 descriptors，按 relativePath 归一化模块名
-  ├─ 处理同名冲突：按 relativePath 重命名
-  ├─ 确定根节点（relativePath === '.'）
+  ├─ 归一化所有 relativePath 分隔符为 '/'
+  ├─ 节点名 = relativePath（根模块 relativePath === '.' 时用 frontmatter name）
+  ├─ 处理同名冲突：按 relativePath 重命名（无法消歧则跳过并告警）
+  ├─ 确定根节点（relativePath === '.'，缺失则抛错）
   ├─ 建立父子关系：
-  │   └─ 对每个模块的 subModules，查找对应子模块并关联
+  │   └─ 对每个模块的 subModules，经 findModuleByName 查找子模块并关联
+  │      （解析顺序：父路径+声明 path → 父路径+name → 全局 name → 全局 relativePath）
   │
   └─ 返回 ModuleGraph { root, nodes }
 ```
@@ -157,20 +167,24 @@ ModuleGraph.build(descriptors, projectRoot)
 ```
 ModuleGenerator.generate({ dirPath, projectRoot, force, extraExclude })
   │
+  ├─ 模块名 = 相对 projectRoot 的路径（根模块用 projectRoot 的 basename）
+  │
   ├─ inferDescription(dirPath)
-  │   → 检测 package.json / Cargo.toml 推断项目类型
-  │   → 生成模块描述
+  │   → 依次尝试 package.json description → Cargo.toml description
+  │   → 均缺失时回退为 "<目录名> 模块"
   │
   ├─ inferSubModules(dirPath, projectRoot, extraExclude)
-  │   → 扫描子目录（排除排除项）
-  │   → 推断子模块名称和路径
+  │   → 扫描子目录（排除内置排除项与 extraExclude）
+  │   → 子模块 name = 相对 projectRoot 的路径，path = ./<目录名>
   │
   ├─ inferBody(dirPath, moduleName)
-  │   → 扫描文件结构生成模块说明
+  │   → 生成占位正文（"# <name>\n\n## 模块说明\n\n待补充"）
   │
   └─ composeModuleMd(frontmatter, body, subModules)
-      → 组装完整的 module.md 内容
+      → 组装完整的 module.md 内容（YAML frontmatter + 正文）
 ```
+
+另有静态辅助 `ModuleGenerator.createModuleMd(name, description?)`，生成无子模块的最简 module.md 内容。
 
 ---
 

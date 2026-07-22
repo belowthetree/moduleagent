@@ -57,8 +57,6 @@ export function executeCommand(input: string): void {
         '/clearAll        — 清理所有 agent 上下文及历史记录',
         '/mode [value]    — 查看/切换 agent 模式',
         '/model [value]   — 查看/切换 agent 模型',
-        '/diffpanel       — 打开工作区变更面板',
-        '/diff            — 工作区变更: /diff, /diff <file>, /diff apply|discard',
         '/setup           — 重新配置项目',
         '/help            — 显示此帮助',
         '/quit            — 退出 TUI',

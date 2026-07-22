@@ -49,7 +49,7 @@ Communication pattern: Core exposes `CoreCallbacks` interface (callback injectio
 
 - **Windows path normalization**: Always call `cwd.replace(/\\/g, '/')` before passing cwd to kernels. Done in `KernelFactory.create()`.
 - **Windows absolute paths on WSL/Linux**: `path.resolve('E:\\foo\\bar')` on Linux does NOT recognize the drive letter as absolute — it treats the whole thing as relative and prepends `cwd`. Use `normalizeCodeSourcePath()` from `src/core/PathUtils.ts` to convert `E:\foo\bar` → `/mnt/e/foo/bar` when `process.platform !== 'win32'`.
-- **CSP in main process**: Content Security Policy is set in `src/main/index.ts` via `session.defaultSession.webRequest.onHeadersReceived()`, NOT in HTML `<meta>` tags. For dev mode (Vite HMR), the CSP must allow `ws://` and inline scripts for HMR to function.
+- **CSP not configured**: The app currently does NOT set any Content Security Policy (neither via `onHeadersReceived` nor HTML `<meta>` tags). The renderer only loads local content (dev-mode Vite HMR uses `ws://` + inline scripts), so no CSP is required today. If you add one, set it in the main process via `session.defaultSession.webRequest.onHeadersReceived()` and remember to allow `ws://` + inline scripts in dev mode.
 - **`@` alias paths**: In renderer (Vue components), `@` resolves to `src/renderer/src/`. In main process, `@` resolves to `src/`. These are configured separately in `electron.vite.config.ts`.
 - **Map serialization**: Module graph uses `Map`. When serializing to JSON, convert to object with `Object.fromEntries(map)`. Deserialize with `new Map(Object.entries(obj))`.
 - **System prompt vs first message**: System prompts (mainagent/subagent/roleagent) are injected as a **separate `system` role message** via `Agent.start({ systemPrompt })` (prefix-cache pinning) — do NOT also inject them into the first user message. The first user message carries module context only (Tier-1 summary when `progressiveDisclosure` is on). Tracked via `sessionPrompted` Set.
@@ -87,17 +87,17 @@ When `MODULE_AGENT_DEV` is not set and the app is packaged.
 
 - `src/core/ConfigPaths.ts` — `isDev()`, `getPromptConfigDir()`, `ensureConfigFiles()`, `configExplorer` (cosmiconfig)
 - `src/config/ConfigLoader.ts` — uses `configExplorer` from ConfigPaths to discover `.module-agent.json`
-- `src/agents/prompts/system.ts` — `loadSystemPrompts(configDir)` reads `.md` files from resolved `configDir`
+- `src/agents/prompts/PromptBuilder.ts` — `loadSystemPrompts(configDir)` reads `.md` files from resolved `configDir`
 
 ## Project config
 
-`.module-agent.json` at the **user's project root** (not this repo's root) configures the agent command, args, exclusions, and project root. Schema in `src/config/schema.ts`. Note: the repo's own `.module-agent.json` is a sample for self-hosting.
+`.module-agent.json` at the **user's project root** (not this repo's root) configures LLM settings, exclusions, and project root. Schema in `src/config/schema.ts`. Note: the repo's own `.module-agent.json` is a sample for self-hosting.
 
 ### Config fields
 
 | Field | Purpose |
 |-------|---------|
-| `agents.default.command` / `args` | Agent executable and arguments |
+| ~~`agents.default.command` / `args`~~ | **Obsolete** — ACP-era fields, ignored by the in-process kernel. Still accepted by the schema for backward compat |
 | `agents.default.model` / `fastModel` / `provider` / `apiKey` / `baseUrl` / `maxTokens` / `contextWindow` | LLM settings (per-module overrides via `agents.modules`) |
 | `exclude` | Directory/pattern list to skip during module scanning |
 | `projectPath` | Root project directory |
@@ -106,7 +106,7 @@ When `MODULE_AGENT_DEV` is not set and the app is packaged.
 | `crossModule` | Cross-module call limits: `maxHops` (3) / `timeoutMs` (120000) |
 | `contextHistoryLimit` | SessionStore per-module persisted message cap (default 200) |
 | `progressiveDisclosure` | First-message Tier-1 summary only; full docs via `module_context_*` tools (default true) |
-| `roles` | Array of role agent configs (name, description, visibleModulePaths, agents.default) |
+| `roles` | Array of role agent configs (name, description, visibleModulePaths, agents.default — supports role-level `provider` / `apiKey` / `baseUrl` / `model` / `fastModel` / `contextWindow`) |
 
 When changing the schema, update both `src/config/schema.ts` (Zod) and `src/config/defaults.ts` (TypeScript interface + `DEFAULT_CONFIG`). Then ensure all config consumers are updated:
 - `src/core/ModuleAgentSubsystem.ts` (unified config loading)
@@ -123,13 +123,11 @@ When changing the schema, update both `src/config/schema.ts` (Zod) and `src/conf
 | `src/core/RoleAgentSubsystem.ts` | Role agent lifecycle wrapper around RoleAgentManager |
 | `src/core/CoreTypes.ts` | `CoreCallbacks`, `CoreStatus`, `CoreMessage`, `InitResult`, `AgentInfo` — shared interfaces |
 | `src/core/` (other) | ModuleScanner, ModuleGraph, ModuleParser, ModuleGenerator, Logger, PathUtils, TokenEstimator, RetryPolicy, ExclusionRules |
-| `src/main/index.ts` | Electron main process — window creation only |
+| `src/main/index.ts` | Electron main process — window creation + app lifecycle |
 | `src/main/bridge.ts` | **ElectronBridge** — orchestrates IPC handler registration |
-| `src/main/handlers/` | **IPC handler modules** — one file per domain: agent/role/workflow/knowledge/project/config/context/migration/dialog/workspaceDiff |
-| `src/main/handlers/HandlerContext.ts` | Shared context interface — core, mainWindow, stateManager, diffCache, prompts, logger, summarizer, locks |
-| `src/main/handlers/sendPipeline.ts` | **Shared send pipeline** — `agent:send` / `role:send` common lock→stream→save logic |
-| `src/protocol/IpcChannels.ts` | **IPC channel constant registry** — 52 invoke/push channel names |
-| `src/core/WorkspaceDiff.ts` | **Workspace diff engine** — analyze / unifiedDiff / apply / discardWorkspace |
+| `src/main/handlers/` | **IPC handler modules** — one file per domain: agent/role/workflow/knowledge/project/config/context/dialog |
+| `src/main/handlers/HandlerContext.ts` | Shared context interface — core, mainWindow, prompts, logger, summarizer |
+| `src/protocol/IpcChannels.ts` | **IPC channel constant registry** — invoke/push channel names |
 | `src/tui/bridge.ts` | **TuiBridge** — connects `ModuleAgentCore` to TUI SolidJS state via CoreCallbacks |
 | `src/renderer/src/` | Vue 3 renderer — views, components, Pinia stores, router |
 | `src/preload/index.ts` | `contextBridge` API (`window.moduleAgent`) |
@@ -141,7 +139,6 @@ When changing the schema, update both `src/config/schema.ts` (Zod) and `src/conf
 | `src/agents/prompts/` | PromptBuilder (Tier-1 summary injection, experience/patterns loading) |
 | `src/agents/kernel/tools/` | Built-in tools: file_read, file_write, file_edit, search, list_files, execute_command, git_operations, module_call/query/list, module_context_read_* |
 | `src/config/` | ConfigLoader, schema (Zod), defaults |
-| `src/context/` | ContextManager (in-memory cache) + FileStore (JSON persistence) |
 | `config/knowledge/` | System prompt markdown files: `mainagentprompt.md`, `subagentprompt.md`, `roleagentprompt.md` |
 
 ### Runtime directories (created under user's project root)
@@ -158,7 +155,7 @@ When changing the schema, update both `src/config/schema.ts` (Zod) and `src/conf
 ## Build details
 
 - **Renderer**: `electron-vite` (Vite + Vue plugin) → `out/renderer/`
-- **Main**: `electron-vite` → CJS to `out/main/`, externals: `electron`, `fs-extra`, `gray-matter`, `marked`, `simple-git`, `zod`, `@agentclientprotocol/sdk`, etc.
+- **Main**: `electron-vite` → CJS to `out/main/`, externals: `electron`, `fs-extra`, `gray-matter`, `marked`, `zod`, `path`, `url`, `esbuild`
 - **Preload**: `electron-vite` → CJS to `out/preload/`, external: `electron`
 - **CLI**: `esbuild` → CJS bundle → `dist/cli.cjs`
 - Output files in `out/` and `dist/` are gitignored

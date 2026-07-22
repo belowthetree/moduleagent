@@ -30,8 +30,6 @@ const COMMANDS: CommandItem[] = [
   { name: "/setup", description: "重新配置项目" },
   { name: "/clear", description: "清空当前 agent 上下文" },
   { name: "/clearAll", description: "清理所有 agent 上下文及历史记录" },
-  { name: "/diff", description: "工作区变更查看/写回/丢弃" },
-  { name: "/diffpanel", description: "打开工作区变更面板" },
   { name: "/help", description: "显示帮助" },
   { name: "/quit", description: "退出 TUI" },
 ];
@@ -51,10 +49,6 @@ const SUB_COMMANDS: Record<string, CommandItem[]> = {
     { name: "/workflow run", description: "执行工作流" },
     { name: "/workflow status", description: "工作流状态" },
     { name: "/workflow cancel", description: "取消工作流" },
-  ],
-  "/diff": [
-    { name: "/diff apply", description: "写回所有变更" },
-    { name: "/diff discard", description: "丢弃所有变更" },
   ],
 };
 
