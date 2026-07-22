@@ -33,7 +33,7 @@ gui() {
     fi
 
     echo "Building and launching ModuleAgent GUI..."
-    pnpm run build:electron --silent || exit 1
+    pnpm --silent run build:electron || exit 1
 
     if [ -f "$ROOT/node_modules/electron/dist/electron" ]; then
         "$ROOT/node_modules/electron/dist/electron" "$ROOT"
@@ -80,7 +80,7 @@ cli() {
         pnpm install --silent || exit 1
     fi
 
-    pnpm run build:cli --silent || exit 1
+    pnpm --silent run build:cli || exit 1
 
     if [ "$MODE" = "get" ]; then
         MODULE_NAME="${2:-}"

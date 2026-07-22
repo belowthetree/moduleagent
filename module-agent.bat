@@ -55,7 +55,7 @@ if not exist "node_modules\" (
 if errorlevel 1 exit /b 1
 
 echo Building and launching ModuleAgent GUI...
-call pnpm run build:electron --silent
+call pnpm --silent run build:electron
 if errorlevel 1 exit /b 1
 
 if exist "%ROOT%\node_modules\electron\dist\electron.exe" (
@@ -114,7 +114,7 @@ if not exist "node_modules\" (
 )
 if errorlevel 1 exit /b 1
 
-call pnpm run build:cli --silent
+call pnpm --silent run build:cli
 if errorlevel 1 exit /b 1
 
 if "%MODE%"=="get" (
