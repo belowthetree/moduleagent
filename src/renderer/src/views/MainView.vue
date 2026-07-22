@@ -16,6 +16,8 @@ import ContextCards from '../components/ContextCards.vue'
 import ChatInput from '../components/ChatInput.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import SettingsDialog from '../components/SettingsDialog.vue'
+// 工具栏 / 空状态 / 关闭按钮图标（替换原 emoji 与文字符号）
+import { Refresh, Delete, Setting, MagicStick, FolderOpened, Pointer, Close } from '@element-plus/icons-vue'
 import { useProjectStore } from '../stores/project'
 import { useAgentStore } from '../stores/agent'
 import { useConfigStore } from '../stores/config'
@@ -124,6 +126,13 @@ function onTabChange(tabId: string): void {
 
 function closeDrawer(): void {
   activeTab.value = ''
+}
+
+// ── Escape 关闭抽屉（纯 UI 监听器，复用 closeDrawer，不改状态逻辑） ──
+function onWindowKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && drawerOpen.value) {
+    closeDrawer()
+  }
 }
 
 async function rescan(): Promise<void> {
@@ -274,6 +283,7 @@ onMounted(async () => {
 
   window.addEventListener('mousemove', onWindowMousemove)
   window.addEventListener('mouseup', onWindowMouseup)
+  window.addEventListener('keydown', onWindowKeydown)
 
   if (!projectStore.treeRoot && configStore.projectPath) {
     scanning.value = true
@@ -300,6 +310,7 @@ onUnmounted(() => {
   agentStore.stopRoleRunningPoll()
   window.removeEventListener('mousemove', onWindowMousemove)
   window.removeEventListener('mouseup', onWindowMouseup)
+  window.removeEventListener('keydown', onWindowKeydown)
 })
 </script>
 
@@ -308,14 +319,30 @@ onUnmounted(() => {
     <!-- ── 工具栏 ── -->
     <header class="toolbar">
       <div class="toolbar-left">
-        <el-button text @click="rescan">↻ 扫描</el-button>
-        <el-button text @click="clearAll">清空</el-button>
+        <el-tooltip content="扫描" placement="bottom" :show-after="400">
+          <el-button text class="toolbar-btn" @click="rescan">
+            <el-icon :size="16"><Refresh /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="清空" placement="bottom" :show-after="400">
+          <el-button text class="toolbar-btn" @click="clearAll">
+            <el-icon :size="16"><Delete /></el-icon>
+          </el-button>
+        </el-tooltip>
       </div>
       <div class="toolbar-center" v-if="configStore.projectPath">
-        <span class="toolbar-path">{{ configStore.projectPath }}</span>
+        <!-- 项目名 + 路径层次化展示，悬浮显示完整路径 -->
+        <div class="toolbar-project" :title="configStore.projectPath">
+          <span class="toolbar-project-name">{{ projectName }}</span>
+          <span class="toolbar-path">{{ configStore.projectPath }}</span>
+        </div>
       </div>
       <div class="toolbar-right">
-        <el-button text @click="showSettings = true">⚙ 设置</el-button>
+        <el-tooltip content="设置" placement="bottom" :show-after="400">
+          <el-button text class="toolbar-btn" @click="showSettings = true">
+            <el-icon :size="16"><Setting /></el-icon>
+          </el-button>
+        </el-tooltip>
         <ThemeToggle />
       </div>
     </header>
@@ -340,14 +367,21 @@ onUnmounted(() => {
         :class="{ open: activeTab === 'tree' }"
         :style="{ width: drawerWidth + 'px' }"
       >
-        <div class="drawer-resize-handle" @mousedown="onResizeMousedown" />
+        <div
+          class="drawer-resize-handle"
+          :class="{ dragging: resizeDragging }"
+          @mousedown="onResizeMousedown"
+        />
         <div class="drawer-inner">
           <div v-if="!projectStore.treeRoot && !scanning" class="empty-state">
-            <div class="empty-icon">📁</div>
+            <div class="empty-icon">
+              <el-icon :size="48"><FolderOpened /></el-icon>
+            </div>
             <p class="empty-text">未发现模块文件</p>
             <p class="empty-hint">项目目录中尚无 module.md 文件</p>
-            <el-button type="primary" :loading="generating" @click="generateModules">
-              🤖 调用 Agent 生成模块
+            <el-button type="primary" class="empty-action" :loading="generating" @click="generateModules">
+              <el-icon :size="15"><MagicStick /></el-icon>
+              <span>调用 Agent 生成模块</span>
             </el-button>
           </div>
           <SVGTree
@@ -366,7 +400,11 @@ onUnmounted(() => {
         :class="{ open: activeTab === 'roles' }"
         :style="{ width: drawerWidth + 'px' }"
       >
-        <div class="drawer-resize-handle" @mousedown="onResizeMousedown" />
+        <div
+          class="drawer-resize-handle"
+          :class="{ dragging: resizeDragging }"
+          @mousedown="onResizeMousedown"
+        />
         <div class="drawer-inner">
           <RolePanel @select="onSelectRole" />
         </div>
@@ -378,7 +416,11 @@ onUnmounted(() => {
         :class="{ open: activeTab === 'knowledge' }"
         :style="{ width: drawerWidth + 'px' }"
       >
-        <div class="drawer-resize-handle" @mousedown="onResizeMousedown" />
+        <div
+          class="drawer-resize-handle"
+          :class="{ dragging: resizeDragging }"
+          @mousedown="onResizeMousedown"
+        />
         <div class="drawer-inner">
           <KnowledgePanel @select="onSelectKnowledge" />
         </div>
@@ -390,7 +432,11 @@ onUnmounted(() => {
         :class="{ open: activeTab === 'workflow' }"
         :style="{ width: drawerWidth + 'px' }"
       >
-        <div class="drawer-resize-handle" @mousedown="onResizeMousedown" />
+        <div
+          class="drawer-resize-handle"
+          :class="{ dragging: resizeDragging }"
+          @mousedown="onResizeMousedown"
+        />
         <div class="drawer-inner">
           <WorkflowPanel @select="onSelectWorkflow" />
         </div>
@@ -408,7 +454,7 @@ onUnmounted(() => {
         <div v-else-if="selectedRoleInfo" class="role-detail">
           <div class="role-detail-header">
             <span class="role-detail-title">{{ selectedRoleInfo.name }}</span>
-            <button class="btn-close" @click="onCloseRoleDetail">✕</button>
+            <button class="btn-close" @click="onCloseRoleDetail" title="关闭"><el-icon :size="14"><Close /></el-icon></button>
           </div>
           <div class="role-detail-body">
             <div class="role-info">
@@ -442,7 +488,7 @@ onUnmounted(() => {
         <div v-else-if="selectedKnowledge" class="knowledge-detail">
           <div class="knowledge-detail-header">
             <span class="knowledge-detail-title">{{ selectedKnowledge.name }}</span>
-            <button class="btn-close" @click="onCloseKnowledgeDetail">✕</button>
+            <button class="btn-close" @click="onCloseKnowledgeDetail" title="关闭"><el-icon :size="14"><Close /></el-icon></button>
           </div>
           <div class="knowledge-detail-body" v-html="renderedKnowledge" />
         </div>
@@ -451,7 +497,7 @@ onUnmounted(() => {
           <div class="workflow-detail-header">
             <div class="workflow-title-row">
               <span class="workflow-detail-title">{{ workflowStore.selectedWorkflow.name }}</span>
-              <button class="btn-close" @click="onCloseWorkflowDetail">✕</button>
+              <button class="btn-close" @click="onCloseWorkflowDetail" title="关闭"><el-icon :size="14"><Close /></el-icon></button>
             </div>
             <div class="workflow-actions">
               <el-button type="primary" size="small" @click="onRunWorkflow">
@@ -501,7 +547,10 @@ onUnmounted(() => {
         </div>
         <!-- 占位 -->
         <div v-else class="detail-placeholder">
-          <div class="placeholder-icon">📋</div>
+          <div class="placeholder-icon">
+            <el-icon :size="48"><Pointer /></el-icon>
+          </div>
+          <p class="placeholder-title">尚未选择内容</p>
           <p class="placeholder-text">从左侧节点树选择模块，从角色面板选择角色 Agent，或从知识面板选择知识条目</p>
         </div>
       </div>
@@ -532,23 +581,29 @@ onUnmounted(() => {
   background: var(--el-bg-color-page);
 }
 
-/* ── 工具栏 ── */
+/* ── 工具栏：毛玻璃 + 底部细分隔线 ── */
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 40px;
-  padding: 0 16px;
-  background: var(--el-bg-color);
-  border-bottom: 1px solid var(--el-border-color);
+  height: 48px;
+  padding: 0 var(--app-space-4);
+  background: color-mix(in srgb, var(--el-bg-color) 82%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--el-border-color-light);
   flex-shrink: 0;
-  backdrop-filter: blur(8px);
   -webkit-app-region: drag;       /* 可从工具栏区域拖拽窗口 */
 }
 
 .toolbar :deep(button),
 .toolbar :deep(.el-button) {
   -webkit-app-region: no-drag;    /* 按钮区域不拦截拖拽 */
+}
+
+/* 抵消 Element Plus 相邻按钮的 12px 间距，交由 flex gap 控制 */
+.toolbar :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 /* macOS hiddenInset: 为 traffic lights 预留顶部空间 */
@@ -561,22 +616,57 @@ html.os-mac .toolbar {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--app-space-1);
 }
 
 .toolbar-center {
   flex: 1;
   justify-content: center;
   overflow: hidden;
+  min-width: 0;
+}
+
+/* 32px 方形图标按钮：圆角 8px，hover 填充浅底 */
+.toolbar :deep(.toolbar-btn) {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--app-radius-md);
+  --el-button-text-color: var(--el-text-color-secondary);
+  --el-button-hover-text-color: var(--el-text-color-primary);
+  --el-button-hover-bg-color: var(--el-fill-color);
+  --el-button-active-bg-color: var(--el-fill-color-dark);
+  transition: background-color var(--app-transition-fast), color var(--app-transition-fast);
+}
+
+/* 项目名 + 路径层次化展示 */
+.toolbar-project {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  max-width: 60vw;
+  line-height: 1.3;
+}
+
+.toolbar-project-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .toolbar-path {
-  font-size: 12px;
+  font-size: 11px;
+  font-family: var(--app-mono);
   color: var(--el-text-color-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 60vw;
+  max-width: 100%;
 }
 
 /* ── 主内容区 ── */
@@ -588,18 +678,24 @@ html.os-mac .toolbar {
   position: relative;
 }
 
-/* ── 抽屉遮罩 ── */
+/* ── 抽屉遮罩：淡入 + 轻微模糊 ── */
 .drawer-overlay {
   position: absolute;
   top: 0;
   left: 52px;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(17, 24, 39, 0.18);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   z-index: 50;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s;
+  transition: opacity var(--app-transition);
+}
+
+html.dark .drawer-overlay {
+  background: rgba(0, 0, 0, 0.32);
 }
 
 .drawer-overlay.open {
@@ -607,39 +703,55 @@ html.os-mac .toolbar {
   pointer-events: auto;
 }
 
-/* ── 抽屉 ── */
+/* ── 抽屉：圆角右缘 + 悬浮阴影，滑入滑出统一缓动 ── */
 .drawer {
   position: absolute;
   top: 0;
   left: 52px;
   height: 100%;
   background: var(--el-bg-color);
-  border-right: 1px solid var(--el-border-color);
+  border-right: 1px solid var(--el-border-color-light);
+  border-radius: 0 var(--app-radius-lg) var(--app-radius-lg) 0;
   z-index: 60;
   transform: translateX(calc(-100% - 52px));
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 1px 0 6px rgba(0, 0, 0, 0.04);
+  transition: transform var(--app-transition-slow);
+  box-shadow: var(--app-shadow-2);
   display: flex;
   flex-direction: column;
+  overflow: hidden;               /* 圆角裁剪内部内容 */
 }
 
 .drawer.open {
   transform: translateX(0);
 }
 
+/* resize handle：默认 1px 透明指示条，hover/拖拽时 3px 主色高亮 */
 .drawer-resize-handle {
   position: absolute;
   top: 0;
-  right: -3px;
-  width: 6px;
+  right: 0;
+  width: 8px;
   height: 100%;
   cursor: col-resize;
   z-index: 10;
 }
 
-.drawer-resize-handle:hover {
+.drawer-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  height: 100%;
+  background: transparent;
+  transition: width var(--app-transition-fast), background var(--app-transition-fast);
+}
+
+.drawer-resize-handle:hover::after,
+.drawer-resize-handle.dragging::after {
+  width: 3px;
   background: var(--el-color-primary);
-  opacity: 0.3;
 }
 
 .drawer-inner {
@@ -654,35 +766,50 @@ html.os-mac .toolbar {
   flex: 1;
   overflow: hidden;
   margin-left: 0;
-  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: margin-left var(--app-transition-slow);
 }
 
-/* ── 状态栏 ── */
+/* ── 状态栏：细 Typography ── */
 .status-bar {
   display: flex;
   align-items: center;
   height: 28px;
-  padding: 0 16px;
+  padding: 0 var(--app-space-4);
   background: var(--el-bg-color);
-  border-top: 1px solid var(--el-border-color);
-  font-size: 11px;
+  border-top: 1px solid var(--el-border-color-light);
+  font-size: 12px;
   color: var(--el-text-color-secondary);
-  gap: 6px;
+  gap: var(--app-space-2);
   flex-shrink: 0;
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: background var(--app-transition-fast);
 }
 
 .status-dot.idle { background: var(--el-text-color-placeholder); }
 .status-dot.pending { background: var(--el-color-warning); }
-.status-dot.streaming { background: var(--el-color-primary); }
 .status-dot.error { background: var(--el-color-danger); }
 .status-dot.interrupted { background: var(--el-color-warning); }
+
+/* streaming 时呼吸脉冲光环 */
+.status-dot.streaming {
+  background: var(--el-color-primary);
+  animation: status-dot-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes status-dot-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--el-color-primary) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
 
 .status-text {
   flex-shrink: 0;
@@ -696,62 +823,93 @@ html.os-mac .toolbar {
   white-space: nowrap;
 }
 
-/* ── 空状态 ── */
+/* ── 空状态：大号线性图标 + 主标题 + 辅助说明 + 主按钮 ── */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: 12px;
-  padding: 16px;
+  gap: var(--app-space-2);
+  padding: var(--app-space-5);
+  text-align: center;
 }
-.empty-icon { font-size: 48px; }
-.empty-text { font-size: 16px; color: var(--el-text-color-primary); margin: 0; }
-.empty-hint { font-size: 13px; color: var(--el-text-color-secondary); margin: 0; }
+
+.empty-icon {
+  color: var(--el-text-color-secondary);
+  opacity: 0.75;
+  margin-bottom: var(--app-space-1);
+}
+
+.empty-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  margin: 0;
+}
+
+.empty-hint {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  margin: 0 0 var(--app-space-2);
+}
+
+.empty-action {
+  border-radius: var(--app-radius-md);
+  font-weight: 600;
+}
+
+/* 按钮内图标与文字的间距 */
+.empty-action :deep(.el-icon) {
+  margin-right: var(--app-space-1);
+}
 
 /* ── 角色详情（主区域） ── */
 .role-detail {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--el-fill-color);
+  background: var(--el-fill-color-light);
 }
 
-.role-detail-header {
+/* ── 面板头部（角色 / 知识 / 工作流详情统一样式） ── */
+.role-detail-header,
+.knowledge-detail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--el-border-color);
+  padding: var(--app-space-3) var(--app-space-4);
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-light);
   flex-shrink: 0;
 }
 
-.role-detail-title {
+.role-detail-title,
+.knowledge-detail-title,
+.workflow-detail-title {
   font-size: 16px;
-  font-weight: 700;
-  color: var(--el-color-primary);
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
 
-.role-detail .btn-close {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 6px;
-  background: var(--el-fill-color);
+/* 图标关闭按钮：32px、圆角 8px、hover 浅底 */
+.btn-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--app-radius-md);
+  background: transparent;
   color: var(--el-text-color-secondary);
-  font-size: 14px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--app-transition-fast), color var(--app-transition-fast);
 }
 
-.role-detail .btn-close:hover {
-  background: var(--el-color-danger);
-  color: var(--el-color-white);
-  border-color: var(--el-color-danger);
+.btn-close:hover {
+  background: var(--el-fill-color);
+  color: var(--el-text-color-primary);
 }
 
 .role-detail-body {
@@ -759,24 +917,24 @@ html.os-mac .toolbar {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 12px 16px;
+  padding: var(--app-space-3) var(--app-space-4);
 }
 
 .role-info {
   flex-shrink: 0;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--el-border-color);
+  padding-bottom: var(--app-space-3);
+  border-bottom: 1px solid var(--el-border-color-light);
 }
 
 .role-desc {
   font-size: 13px;
   color: var(--el-text-color-secondary);
-  margin-bottom: 8px;
+  margin-bottom: var(--app-space-2);
 }
 
 .role-paths {
   font-size: 11px;
-  margin-bottom: 4px;
+  margin-bottom: var(--app-space-1);
 }
 
 .paths-label {
@@ -790,6 +948,7 @@ html.os-mac .toolbar {
 
 .role-cmd {
   font-size: 11px;
+  font-family: var(--app-mono);
   color: var(--el-text-color-secondary);
 }
 
@@ -797,14 +956,14 @@ html.os-mac .toolbar {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding-bottom: 12px;
+  padding-bottom: var(--app-space-3);
 }
 
 .role-chat {
   display: flex;
-  gap: 6px;
-  padding: 12px 0 0;
-  border-top: 1px solid var(--el-border-color);
+  gap: var(--app-space-2);
+  padding: var(--app-space-3) 0 0;
+  border-top: 1px solid var(--el-border-color-light);
   flex-shrink: 0;
 }
 
@@ -813,50 +972,14 @@ html.os-mac .toolbar {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--el-fill-color);
-}
-
-.knowledge-detail-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--el-border-color);
-  flex-shrink: 0;
-}
-
-.knowledge-detail-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--el-color-primary);
-}
-
-.knowledge-detail .btn-close {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 6px;
-  background: var(--el-fill-color);
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, color 0.15s;
-}
-
-.knowledge-detail .btn-close:hover {
-  background: var(--el-color-danger);
-  color: var(--el-color-white);
-  border-color: var(--el-color-danger);
+  background: var(--el-fill-color-light);
 }
 
 .knowledge-detail-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
-  line-height: 1.6;
+  padding: var(--app-space-5) var(--app-space-6);
+  line-height: 1.7;
   color: var(--el-text-color-primary);
   user-select: text;
   -webkit-user-select: text;
@@ -867,12 +990,13 @@ html.os-mac .toolbar {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--el-fill-color);
+  background: var(--el-fill-color-light);
 }
 
 .workflow-detail-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--el-border-color);
+  padding: var(--app-space-3) var(--app-space-4);
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-light);
   flex-shrink: 0;
 }
 
@@ -880,34 +1004,29 @@ html.os-mac .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.workflow-detail-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--el-color-primary);
+  margin-bottom: var(--app-space-2);
 }
 
 .workflow-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--app-space-2);
 }
 
 .workflow-detail-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--app-space-4);
 }
 
 .execution-state {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding: 8px 12px;
-  background: var(--el-fill-color-light);
-  border-radius: 6px;
+  gap: var(--app-space-2);
+  margin-bottom: var(--app-space-4);
+  padding: var(--app-space-2) var(--app-space-3);
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--app-radius-md);
 }
 
 .execution-progress {
@@ -918,20 +1037,28 @@ html.os-mac .toolbar {
 .step-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--app-space-3);
 }
 
+/* 步骤卡片：hover 微浮起 */
 .step-card {
-  padding: 12px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 8px;
+  padding: var(--app-space-3);
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--app-radius-lg);
+  background: var(--el-bg-color);
+  transition: box-shadow var(--app-transition), transform var(--app-transition);
+}
+
+.step-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--app-shadow-1);
 }
 
 .step-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--app-space-2);
+  margin-bottom: var(--app-space-2);
 }
 
 .step-number {
@@ -942,13 +1069,14 @@ html.os-mac .toolbar {
   height: 22px;
   font-size: 12px;
   font-weight: 600;
-  color: #fff;
+  color: var(--el-color-white);
   background: var(--el-color-primary);
   border-radius: 50%;
 }
 
 .step-meta {
   flex: 1;
+  min-width: 0;
 }
 
 .step-meta strong {
@@ -968,29 +1096,42 @@ html.os-mac .toolbar {
   max-height: 120px;
   overflow-y: auto;
   margin: 0;
-  padding: 8px;
+  padding: var(--app-space-2);
   background: var(--el-fill-color-light);
-  border-radius: 4px;
+  border-radius: var(--app-radius-sm);
 }
 
-/* ── 详情占位 ── */
+/* ── 详情占位：大号线性图标 + 主标题 + 辅助说明 ── */
 .detail-placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: 12px;
+  gap: var(--app-space-2);
+  padding: var(--app-space-5);
   color: var(--el-text-color-secondary);
+  text-align: center;
 }
 
 .placeholder-icon {
-  font-size: 48px;
+  color: var(--el-text-color-secondary);
+  opacity: 0.6;
+  margin-bottom: var(--app-space-1);
+}
+
+.placeholder-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  margin: 0;
 }
 
 .placeholder-text {
-  font-size: 14px;
+  font-size: 13px;
   margin: 0;
+  max-width: 420px;
+  line-height: 1.6;
   text-align: center;
 }
 </style>

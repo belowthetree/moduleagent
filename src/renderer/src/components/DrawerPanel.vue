@@ -9,6 +9,8 @@ import type { TreeNode } from '../../../types/shared'
 import { useAgentStore } from '../stores/agent'
 import ContextCards from './ContextCards.vue'
 import ChatInput from './ChatInput.vue'
+// 关闭按钮图标（替换原 ✕ 符号）
+import { Close } from '@element-plus/icons-vue'
 
 const props = defineProps<{
   node: TreeNode | null
@@ -110,7 +112,9 @@ onUnmounted(() => {
 
     <div class="drawer-header">
       <span class="drawer-title">{{ node?.name ?? '' }}</span>
-      <button class="btn-close" @click="emit('close')">✕</button>
+      <button class="btn-close" title="关闭" @click="emit('close')">
+        <el-icon :size="14"><Close /></el-icon>
+      </button>
     </div>
 
     <div class="drawer-body">
@@ -153,7 +157,7 @@ onUnmounted(() => {
   z-index: 90;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s;
+  transition: opacity var(--app-transition);
 }
 
 .drawer-overlay.open {
@@ -161,74 +165,91 @@ onUnmounted(() => {
   pointer-events: auto;
 }
 
+/* 右侧抽屉：弹层阴影 + 统一缓动 */
 .drawer {
   position: fixed;
   top: 0;
   right: calc(-1 * var(--drawer-width));
   width: var(--drawer-width);
   height: 100%;
-  background: var(--el-fill-color);
-  border-left: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  border-left: 1px solid var(--el-border-color-light);
   z-index: 100;
   display: flex;
   flex-direction: column;
-  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.06);
-  transition: right 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--app-shadow-2);
+  transition: right var(--app-transition-slow);
 }
 
 .drawer.open {
   right: 0;
 }
 
+/* resize handle：默认 1px 边线，hover/拖拽时 3px 主色高亮条 */
 .drawer-resize-handle {
   position: absolute;
   top: 0;
-  left: -2px;
-  width: 2px;
+  left: 0;
+  width: 8px;
   height: 100%;
   cursor: col-resize;
   z-index: 10;
-  background: var(--el-border-color);
 }
 
-.drawer-resize-handle:hover,
-.drawer-resize-handle.dragging {
+.drawer-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--el-border-color-light);
+  transition: width var(--app-transition-fast), background var(--app-transition-fast);
+}
+
+.drawer-resize-handle:hover::after,
+.drawer-resize-handle.dragging::after {
+  width: 3px;
   background: var(--el-color-primary);
 }
 
+/* ── 头部：标题 14px / 600 + 图标关闭按钮 ── */
 .drawer-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--el-border-color);
+  padding: var(--app-space-3) var(--app-space-4);
+  border-bottom: 1px solid var(--el-border-color-light);
+  flex-shrink: 0;
 }
 
 .drawer-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--el-color-primary);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .btn-close {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 6px;
-  background: var(--el-fill-color);
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--app-radius-md);
+  background: transparent;
   color: var(--el-text-color-secondary);
-  font-size: 14px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  transition: background var(--app-transition-fast), color var(--app-transition-fast);
 }
 
 .btn-close:hover {
-  background: var(--el-color-danger);
-  color: var(--el-color-white);
-  border-color: var(--el-color-danger);
+  background: var(--el-fill-color);
+  color: var(--el-text-color-primary);
 }
 
 .drawer-body {
@@ -236,21 +257,21 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 12px 16px;
+  padding: var(--app-space-3) var(--app-space-4);
 }
 
 .info-compact {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--el-border-color);
+  padding: var(--app-space-3) 0;
+  border-bottom: 1px solid var(--el-border-color-light);
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  gap: var(--app-space-2) var(--app-space-4);
   font-size: 11px;
 }
 
 .ic-item {
   display: flex;
-  gap: 4px;
+  gap: var(--app-space-1);
 }
 
 .ic-label {
@@ -260,29 +281,30 @@ onUnmounted(() => {
 
 .ic-value {
   color: var(--el-text-color-primary);
+  font-family: var(--app-mono);
 }
 
 .desc {
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  line-height: 1.5;
+  line-height: 1.6;
   user-select: text;
   -webkit-user-select: text;
-  padding: 12px 0 0;
+  padding: var(--app-space-3) 0 0;
 }
 
 .ctx-list-area {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding-bottom: 12px;
+  padding-bottom: var(--app-space-3);
 }
 
 .ctx-chat {
   display: flex;
-  gap: 6px;
-  padding: 12px 0 0;
-  border-top: 1px solid var(--el-border-color);
+  gap: var(--app-space-2);
+  padding: var(--app-space-3) 0 0;
+  border-top: 1px solid var(--el-border-color-light);
   flex-shrink: 0;
 }
 </style>

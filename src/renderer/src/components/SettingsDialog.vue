@@ -112,6 +112,8 @@ function onCancel(): void {
       :disabled="saving"
       class="settings-form"
     >
+      <div class="form-group-title">模型配置</div>
+
       <el-form-item label="LLM 提供商">
         <p class="field-hint">选择要使用的 AI 模型提供商</p>
         <el-select v-model="configStore.provider" class="full-width">
@@ -149,6 +151,8 @@ function onCancel(): void {
         <el-input v-model="configStore.model" placeholder="claude-sonnet-4-20250514" />
       </el-form-item>
 
+      <div class="form-group-title">项目</div>
+
       <el-form-item label="项目目录">
         <p class="field-hint">项目根目录，模块文件存储在 .module-agent/module/ 中</p>
         <el-input v-model="configStore.projectPath" placeholder="输入或点击右侧按钮选择项目目录...">
@@ -177,31 +181,66 @@ function onCancel(): void {
 </template>
 
 <style scoped>
+/* ── 对话框统一视觉：圆角 16px + 弹层阴影 ── */
+:deep(.el-dialog) {
+  border-radius: var(--app-radius-xl);
+  box-shadow: var(--app-shadow-3);
+}
+
 :deep(.el-dialog__header) {
-  border-bottom: 1px solid var(--el-border-color);
-  padding-bottom: 12px;
+  padding: 20px 24px 16px;
+  margin-right: 0;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+:deep(.el-dialog__title) {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+:deep(.el-dialog__body) {
+  padding: var(--app-space-5);
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--el-border-color-light);
 }
 
 .settings-error {
-  margin-bottom: 16px;
+  margin-bottom: var(--app-space-4);
 }
 
-.settings-form {
-  border-radius: 10px;
+/* ── 表单分组小标题 ── */
+.form-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 var(--app-space-3);
+  padding-bottom: var(--app-space-2);
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.form-group-title:not(:first-child) {
+  margin-top: var(--app-space-5);
 }
 
 .settings-form :deep(.el-form-item) {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .settings-form :deep(.el-form-item__label) {
+  font-size: 13px;
   font-weight: 600;
   color: var(--el-text-color-primary);
   margin-bottom: 6px;
 }
 
 .field-hint {
-  margin: 0 0 4px 0;
+  margin: 0 0 var(--app-space-1) 0;
   font-size: 12px;
   color: var(--el-text-color-secondary);
   line-height: 1.4;
@@ -211,18 +250,19 @@ function onCancel(): void {
   width: 100%;
 }
 
-:deep(.el-input__wrapper) {
-  box-shadow: none !important;
+:deep(.el-input__wrapper),
+:deep(.el-select__wrapper) {
+  border-radius: var(--app-radius-md);
 }
 
-:deep(.el-input__wrapper.is-focus) {
-  border-color: var(--el-color-primary);
-  box-shadow: none !important;
-}
-
+/* footer 按钮间距 8px */
 .settings-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--app-space-2);
+}
+
+.settings-footer :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 </style>

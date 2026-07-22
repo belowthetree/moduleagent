@@ -5,12 +5,18 @@
 
 /* ============================================================
    ModuleAgent — Slate 现代极简主题
-   统一 Element Plus --el-* CSS 变量体系
+   统一 Element Plus --el-* CSS 变量体系 + 应用级设计令牌 --app-*
    亮色 (冷灰白基调) + 暗色 (深黑灰基调) 双主题
    参考 Linear / Vercel / Notion 设计语言
    ============================================================ */
 
-/* ── Global reset: no scrollbars ── */
+/* ── Global reset: border-box + no scrollbars ── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 html,
 body,
 #app {
@@ -29,6 +35,8 @@ body,
   --el-fill-color: #f3f4f6;
   --el-fill-color-light: #f9fafb;
   --el-fill-color-lighter: #fdfdfd;
+  --el-fill-color-dark: #e5e7eb;
+  --el-fill-color-darker: #d1d5db;
   --el-fill-color-blank: #ffffff;
 
   /* 边框 */
@@ -93,6 +101,41 @@ body,
   /* 语义色 */
   --el-color-white: #ffffff;
   --el-color-black: #111827;
+
+  /* ============================================================
+     应用级设计令牌（--app-*）— 全局唯一令牌来源
+     ============================================================ */
+
+  /* 间距（基于 4px 网格，8 的倍数为主） */
+  --app-space-1: 4px;
+  --app-space-2: 8px;
+  --app-space-3: 12px;
+  --app-space-4: 16px;
+  --app-space-5: 24px;
+  --app-space-6: 32px;
+
+  /* 圆角 */
+  --app-radius-sm: 6px;
+  --app-radius-md: 8px;
+  --app-radius-lg: 12px;
+  --app-radius-xl: 16px;
+
+  /* 阴影：浅层 / 卡片悬浮 / 弹层 */
+  --app-shadow-1: 0 1px 2px rgba(17, 24, 39, 0.05), 0 1px 3px rgba(17, 24, 39, 0.04);
+  --app-shadow-2: 0 4px 12px rgba(17, 24, 39, 0.08), 0 2px 4px rgba(17, 24, 39, 0.05);
+  --app-shadow-3: 0 12px 32px rgba(17, 24, 39, 0.12), 0 4px 8px rgba(17, 24, 39, 0.06);
+
+  /* 字体（系统字体栈，无外部字体链接） */
+  --app-font: "Inter", -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --app-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+
+  /* 过渡（统一缓动曲线） */
+  --app-transition-fast: 120ms cubic-bezier(0.32, 0.72, 0, 1);
+  --app-transition: 200ms cubic-bezier(0.32, 0.72, 0, 1);
+  --app-transition-slow: 320ms cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* 主色软背景（约 10% 透明度） */
+  --app-accent-soft: rgba(91, 106, 191, 0.1);
 }
 
 /* ── 暗色主题：深黑灰基调 ── */
@@ -104,6 +147,8 @@ html.dark {
   --el-fill-color: #1a1d27;
   --el-fill-color-light: #212430;
   --el-fill-color-lighter: #262a35;
+  --el-fill-color-dark: #353b52;
+  --el-fill-color-darker: #3d435c;
   --el-fill-color-blank: #181b24;
 
   /* 边框 */
@@ -162,4 +207,86 @@ html.dark {
   /* 通用 */
   --el-color-white: #e5e7eb;
   --el-color-black: #0f1117;
+
+  /* ── 应用级令牌（暗色覆盖） ── */
+
+  /* 阴影加深：更大透明度的黑影 */
+  --app-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --app-shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
+  --app-shadow-3: 0 12px 32px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.45);
+
+  /* 主色软背景（约 12% 透明度） */
+  --app-accent-soft: rgba(129, 140, 248, 0.12);
+}
+
+/* ============================================================
+   全局基础样式
+   ============================================================ */
+
+body {
+  font-family: var(--app-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color-page);
+}
+
+/* 等宽字体场景（代码 / 路径 / 命令） */
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--app-mono);
+}
+
+/* ── 细滚动条（8px、透明轨道，双主题自适应） ── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--el-fill-color-dark);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--el-fill-color-darker);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── 文本选区：主色软背景 ── */
+::selection {
+  background: var(--app-accent-soft);
+  color: var(--el-text-color-primary);
+}
+
+/* ── 键盘聚焦：统一 2px 主色外发光环 ── */
+:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+
+/* 输入框聚焦态由 Element Plus wrapper 呈现，避免双重描边 */
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+/* ── 减弱动态效果偏好：关闭过渡动画 ── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

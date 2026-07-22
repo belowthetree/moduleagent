@@ -1,9 +1,12 @@
 <!--
   LeftSidebar.vue — 左侧边栏
-  标签页切换（模块树 / 角色 Agent）
+  52px 图标栏：标签页切换（节点树 / 角色 Agent / 知识 / 工作流）
 -->
 
 <script setup lang="ts">
+// 图标替换原 emoji（🌳👤📚⚡），label 文案保持不变
+import { Files, User, Collection, Lightning } from '@element-plus/icons-vue'
+
 defineProps<{
   activeTab: string
 }>()
@@ -13,10 +16,10 @@ defineEmits<{
 }>()
 
 const tabs = [
-  { id: 'tree', label: '节点树', icon: '🌳' },
-  { id: 'roles', label: '角色 Agent', icon: '👤' },
-  { id: 'knowledge', label: '知识', icon: '📚' },
-  { id: 'workflow', label: '工作流', icon: '⚡' },
+  { id: 'tree', label: '节点树', icon: Files },
+  { id: 'roles', label: '角色 Agent', icon: User },
+  { id: 'knowledge', label: '知识', icon: Collection },
+  { id: 'workflow', label: '工作流', icon: Lightning },
 ]
 </script>
 
@@ -30,30 +33,33 @@ const tabs = [
       :title="tab.label"
       @click="$emit('tabChange', tab.id)"
     >
-      <span class="tab-icon">{{ tab.icon }}</span>
+      <el-icon class="tab-icon" :size="16"><component :is="tab.icon" /></el-icon>
       <span class="tab-label">{{ tab.label }}</span>
     </button>
   </div>
 </template>
 
 <style scoped>
+/* ── 52px 图标栏 ── */
 .tab-bar {
-  width: 48px;
+  width: 52px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 6px 2px;
+  gap: var(--app-space-1);
+  padding: var(--app-space-2) 0;
   background: var(--el-bg-color);
-  border-right: 1px solid var(--el-border-color);
+  border-right: 1px solid var(--el-border-color-light);
   flex-shrink: 0;
 }
 
+/* 36px 图标按钮：圆角 8px，激活态软底 + 主色图标 */
 .tab-btn {
-  width: 40px;
-  height: 40px;
+  position: relative;
+  width: 36px;
+  height: 36px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--app-radius-md);
   background: transparent;
   cursor: pointer;
   display: flex;
@@ -62,7 +68,7 @@ const tabs = [
   justify-content: center;
   gap: 1px;
   color: var(--el-text-color-secondary);
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--app-transition-fast), color var(--app-transition-fast);
 }
 
 .tab-btn:hover {
@@ -70,13 +76,34 @@ const tabs = [
   color: var(--el-text-color-primary);
 }
 
+.tab-btn:active {
+  background: var(--el-fill-color-dark);
+}
+
 .tab-btn.active {
+  background: var(--app-accent-soft);
+  color: var(--el-color-primary);
+}
+
+/* 左侧 2px 主色指示条（贴图标栏左缘，激活时展开） */
+.tab-btn::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%) scaleY(0);
+  width: 2px;
+  height: 16px;
+  border-radius: 0 2px 2px 0;
   background: var(--el-color-primary);
-  color: #fff;
+  transition: transform var(--app-transition-fast);
+}
+
+.tab-btn.active::before {
+  transform: translateY(-50%) scaleY(1);
 }
 
 .tab-icon {
-  font-size: 16px;
   line-height: 1;
 }
 

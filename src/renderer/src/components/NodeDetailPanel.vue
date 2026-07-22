@@ -5,6 +5,7 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import { Close } from '@element-plus/icons-vue'
 import type { TreeNode } from '../../../types/shared'
 import { useAgentStore } from '../stores/agent'
 import ContextCards from './ContextCards.vue'
@@ -43,7 +44,9 @@ watch(() => props.node?.name, (newName) => {
   <div class="detail-panel" v-if="node">
     <div class="detail-header">
       <span class="detail-title">{{ node.name }}</span>
-      <button class="btn-close" @click="emit('close')">✕</button>
+      <button class="btn-close" aria-label="关闭" @click="emit('close')">
+        <el-icon><Close /></el-icon>
+      </button>
     </div>
 
     <div class="detail-body">
@@ -81,10 +84,11 @@ watch(() => props.node?.name, (newName) => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--el-fill-color);
+  background: var(--el-bg-color);
   border-left: 1px solid var(--el-border-color);
 }
 
+/* ── 面板头部：模块名 16px 600 + 关闭图标按钮 ── */
 .detail-header {
   display: flex;
   align-items: center;
@@ -96,29 +100,37 @@ watch(() => props.node?.name, (newName) => {
 
 .detail-title {
   font-size: 16px;
-  font-weight: 700;
-  color: var(--el-color-primary);
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .btn-close {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 6px;
-  background: var(--el-fill-color);
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--app-radius-md);
+  background: transparent;
   color: var(--el-text-color-secondary);
   font-size: 14px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  transition: background var(--app-transition-fast), color var(--app-transition-fast);
 }
 
 .btn-close:hover {
-  background: var(--el-color-danger);
-  color: var(--el-color-white);
-  border-color: var(--el-color-danger);
+  background: var(--el-fill-color);
+  color: var(--el-text-color-primary);
+}
+
+.btn-close:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 1px;
 }
 
 .detail-body {
@@ -126,12 +138,12 @@ watch(() => props.node?.name, (newName) => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 12px 16px;
+  padding: 0 var(--app-space-4) var(--app-space-3);
 }
 
 .info-compact {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--el-border-color);
+  padding: var(--app-space-3) 0;
+  border-bottom: 1px solid var(--el-border-color-light);
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
@@ -141,7 +153,7 @@ watch(() => props.node?.name, (newName) => {
 
 .ic-item {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--app-space-1);
 }
 
 .ic-label {
@@ -156,26 +168,49 @@ watch(() => props.node?.name, (newName) => {
 .desc {
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  line-height: 1.5;
+  line-height: 1.6;
   user-select: text;
   -webkit-user-select: text;
-  padding: 12px 0 0;
+  padding: var(--app-space-3) 0 0;
   flex-shrink: 0;
 }
 
+/* ── 消息区滚动细化 ── */
 .ctx-list-area {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding-bottom: 12px;
+  padding: var(--app-space-2) 0 var(--app-space-3);
+  scrollbar-width: thin;
+  scrollbar-color: var(--el-border-color-dark) transparent;
 }
 
+.ctx-list-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ctx-list-area::-webkit-scrollbar-thumb {
+  background: var(--el-border-color-dark);
+  border-radius: 4px;
+}
+
+.ctx-list-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── 输入组合区 ── */
 .ctx-chat {
   display: flex;
   gap: 6px;
-  padding: 12px 0 0;
-  border-top: 1px solid var(--el-border-color);
+  padding: var(--app-space-3) 0 0;
+  border-top: 1px solid var(--el-border-color-light);
   flex-shrink: 0;
+}
+
+.ctx-chat :deep(.chat-input) {
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
 }
 
 </style>

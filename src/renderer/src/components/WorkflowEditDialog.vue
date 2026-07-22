@@ -122,13 +122,13 @@ function handleClose(): void {
     <el-form label-position="top">
       <el-form-item label="工作流名称">
         <el-input v-model="name" disabled />
-        <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+        <div class="field-hint">
           工作流名称即目录名，创建后不可修改
         </div>
       </el-form-item>
 
       <el-form-item label="步骤列表">
-        <div v-if="steps.length === 0" style="color: #909399; padding: 12px 0;">
+        <div v-if="steps.length === 0" class="steps-empty">
           暂无步骤，请点击下方按钮添加
         </div>
         <div v-for="(step, idx) in steps" :key="step.name" class="step-list-item">
@@ -169,20 +169,88 @@ function handleClose(): void {
 </template>
 
 <style scoped>
+/* ── 对话框统一视觉：圆角 16px + 弹层阴影 ── */
+:deep(.el-dialog) {
+  border-radius: var(--app-radius-xl);
+  box-shadow: var(--app-shadow-3);
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px 16px;
+  margin-right: 0;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+:deep(.el-dialog__title) {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+:deep(.el-dialog__body) {
+  padding: var(--app-space-5);
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--el-border-color-light);
+}
+
+:deep(.el-dialog__footer .el-button + .el-button) {
+  margin-left: var(--app-space-2);
+}
+
+/* ── 表单：label 13px 600，输入项圆角 8px ── */
+:deep(.el-form-item__label) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+:deep(.el-input__wrapper) {
+  border-radius: var(--app-radius-md);
+}
+
+/* ── 描述性辅助文字 ── */
+.field-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: var(--app-space-1);
+  line-height: 1.4;
+}
+
+.steps-empty {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  padding: var(--app-space-3) 0;
+}
+
+/* ── 步骤列表项 ── */
 .step-list-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
   padding: 8px 12px;
   margin-bottom: 6px;
   background: var(--el-fill-color-light);
-  border-radius: 6px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: var(--app-radius-md);
+  transition: border-color var(--app-transition-fast), background var(--app-transition-fast);
 }
+
+.step-list-item:hover {
+  border-color: var(--el-border-color-dark);
+  background: var(--el-fill-color);
+}
+
 .step-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--app-space-2);
+  min-width: 0;
 }
+
 .step-index {
   display: inline-flex;
   align-items: center;
@@ -191,20 +259,26 @@ function handleClose(): void {
   height: 22px;
   font-size: 12px;
   font-weight: 600;
-  color: #fff;
-  background: var(--el-color-primary);
+  color: var(--el-color-primary);
+  background: var(--app-accent-soft);
   border-radius: 50%;
   flex-shrink: 0;
 }
+
 .step-text strong {
   font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
+
 .step-desc {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
+
 .step-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--app-space-1);
+  flex-shrink: 0;
 }
 </style>

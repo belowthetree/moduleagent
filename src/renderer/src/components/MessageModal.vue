@@ -5,6 +5,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { ChatDotRound, Opportunity, Tools } from '@element-plus/icons-vue'
 import type { ChatMsg } from '../../../types/shared'
 
 const props = defineProps<{
@@ -109,7 +110,7 @@ function toggleThinking() {
 
       <div v-if="message.thinking" class="modal-section">
         <div class="modal-section-title modal-thinking-toggle" @click="toggleThinking">
-          💭 思考过程
+          <el-icon class="section-icon"><Opportunity /></el-icon>思考过程
           <span class="ctx-thinking-arrow">{{ thinkingOpen ? '▼' : '▶' }}</span>
         </div>
         <div v-show="thinkingOpen" class="content-text thinking-text modal-thinking-content">
@@ -118,12 +119,12 @@ function toggleThinking() {
       </div>
 
       <div v-if="message.tools" class="modal-section">
-        <div class="modal-section-title">🔧 工具调用</div>
+        <div class="modal-section-title"><el-icon class="section-icon"><Tools /></el-icon>工具调用</div>
         <div class="content-text tools-text">{{ message.tools }}</div>
       </div>
 
       <div class="modal-section">
-        <div class="modal-section-title">💬 回复</div>
+        <div class="modal-section-title"><el-icon class="section-icon"><ChatDotRound /></el-icon>回复</div>
         <div class="content-text">
           {{ message.content || '(无文本回复)' }}
         </div>
@@ -131,32 +132,33 @@ function toggleThinking() {
     </template>
 
     <template v-else>
-      <div class="content-text" style="color: var(--text-dim)">无消息数据</div>
+      <div class="content-text" style="color: var(--el-text-color-secondary)">无消息数据</div>
     </template>
   </el-dialog>
 </template>
 
 <style scoped>
-/* ── 对话框覆盖样式 ── */
+/* ── 对话框统一视觉：圆角 16px + 弹层阴影 ── */
 :deep(.el-dialog) {
-  border-radius: 10px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  border-radius: var(--app-radius-xl);
+  box-shadow: var(--app-shadow-3);
   animation: none !important;
 }
 
 :deep(.el-dialog__header) {
-  border-bottom: 1px solid var(--el-border-color);
-  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--el-border-color-light);
+  padding: 20px 24px 16px;
+  margin-right: 0;
 }
 
 :deep(.el-dialog__title) {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--el-color-primary);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
 }
 
 :deep(.el-dialog__body) {
-  padding: 20px;
+  padding: var(--app-space-5);
 }
 
 /* ── 状态行 ── */
@@ -164,14 +166,14 @@ function toggleThinking() {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: var(--app-space-4);
 }
 
 .modal-status-badge {
   font-size: 10px;
   font-weight: 700;
   padding: 2px 10px;
-  border-radius: 8px;
+  border-radius: var(--app-radius-md);
   letter-spacing: 0.5px;
 }
 
@@ -194,7 +196,7 @@ function toggleThinking() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px 20px;
-  padding-bottom: 12px;
+  padding-bottom: var(--app-space-3);
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
@@ -217,7 +219,7 @@ function toggleThinking() {
 
 /* ── 区块 ── */
 .modal-section {
-  padding: 12px 0;
+  padding: var(--app-space-3) 0;
   border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
@@ -226,14 +228,22 @@ function toggleThinking() {
 }
 
 .modal-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   font-weight: 700;
   color: var(--el-text-color-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  margin-bottom: var(--app-space-1);
 }
 
+.section-icon {
+  font-size: 13px;
+}
+
+/* ── 内容块：与 ContextCards 一致的排版语言 ── */
 .content-text {
   font-size: 13px;
   line-height: 1.7;
@@ -241,19 +251,24 @@ function toggleThinking() {
   white-space: pre-wrap;
   word-break: break-word;
   margin-top: 6px;
-  padding: 14px;
-  border-radius: 10px;
+  padding: 12px 14px;
+  border-radius: var(--app-radius-lg);
   border: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
 }
 
 .thinking-text {
   color: var(--el-text-color-secondary);
   font-style: italic;
+  background: var(--el-fill-color-light);
   border-color: var(--el-border-color-lighter);
 }
 
 .tools-text {
+  font-family: var(--app-mono);
+  font-size: 12px;
   color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
   border-color: var(--el-color-warning-light-8);
 }
 
@@ -261,6 +276,8 @@ function toggleThinking() {
 .modal-thinking-toggle {
   cursor: pointer;
   user-select: none;
+  border-radius: var(--app-radius-sm);
+  transition: color var(--app-transition-fast);
 }
 
 .modal-thinking-toggle:hover {
@@ -269,7 +286,7 @@ function toggleThinking() {
 
 .ctx-thinking-arrow {
   font-size: 10px;
-  margin-left: 4px;
+  margin-left: 2px;
 }
 
 .modal-thinking-content {

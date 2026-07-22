@@ -32,6 +32,7 @@
       <g
         v-for="node in visibleNodes"
         :key="node.data.name"
+        class="node-group"
         style="cursor: pointer"
         @click.stop="onNodeClick(node)"
       >
@@ -306,7 +307,7 @@ watch(() => props.root, () => {
 </script>
 
 <style scoped>
-/* ── SVG 树 — 侘寂扁平化重新设计 ── */
+/* ── SVG 树 — 现代极简风格 ── */
 
 .tree-panel {
   width: 100%;
@@ -322,40 +323,57 @@ watch(() => props.root, () => {
   height: 100%;
 }
 
-/* ── 节点矩形 ── */
+/* ── 节点组：hover 轻微上移 ── */
+.node-group {
+  transition: transform var(--app-transition-fast);
+}
+
+.node-group:hover {
+  transform: translateY(-1px);
+}
+
+/* ── 节点矩形：默认 1px 边框 + 表面色填充 ── */
 .node-rect {
-  fill: var(--el-fill-color);
-  stroke: var(--el-border-color-dark);
-  stroke-width: 1.5;
+  fill: var(--el-bg-color);
+  stroke: var(--el-border-color);
+  stroke-width: 1;
   rx: 8;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: stroke var(--app-transition-fast), fill var(--app-transition-fast), filter var(--app-transition-fast);
 }
 
-.node-rect:hover {
-  stroke: var(--el-color-primary);
-  stroke-width: 1.5;
+/* hover：边框加深 + 浅层投影（SVG 用 drop-shadow 模拟） */
+.node-group:hover .node-rect {
+  stroke: var(--el-border-color-dark);
+  filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.10));
 }
 
+/* 选中态：2px 主色边框 + 主色软背景 */
 .node-rect.active {
   stroke: var(--el-color-primary);
-  stroke-width: 3;
+  stroke-width: 2;
+  fill: var(--app-accent-soft);
 }
 
-/* Agent 状态在矩形上 — 扁平，无阴影 */
+/* Agent 运行状态在矩形描边上 */
 .node-rect.agent-idle {
   stroke: var(--el-color-primary);
-  stroke-width: 2;
+  stroke-width: 1.5;
 }
 
 .node-rect.agent-streaming {
   stroke: var(--el-color-success);
-  stroke-width: 2;
+  stroke-width: 1.5;
 }
 
 .node-rect.agent-error {
   stroke: var(--el-color-danger);
-  stroke-width: 2;
+  stroke-width: 1.5;
+}
+
+/* 暗色主题：投影加深 */
+html.dark .node-group:hover .node-rect {
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
 }
 
 /* ── 节点文本 ── */
@@ -374,21 +392,22 @@ watch(() => props.root, () => {
   font-family: inherit;
 }
 
-/* ── 连线 ── */
+/* ── 连线：secondary 色 1.5px ── */
 .edge-line {
   fill: none;
-  stroke: var(--el-border-color);
-  stroke-width: 1;
+  stroke: var(--el-text-color-secondary);
+  stroke-opacity: 0.45;
+  stroke-width: 1.5;
 }
 
-/* ── Agent 状态点 — 无阴影，柔和描边 ── */
+/* ── Agent 状态点：主色/成功色 + pulse 动画 ── */
 .node-status-dot {
   stroke-width: 1;
 }
 
 .dot-idle {
-  fill: var(--el-fill-color);
-  stroke: var(--el-text-color-placeholder);
+  fill: var(--app-accent-soft);
+  stroke: var(--el-color-primary);
 }
 
 .dot-streaming {
@@ -411,6 +430,7 @@ watch(() => props.root, () => {
 .expand-btn {
   fill: var(--el-text-color-secondary);
   cursor: pointer;
+  transition: fill var(--app-transition-fast);
 }
 
 .expand-btn:hover {

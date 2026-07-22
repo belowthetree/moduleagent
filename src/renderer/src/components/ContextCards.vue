@@ -5,6 +5,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { Bottom, Cpu, Delete, Top, User } from '@element-plus/icons-vue'
 import type { ChatMsg, TimelineEvent } from '../../../types/shared'
 import { useAgentStore } from '../stores/agent'
 
@@ -38,18 +39,12 @@ function statusLabel(s: string): string {
 }
 
 function crossDirectionLabel(msg: ChatMsg): string {
-  if (msg.crossDirection === 'sent') return `📤 发送至 ${msg.crossModule || '?'}`
-  return `📥 来自 ${msg.crossModule || '?'}`
+  if (msg.crossDirection === 'sent') return `发送至 ${msg.crossModule || '?'}`
+  return `来自 ${msg.crossModule || '?'}`
 }
 
 function crossPhaseLabel(msg: ChatMsg): string {
   return msg.crossPhase === 'request' ? '请求' : '响应'
-}
-
-function roleIcon(role: string): string {
-  if (role === 'user') return '👤'
-  if (role === 'agent') return '🤖'
-  return ''
 }
 
 function roleLabel(role: string): string {
@@ -146,7 +141,11 @@ function onCancelStream() {
     <!-- 标题与清空按钮 -->
     <div class="ctx-top-controls">
       <span class="section-title">上下文历史</span>
-      <button class="btn-sm" @click="onClear">清空</button>
+      <el-tooltip content="清空" placement="left">
+        <button class="icon-btn" aria-label="清空" @click="onClear">
+          <el-icon><Delete /></el-icon>
+        </button>
+      </el-tooltip>
     </div>
 
     <!-- 空状态 -->
@@ -158,19 +157,19 @@ function onCancelStream() {
         v-for="msg in msgs"
         :key="msg.id"
         class="ctx-card"
-        :class="{ 'ctx-card-streaming': msg.role === 'agent' && msg.status === 'executing' }"
+        :class="['ctx-card-' + msg.role, { 'ctx-card-streaming': msg.role === 'agent' && msg.status === 'executing' }]"
         @click="onCardClick(msg)"
       >
         <div class="ctx-card-top">
           <span
             v-if="msg.role === 'cross'"
             class="ctx-role cross"
-          >{{ crossDirectionLabel(msg) }}</span>
+          ><el-icon class="ctx-role-icon"><Top v-if="msg.crossDirection === 'sent'" /><Bottom v-else /></el-icon>{{ crossDirectionLabel(msg) }}</span>
           <span
             v-else
             class="ctx-role"
             :class="msg.role"
-          >{{ roleIcon(msg.role) }} {{ roleLabel(msg.role) }}</span>
+          ><el-icon class="ctx-role-icon"><User v-if="msg.role === 'user'" /><Cpu v-else /></el-icon>{{ roleLabel(msg.role) }}</span>
           <span class="ctx-status" :class="'st-' + msg.status">{{ statusLabel(msg.status) }}</span>
           <span v-if="msg.role === 'cross'" class="ctx-phase-tag">{{ crossPhaseLabel(msg) }}</span>
         </div>
@@ -201,7 +200,7 @@ function onCancelStream() {
                   <span class="tl-arrow">{{ isTimelineItemExpanded(msg.id, idx) ? '▼' : '▶' }}</span>
                   <span class="ctx-tag tag-cross">跨模块</span>
                   <span>
-                    <template v-if="ev.crossDirection">{{ ev.crossDirection === 'sent' ? '📤 发送至' : '📥 来自' }} <b>{{ ev.crossModule }}</b> ({{ ev.crossPhase === 'request' ? '请求' : '响应' }})</template>
+                    <template v-if="ev.crossDirection"><el-icon class="tl-cross-icon"><Top v-if="ev.crossDirection === 'sent'" /><Bottom v-else /></el-icon>{{ ev.crossDirection === 'sent' ? '发送至' : '来自' }} <b>{{ ev.crossModule }}</b> ({{ ev.crossPhase === 'request' ? '请求' : '响应' }})</template>
                     <template v-else>{{ ev.content }}</template>
                   </span>
                 </div>
@@ -279,14 +278,14 @@ function onCancelStream() {
 <style scoped>
 /* ── 区块标题 ── */
 .ctx-section {
-  margin-top: 4px;
+  margin-top: var(--app-space-1);
 }
 
 .ctx-top-controls {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: var(--app-space-3);
 }
 
 .ctx-top-controls .section-title {
@@ -297,77 +296,108 @@ function onCancelStream() {
   letter-spacing: 1px;
 }
 
-.ctx-top-controls .btn-sm {
-  padding: 2px 10px;
-  font-size: 11px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 4px;
+/* ── 图标按钮（清空等操作） ── */
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--app-radius-md);
   background: transparent;
   color: var(--el-text-color-secondary);
+  font-size: 14px;
   cursor: pointer;
-  transition: all 0.12s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--app-transition-fast), color var(--app-transition-fast);
 }
 
-.ctx-top-controls .btn-sm:hover {
-  background: var(--el-color-danger);
-  color: #fff;
-  border-color: var(--el-color-danger);
+.icon-btn:hover {
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 1px;
 }
 
 /* ── 空状态 ── */
 .ctx-empty {
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  padding: 16px;
+  padding: var(--app-space-4);
   text-align: center;
   background: var(--el-fill-color-blank);
-  border-radius: 8px;
-  border: 1px dashed var(--el-border-color-lighter);
+  border-radius: var(--app-radius-lg);
+  border: 1px dashed var(--el-border-color);
 }
 
-/* ── 卡片列表 ── */
+/* ── 消息列表：间距 12px ── */
 .ctx-card-list {
   display: flex;
   flex-direction: column;
+  gap: var(--app-space-3);
 }
 
-/* ── 卡片 ── */
+/* ── 消息卡片基座（assistant/system/cross：左对齐卡片） ── */
 .ctx-card {
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
+  align-self: flex-start;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 14px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--app-radius-lg) var(--app-radius-lg) var(--app-radius-lg) var(--app-space-1);
   cursor: pointer;
-  transition: background 0.12s;
+  transition: border-color var(--app-transition-fast), box-shadow var(--app-transition-fast), background var(--app-transition-fast);
   user-select: text;
   -webkit-user-select: text;
 }
 
-.ctx-card:last-child {
-  border-bottom: none;
-}
-
 .ctx-card:hover {
-  background: var(--el-fill-color-light);
+  border-color: var(--el-border-color-dark);
+  box-shadow: var(--app-shadow-1);
 }
 
+/* ── 用户消息：右对齐气泡，主色软背景，右下角 4px ── */
+.ctx-card-user {
+  align-self: flex-end;
+  width: auto;
+  max-width: 88%;
+  background: var(--app-accent-soft);
+  border-color: var(--el-color-primary-light-8);
+  border-radius: var(--app-radius-lg) var(--app-radius-lg) var(--app-space-1) var(--app-radius-lg);
+}
+
+.ctx-card-user:hover {
+  border-color: var(--el-color-primary-light-5);
+}
+
+/* ── 流式输出中的卡片 ── */
 .ctx-card-streaming {
-  background: var(--el-color-primary-light-9);
-  border-bottom: 2px solid var(--el-color-primary-light-5);
-}
-
-.ctx-card-streaming:hover {
-  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
+  background: var(--app-accent-soft);
 }
 
 .ctx-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: var(--app-space-1);
 }
 
 .ctx-card .ctx-role {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-1);
   font-size: 11px;
+  font-weight: 600;
   color: var(--el-text-color-secondary);
+}
+
+.ctx-role-icon {
+  font-size: 12px;
 }
 
 .ctx-card .ctx-role.user {
@@ -388,7 +418,7 @@ function onCancelStream() {
   font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--app-space-1);
 }
 
 .ctx-status::before {
@@ -425,19 +455,20 @@ function onCancelStream() {
   font-size: 9px;
   font-weight: 600;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--app-radius-sm);
   background: var(--el-color-info-light-9);
   color: var(--el-color-info);
-  margin-left: 4px;
+  margin-left: var(--app-space-1);
 }
 
-/* ── 内容 ── */
+/* ── 内容排版 ── */
 .ctx-card .ctx-preview {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--el-text-color-regular);
-  line-height: 1.45;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
 }
@@ -452,13 +483,13 @@ function onCancelStream() {
 .ctx-card .ctx-time {
   font-size: 10px;
   color: var(--el-text-color-secondary);
-  opacity: 0.5;
-  margin-top: 4px;
+  opacity: 0.6;
+  margin-top: var(--app-space-1);
 }
 
 /* ── 时间线 ── */
 .ctx-timeline {
-  margin-bottom: 4px;
+  margin-bottom: var(--app-space-1);
 }
 
 .ctx-timeline-item {
@@ -468,11 +499,13 @@ function onCancelStream() {
 .tl-thinking-header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--app-space-1);
   font-size: 11px;
   cursor: pointer;
   user-select: none;
   padding: 2px 0;
+  border-radius: var(--app-radius-sm);
+  transition: color var(--app-transition-fast);
 }
 
 .tl-thinking-header:hover {
@@ -498,11 +531,11 @@ function onCancelStream() {
   font-size: 11px;
   color: var(--el-text-color-secondary);
   font-style: italic;
-  line-height: 1.4;
-  padding: 4px 8px;
-  margin: 2px 0 4px 14px;
-  background: var(--el-fill-color-light);
-  border-radius: 4px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  margin: 2px 0 var(--app-space-1) 14px;
+  background: var(--el-fill-color);
+  border-radius: var(--app-radius-md);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 160px;
@@ -513,20 +546,28 @@ function onCancelStream() {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--app-space-1);
   font-size: 11px;
-  font-family: monospace;
+  font-family: var(--app-mono);
   color: var(--el-text-color-secondary);
   padding: 1px 0;
+}
+
+.tl-cross-icon {
+  font-size: 11px;
+  margin-right: 2px;
+  vertical-align: -1px;
 }
 
 .tl-tool-header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--app-space-1);
   cursor: pointer;
   user-select: none;
   flex: 1;
+  border-radius: var(--app-radius-sm);
+  transition: color var(--app-transition-fast);
 }
 
 .tl-tool-header:hover {
@@ -537,11 +578,11 @@ function onCancelStream() {
   width: 100%;
   font-size: 11px;
   color: var(--el-text-color-secondary);
-  line-height: 1.4;
-  padding: 4px 8px;
-  margin: 2px 0 4px 14px;
-  background: var(--el-fill-color-light);
-  border-radius: 4px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  margin: 2px 0 var(--app-space-1) 14px;
+  background: var(--el-fill-color);
+  border-radius: var(--app-radius-md);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 160px;
@@ -553,11 +594,12 @@ function onCancelStream() {
 .ctx-thinking-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--app-space-1);
   font-size: 11px;
   margin-bottom: 2px;
   cursor: pointer;
   user-select: none;
+  transition: color var(--app-transition-fast);
 }
 
 .ctx-thinking-toggle:hover {
@@ -582,11 +624,11 @@ function onCancelStream() {
   font-size: 11px;
   color: var(--el-text-color-secondary);
   font-style: italic;
-  line-height: 1.4;
-  margin-bottom: 4px;
-  padding: 6px 8px;
-  background: var(--el-fill-color-light);
-  border-radius: 4px;
+  line-height: 1.5;
+  margin-bottom: var(--app-space-1);
+  padding: 8px 12px;
+  background: var(--el-fill-color);
+  border-radius: var(--app-radius-md);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 160px;
@@ -605,8 +647,8 @@ function onCancelStream() {
 }
 
 .ctx-tools-list {
-  margin-top: 4px;
-  padding-left: 4px;
+  margin-top: var(--app-space-1);
+  padding-left: var(--app-space-2);
   border-left: 2px solid var(--el-color-warning-light-5);
 }
 
@@ -615,15 +657,15 @@ function onCancelStream() {
   font-size: 11px;
   color: var(--el-text-color-secondary);
   padding: 1px 0;
-  font-family: monospace;
+  font-family: var(--app-mono);
 }
 
 .ctx-tag {
   font-size: 9px;
   font-weight: 600;
   padding: 1px 6px;
-  border-radius: 3px;
-  margin-right: 4px;
+  border-radius: var(--app-radius-sm);
+  margin-right: var(--app-space-1);
   vertical-align: middle;
 }
 
@@ -645,9 +687,10 @@ function onCancelStream() {
 /* ── 流式消息的闪烁光标 ── */
 .ctx-cursor {
   display: inline-block;
-  width: 6px;
+  width: 7px;
   height: 14px;
   background: var(--el-color-primary);
+  border-radius: 1px;
   margin-left: 2px;
   animation: blink 1s infinite;
   vertical-align: text-bottom;
@@ -663,15 +706,15 @@ function onCancelStream() {
   display: block;
   width: 100%;
   padding: 6px;
-  margin-top: 8px;
+  margin-top: var(--app-space-2);
   background: var(--el-color-danger-light-9);
   color: var(--el-color-danger);
   border: 1px solid var(--el-color-danger-light-7);
-  border-radius: 6px;
+  border-radius: var(--app-radius-md);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background var(--app-transition-fast), border-color var(--app-transition-fast);
 }
 
 .btn-cancel-stream:hover {

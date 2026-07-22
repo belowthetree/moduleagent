@@ -5,6 +5,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { Connection, Delete, Edit, Plus } from '@element-plus/icons-vue'
 import { useWorkflowStore } from '../stores/workflow'
 import WorkflowEditDialog from './WorkflowEditDialog.vue'
 
@@ -58,7 +59,9 @@ function selectWorkflow(name: string): void {
   <div class="workflow-panel">
     <div class="panel-header">
       <span class="panel-title">工作流</span>
-      <button class="btn-add" @click="showCreateDialog = true">+ 新建</button>
+      <button class="btn-add" @click="showCreateDialog = true">
+        <el-icon><Plus /></el-icon>新建
+      </button>
     </div>
 
     <div class="workflow-cards">
@@ -72,8 +75,16 @@ function selectWorkflow(name: string): void {
         <div class="card-header">
           <span class="card-name">{{ item.name }}</span>
           <div class="card-actions">
-            <button class="btn-card-edit" @click.stop="openEditDialog(item.name)">✎</button>
-            <button class="btn-card-delete" @click.stop="handleDelete(item.name)">✕</button>
+            <el-tooltip content="编辑" placement="top">
+              <button class="btn-card-edit" aria-label="编辑" @click.stop="openEditDialog(item.name)">
+                <el-icon><Edit /></el-icon>
+              </button>
+            </el-tooltip>
+            <el-tooltip content="删除" placement="top">
+              <button class="btn-card-delete" aria-label="删除" @click.stop="handleDelete(item.name)">
+                <el-icon><Delete /></el-icon>
+              </button>
+            </el-tooltip>
           </div>
         </div>
         <div class="card-meta">
@@ -82,8 +93,12 @@ function selectWorkflow(name: string): void {
       </div>
 
       <div v-if="workflowStore.workflows.length === 0" class="empty-state">
+        <el-icon class="empty-icon"><Connection /></el-icon>
         <p>暂无工作流</p>
         <p class="hint">点击「新建」创建工作流</p>
+        <button class="btn-empty-add" @click="showCreateDialog = true">
+          <el-icon><Plus /></el-icon>新建工作流
+        </button>
       </div>
     </div>
 
@@ -142,50 +157,63 @@ function selectWorkflow(name: string): void {
 
 .panel-title {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--el-text-color-primary);
 }
 
+/* ── 主操作按钮：主色软背景 ── */
 .btn-add {
-  padding: 4px 12px;
-  border: 1px solid var(--el-color-primary);
-  border-radius: 6px;
-  background: var(--el-color-primary);
-  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-1);
+  padding: 5px 12px;
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: var(--app-radius-md);
+  background: var(--app-accent-soft);
+  color: var(--el-color-primary);
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: background var(--app-transition-fast), border-color var(--app-transition-fast);
 }
 
 .btn-add:hover {
-  opacity: 0.85;
+  border-color: var(--el-color-primary);
+}
+
+.btn-add:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 1px;
 }
 
 .workflow-cards {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: var(--app-space-3);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--app-space-2);
 }
 
+/* ── 条目卡片：圆角 + 1px 边框 + hover 微浮起 ── */
 .workflow-card {
-  padding: 12px;
+  padding: var(--app-space-3);
   border: 1px solid var(--el-border-color);
-  border-radius: 8px;
+  border-radius: var(--app-radius-lg);
+  background: var(--el-bg-color);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--app-transition-fast), box-shadow var(--app-transition-fast), transform var(--app-transition-fast), background var(--app-transition-fast);
 }
 
 .workflow-card:hover {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
+  border-color: var(--el-border-color-dark);
+  box-shadow: var(--app-shadow-1);
+  transform: translateY(-1px);
 }
 
 .workflow-card.active {
   border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
+  background: var(--app-accent-soft);
 }
 
 .card-header {
@@ -203,48 +231,128 @@ function selectWorkflow(name: string): void {
 .card-meta {
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  margin-top: 4px;
+  margin-top: var(--app-space-1);
 }
 
 .card-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--app-space-1);
 }
 
+/* ── 卡片操作图标按钮 ── */
 .btn-card-edit, .btn-card-delete {
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--app-radius-md);
   background: transparent;
   color: var(--el-text-color-secondary);
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background var(--app-transition-fast), color var(--app-transition-fast);
 }
 
 .btn-card-edit:hover {
+  background: var(--app-accent-soft);
   color: var(--el-color-primary);
-  border-color: var(--el-color-primary);
 }
 
 .btn-card-delete:hover {
+  background: var(--el-color-danger-light-9);
   color: var(--el-color-danger);
-  border-color: var(--el-color-danger);
 }
 
+.btn-card-edit:focus-visible,
+.btn-card-delete:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 1px;
+}
+
+/* ── 空态：图标 + 文案 + 引导按钮 ── */
 .empty-state {
   text-align: center;
-  padding: 40px 0;
+  padding: 48px 0;
   color: var(--el-text-color-secondary);
   font-size: 14px;
+}
+
+.empty-icon {
+  font-size: 32px;
+  color: var(--el-text-color-placeholder);
+  margin-bottom: var(--app-space-3);
+}
+
+.empty-state p {
+  margin: 0;
 }
 
 .hint {
   font-size: 12px;
   color: var(--el-text-color-placeholder);
-  margin-top: 4px;
+  margin-top: var(--app-space-1) !important;
+}
+
+.btn-empty-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--app-space-1);
+  margin-top: var(--app-space-4);
+  padding: 6px 14px;
+  border: 1px solid var(--el-color-primary-light-7);
+  border-radius: var(--app-radius-md);
+  background: var(--app-accent-soft);
+  color: var(--el-color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--app-transition-fast), border-color var(--app-transition-fast);
+}
+
+.btn-empty-add:hover {
+  border-color: var(--el-color-primary);
+}
+
+/* ── 新建工作流对话框：统一对话框视觉 ── */
+:deep(.el-dialog) {
+  border-radius: var(--app-radius-xl);
+  box-shadow: var(--app-shadow-3);
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px 16px;
+  margin-right: 0;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+:deep(.el-dialog__title) {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+:deep(.el-dialog__body) {
+  padding: var(--app-space-5);
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--el-border-color-light);
+}
+
+:deep(.el-dialog__footer .el-button + .el-button) {
+  margin-left: var(--app-space-2);
+}
+
+:deep(.el-form-item__label) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+:deep(.el-input__wrapper) {
+  border-radius: var(--app-radius-md);
 }
 </style>

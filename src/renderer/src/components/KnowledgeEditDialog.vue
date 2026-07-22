@@ -69,3 +69,61 @@ function handleSave(): void {
     </template>
   </el-dialog>
 </template>
+
+<style scoped>
+/* ── 对话框统一视觉：圆角 16px + 弹层阴影 ── */
+:deep(.el-dialog) {
+  border-radius: var(--app-radius-xl);
+  box-shadow: var(--app-shadow-3);
+}
+
+:deep(.el-dialog__header) {
+  padding: 20px 24px 16px;
+  margin-right: 0;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+:deep(.el-dialog__title) {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+:deep(.el-dialog__body) {
+  padding: var(--app-space-5);
+}
+
+:deep(.el-dialog__footer) {
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--el-border-color-light);
+}
+
+/* footer 按钮间距 8px */
+:deep(.el-dialog__footer .el-button + .el-button) {
+  margin-left: var(--app-space-2);
+}
+
+/* ── 表单：label 13px 600，输入项圆角 8px ── */
+:deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+:deep(.el-form-item__label) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  margin-bottom: 6px;
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner) {
+  border-radius: var(--app-radius-md);
+}
+
+/* Markdown 内容编辑区用等宽字体 */
+:deep(.el-textarea__inner) {
+  font-family: var(--app-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+</style>
