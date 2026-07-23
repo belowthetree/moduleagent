@@ -26,8 +26,6 @@ const form = reactive({
   name: '',
   description: '',
   visibleModulePaths: [] as string[],
-  command: 'opencode',
-  args: 'acp',
   knowledgeRefs: [] as { filename: string; name: string }[],
 })
 
@@ -36,8 +34,6 @@ watch(() => props.role, (r) => {
     form.name = r.name
     form.description = r.description
     form.visibleModulePaths = [...r.visibleModulePaths]
-    form.command = r.agents.default.command
-    form.args = (r.agents.default.args || ['acp']).join(' ')
     form.knowledgeRefs = r.knowledgeRefs ? [...r.knowledgeRefs] : []
   }
 }, { immediate: true })
@@ -71,10 +67,7 @@ function handleSave(): void {
     description: form.description,
     visibleModulePaths: [...form.visibleModulePaths],
     agents: {
-      default: {
-        command: form.command,
-        args: form.args.split(/\s+/).filter(Boolean),
-      },
+      default: {},
     },
     knowledgeRefs: form.knowledgeRefs.length > 0 ? [...form.knowledgeRefs] : undefined,
   })
@@ -126,12 +119,6 @@ function handleSave(): void {
             :value="{ filename: k.filename, name: k.name }"
           />
         </el-select>
-      </el-form-item>
-      <el-form-item label="Agent 命令">
-        <el-input v-model="form.command" placeholder="opencode" />
-      </el-form-item>
-      <el-form-item label="Agent 参数">
-        <el-input v-model="form.args" placeholder="acp" />
       </el-form-item>
     </el-form>
 

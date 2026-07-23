@@ -75,18 +75,6 @@ onMounted(() => {
         label-position="top"
         class="setup-form"
       >
-        <!-- Agent 命令 -->
-        <el-form-item label="Agent 命令">
-          <p class="field-hint">启动 Agent 的可执行文件名或路径</p>
-          <el-input v-model="configStore.agentCmd" placeholder="opencode" />
-        </el-form-item>
-
-        <!-- Agent 参数 -->
-        <el-form-item label="Agent 参数">
-          <p class="field-hint">传给 Agent 的额外参数（空格分隔，如: acp）</p>
-          <el-input v-model="configStore.agentArgs" placeholder="acp" />
-        </el-form-item>
-
         <!-- 项目路径 -->
         <el-form-item label="项目目录">
           <p class="field-hint">项目根目录，模块文件存储在 .module-agent/module/ 中，工作空间在 .module-agent/workspace/</p>

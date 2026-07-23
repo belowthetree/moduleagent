@@ -55,7 +55,6 @@ export interface ChatMsg {
   time: string;
   status: 'sent' | 'pending' | 'thinking' | 'executing' | 'completed' | 'error' | 'interrupted';
   moduleName: string;
-  agentCmd?: string;
   sessionId?: string;
   crossDirection?: 'sent' | 'received';
   crossModule?: string;
@@ -90,8 +89,6 @@ export interface RoleConfigData {
   visibleModulePaths: string[];
   agents: {
     default: {
-      command?: string;
-      args?: string[];
       provider?: string;
       apiKey?: string;
       baseUrl?: string;
@@ -130,8 +127,6 @@ export interface WorkflowStepDetail {
     input?: { from: string; sourceStep?: string };
     acceptance?: { criteria: string };
     agent?: {
-      command?: string;
-      args?: string[];
       visibleModulePaths?: string[];
       knowledgeRefs?: { filename: string; name: string }[];
     };
@@ -167,8 +162,6 @@ export interface StepEditData {
   input?: { from: string; sourceStep?: string };
   acceptance?: { criteria: string };
   agent?: {
-    command?: string;
-    args?: string[];
     visibleModulePaths?: string[];
     knowledgeRefs?: { filename: string; name: string }[];
   };
@@ -184,7 +177,7 @@ export interface ModuleAgentApi {
 
   getTree(): Promise<TreeNode | null>;
 
-  startAgent(moduleName: string, cmd: string, args: string[], cwd: string): Promise<{ sessionId?: string; error?: string }>;
+  startAgent(moduleName: string): Promise<{ sessionId?: string; error?: string }>;
 
   sendMessage(moduleName: string, text: string, cwd?: string): Promise<{ result?: { reply: string; thinking: string; tools: string; timeline?: TimelineEvent[]; stopReason?: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }; error?: string }>;
 

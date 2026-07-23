@@ -64,7 +64,6 @@ describe('stream composable (simplified IPC flow)', () => {
       time: '10:00',
       status: 'executing',
       moduleName: 'mod3',
-      agentCmd: '',
     })
 
     await store.cancelAgent('mod3')

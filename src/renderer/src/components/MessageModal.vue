@@ -99,10 +99,6 @@ function toggleThinking() {
           <span class="mg-val">{{ message.moduleName }}</span>
         </div>
         <div class="mg-item">
-          <span class="mg-lbl">Agent</span>
-          <span class="mg-val">{{ message.agentCmd }}</span>
-        </div>
-        <div class="mg-item">
           <span class="mg-lbl">角色</span>
           <span class="mg-val">{{ roleDisplay }}</span>
         </div>

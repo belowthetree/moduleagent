@@ -463,9 +463,6 @@ onUnmounted(() => {
                 <span class="paths-label">可见模块:</span>
                 <span class="paths-value">{{ selectedRoleInfo.visibleModulePaths.join(', ') || '(全部)' }}</span>
               </div>
-              <div class="role-cmd">
-                Agent: {{ selectedRoleInfo.agents.default.command }} {{ (selectedRoleInfo.agents.default.args || []).join(' ') }}
-              </div>
             </div>
             <div class="role-ctx-area">
               <ContextCards
@@ -944,12 +941,6 @@ html.dark .drawer-overlay {
 
 .paths-value {
   color: var(--el-text-color-primary);
-}
-
-.role-cmd {
-  font-size: 11px;
-  font-family: var(--app-mono);
-  color: var(--el-text-color-secondary);
 }
 
 .role-ctx-area {

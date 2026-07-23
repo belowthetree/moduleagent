@@ -22,7 +22,7 @@ describe('useAgentStore', () => {
   })
 
   it('startAgent: mock returns sessionId', async () => {
-    const result = await window.moduleAgent.startAgent('modA', 'cmd', ['arg1'], '/cwd')
+    const result = await window.moduleAgent.startAgent('modA')
     expect(result.sessionId).toBe('mock-session-id')
     expect(result.error).toBeUndefined()
   })
@@ -82,7 +82,6 @@ describe('useAgentStore', () => {
       time: '10:00',
       status: 'sent' as const,
       moduleName: 'mod-msgs',
-      agentCmd: 'test',
     }))
     store.contextMap.set('mod-msgs', msgs)
 
@@ -137,7 +136,7 @@ describe('useAgentStore', () => {
     const msgs: ChatMsg[] = [
       {
         id: '1', role: 'user', content: 'Q1', thinking: '', tools: '',
-        time: '10:00', status: 'sent', moduleName: 'mod-r', agentCmd: '',
+        time: '10:00', status: 'sent', moduleName: 'mod-r',
       },
     ]
     mock.getContext = vi.fn().mockResolvedValue(msgs)
@@ -157,7 +156,7 @@ describe('useAgentStore', () => {
     ;(globalThis as any).window.moduleAgent = mock
 
     const store = useAgentStore()
-    store.contextMap.set('mod-skip', [{ id: 'x', role: 'user', content: 'existing', thinking: '', tools: '', time: '10:00', status: 'sent', moduleName: 'mod-skip', agentCmd: '' }])
+    store.contextMap.set('mod-skip', [{ id: 'x', role: 'user', content: 'existing', thinking: '', tools: '', time: '10:00', status: 'sent', moduleName: 'mod-skip' }])
 
     await store.restoreContext('mod-skip')
     expect(mock.getContext).not.toHaveBeenCalled()
@@ -169,7 +168,7 @@ describe('useAgentStore', () => {
     ;(globalThis as any).window.moduleAgent = mock
 
     const store = useAgentStore()
-    store.contextMap.set('mod-clr', [{ id: 'x', role: 'user', content: 'test', thinking: '', tools: '', time: '10:00', status: 'sent', moduleName: 'mod-clr', agentCmd: '' }])
+    store.contextMap.set('mod-clr', [{ id: 'x', role: 'user', content: 'test', thinking: '', tools: '', time: '10:00', status: 'sent', moduleName: 'mod-clr' }])
 
     await store.clearContext('mod-clr')
     expect(mock.clearContext).toHaveBeenCalledWith('mod-clr')
@@ -182,8 +181,8 @@ describe('useAgentStore', () => {
     ;(globalThis as any).window.moduleAgent = mock
 
     const store = useAgentStore()
-    store.contextMap.set('mod-a', [{ id: '1', role: 'user', content: 'a', thinking: '', tools: '', time: '10:00', status: 'sent', moduleName: 'mod-a', agentCmd: '' }])
-    store.contextMap.set('mod-b', [{ id: '2', role: 'agent', content: 'b', thinking: '', tools: '', time: '10:01', status: 'completed', moduleName: 'mod-b', agentCmd: '' }])
+    store.contextMap.set('mod-a', [{ id: '1', role: 'user', content: 'a', thinking: '', tools: '', time: '10:00', status: 'sent', moduleName: 'mod-a' }])
+    store.contextMap.set('mod-b', [{ id: '2', role: 'agent', content: 'b', thinking: '', tools: '', time: '10:01', status: 'completed', moduleName: 'mod-b' }])
     store.selectedModuleName = 'mod-a'
 
     await store.clearAllContexts()

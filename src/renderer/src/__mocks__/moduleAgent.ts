@@ -70,7 +70,7 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
       });
     },
 
-    startAgent: (_moduleName: string, _cmd: string, _args: string[], _cwd: string): Promise<{ sessionId?: string; error?: string }> => {
+    startAgent: (_moduleName: string): Promise<{ sessionId?: string; error?: string }> => {
       return Promise.resolve({ sessionId: 'mock-session-id' });
     },
 
@@ -104,21 +104,27 @@ export function createMockModuleAgentApi(): ModuleAgentApi {
 
     saveAgentConfig: (
       _projectRoot: string,
-      _cmd: string,
-      _args: string[],
+      _provider: string,
+      _apiKey: string,
+      _baseUrl: string,
+      _model: string,
       _projectPath?: string,
+      _summarizationEnabled?: boolean,
     ): Promise<{ success: boolean }> => {
       return Promise.resolve({ success: true });
     },
 
     getAgentConfig: (_projectRoot: string): Promise<{
-      command: string;
-      args: string[];
+      provider?: string;
+      apiKey?: string;
+      baseUrl?: string;
+      model?: string;
       projectPath?: string;
+      summarizationEnabled?: boolean;
     }> => {
       return Promise.resolve({
-        command: 'opencode',
-        args: ['acp'],
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-20250514',
         projectPath: '/mock/project',
       });
     },

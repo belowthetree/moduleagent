@@ -19,8 +19,8 @@ const api: ModuleAgentApi = {
   getTree: () => ipcRenderer.invoke(IpcChannel.Project.GetTree) as Promise<TreeNode | null>,
 
   // Agent API
-  startAgent: (moduleName: string, cmd: string, args: string[], cwd: string) =>
-    ipcRenderer.invoke(IpcChannel.Agent.Start, moduleName, cmd, args, cwd) as Promise<{ sessionId?: string; error?: string }>,
+  startAgent: (moduleName: string) =>
+    ipcRenderer.invoke(IpcChannel.Agent.Start, moduleName) as Promise<{ sessionId?: string; error?: string }>,
 
   sendMessage: (moduleName: string, text: string, cwd?: string) =>
     ipcRenderer.invoke(IpcChannel.Agent.Send, moduleName, text, cwd) as Promise<{ result?: { reply: string; thinking: string; tools: string; stopReason: string }; error?: string }>,

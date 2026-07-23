@@ -294,7 +294,7 @@ export class Agent {
   }
 
   /**
-   * 内核模式不支持运行时 mode/model 切换（无 ACP session/set_config_option）。
+   * 内核模式不支持运行时 mode/model 切换。
    * @returns 恒为 false（配置未生效），调用方应据此如实反馈
    */
   async setConfigOption(configId: string, value: string): Promise<boolean> {

@@ -98,7 +98,6 @@ export const useAgentStore = defineStore('agent', () => {
           time,
           status: 'executing',
           moduleName,
-          agentCmd: '',
         })
         return
       }
@@ -170,7 +169,6 @@ export const useAgentStore = defineStore('agent', () => {
       time: now(),
       status: 'sent',
       moduleName,
-      agentCmd: '',
     })
 
     // 推送 Agent 占位消息——由流监听器实时更新
@@ -185,7 +183,6 @@ export const useAgentStore = defineStore('agent', () => {
       time: now(),
       status: 'executing',
       moduleName,
-      agentCmd: '',
     })
 
     try {
@@ -263,7 +260,6 @@ export const useAgentStore = defineStore('agent', () => {
           time: (data.data as any)?.time || now(),
           status: 'completed',
           moduleName: data.moduleName,
-          agentCmd: '',
         })
         return
       }
@@ -371,7 +367,6 @@ export const useAgentStore = defineStore('agent', () => {
       time: now(),
       status: 'sent',
       moduleName: `workrole:${roleName}`,
-      agentCmd: '',
     })
 
     // 推送 Agent 占位消息——由流监听器实时更新
@@ -386,7 +381,6 @@ export const useAgentStore = defineStore('agent', () => {
       time: now(),
       status: 'executing',
       moduleName: `workrole:${roleName}`,
-      agentCmd: '',
     })
 
     try {

@@ -29,8 +29,6 @@ const form = reactive({
   inputSourceStep: '',
   body: '',
   acceptanceCriteria: '',
-  command: '',
-  args: '',
   visibleModulePaths: [] as string[],
   knowledgeRefs: [] as { filename: string; name: string }[],
 })
@@ -60,8 +58,6 @@ watch(() => props.step, (s) => {
     form.inputSourceStep = s.definition.input?.sourceStep || ''
     form.body = s.body || ''
     form.acceptanceCriteria = s.definition.acceptance?.criteria || ''
-    form.command = s.definition.agent?.command || ''
-    form.args = (s.definition.agent?.args || []).join(' ')
     form.visibleModulePaths = s.definition.agent?.visibleModulePaths || []
     form.knowledgeRefs = s.definition.agent?.knowledgeRefs || []
   }
@@ -77,10 +73,8 @@ function handleSave(): void {
       description: form.description || undefined,
       input: { from: form.inputFrom, ...(form.inputSourceStep ? { sourceStep: form.inputSourceStep } : {}) },
       acceptance: form.acceptanceCriteria ? { criteria: form.acceptanceCriteria } : undefined,
-      agent: form.command
+      agent: form.visibleModulePaths.length > 0 || form.knowledgeRefs.length > 0
         ? {
-            command: form.command,
-            args: form.args.split(/\s+/).filter(Boolean),
             visibleModulePaths: form.visibleModulePaths.length > 0 ? form.visibleModulePaths : undefined,
             knowledgeRefs: form.knowledgeRefs.length > 0 ? form.knowledgeRefs : undefined,
           }
@@ -146,12 +140,6 @@ function handleSave(): void {
 
       <el-tab-pane label="Agent 配置" name="agent">
         <el-form label-position="top" style="max-height: 420px; overflow-y: auto;">
-          <el-form-item label="Agent 命令">
-            <el-input v-model="form.command" placeholder="留空使用默认: opencode" />
-          </el-form-item>
-          <el-form-item label="Agent 参数">
-            <el-input v-model="form.args" placeholder="留空使用默认: acp" />
-          </el-form-item>
           <el-form-item label="可见模块">
             <el-select
               v-model="form.visibleModulePaths"

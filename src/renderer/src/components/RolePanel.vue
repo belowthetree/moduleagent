@@ -31,10 +31,7 @@ function openAddDialog(): void {
     description: '',
     visibleModulePaths: [],
     agents: {
-      default: {
-        command: configStore.agentCmd || 'opencode',
-        args: configStore.agentArgs ? [configStore.agentArgs] : ['acp'],
-      },
+      default: {},
     },
   }
   showConfigDialog.value = true

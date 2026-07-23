@@ -680,7 +680,7 @@ export class ModuleAgentSubsystem {
         `startAgent [${moduleName}] cwd=${cwd} allowed=[${allowed.join(', ')}] excluded=[${excluded.join(', ')}]`,
       );
 
-      // 构建 onNotification 回调（将 ACP 通知分发给 CoreCallbacks + 外部监听器）
+      // 构建 onNotification 回调（将通知分发给 CoreCallbacks + 外部监听器）
       const self = this;
       const onNotification = (sessionId: string, notification: any): void => {
         const update = (notification.update as { sessionUpdate?: string }).sessionUpdate;

@@ -503,8 +503,6 @@ export class TuiBridge implements IAgentBridge {
         visibleModulePaths: r.visibleModulePaths,
         agents: {
           default: {
-            command: r.agents.default.command || '',
-            args: r.agents.default.args || [],
             provider: r.agents.default.provider,
             apiKey: r.agents.default.apiKey,
             baseUrl: r.agents.default.baseUrl,
@@ -532,8 +530,6 @@ export class TuiBridge implements IAgentBridge {
       visibleModulePaths: roleConfig.visibleModulePaths,
       agents: {
         default: {
-          command: roleConfig.agents.default.command || '',
-          args: roleConfig.agents.default.args || [],
           provider: roleConfig.agents.default.provider,
           apiKey: roleConfig.agents.default.apiKey,
           baseUrl: roleConfig.agents.default.baseUrl,

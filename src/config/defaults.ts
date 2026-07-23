@@ -34,8 +34,6 @@ interface AgentSettings {
   fastModel?: string;
   maxTokens?: number;
   contextWindow?: number;
-  command?: string;
-  args?: string[];
   defaultMode?: string;
 }
 
@@ -70,8 +68,6 @@ export interface RoleAgentConfig {
   model?: string;
   fastModel?: string;
   contextWindow?: number;
-  command?: string;
-  args?: string[];
 }
 
 export interface RoleConfig {
@@ -130,8 +126,6 @@ export const DEFAULT_WORKSPACE_CONFIG: WorkspaceConfig = {
 // ---------------------------------------------------------------------------
 
 export interface StepAgentConfig {
-  command?: string;
-  args?: string[];
   visibleModulePaths?: string[];
   knowledgeRefs?: { filename: string; name: string }[];
 }
