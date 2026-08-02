@@ -1,15 +1,17 @@
 # ModuleAgent
 
-**模块化 Agent 编排框架** — 以 `module.md` 为模块描述文件，将项目按模块组织，为每个模块启动独立的 Agent 子进程，并通过 MCP 协议实现模块间自主协作。
+**模块化 Agent 编排框架** — 以 `module.md` 为模块描述文件，将项目按模块组织，为每个模块运行独立的 Agent，并支持模块间自主协作。
 
 ## 核心特性
 
-- **基于模块的 Agent 架构** — 每个模块拥有独立的 Agent 进程，聚焦自身职责
-- **ACP 协议通信** — 使用 `@agentclientprotocol/sdk` 与 Agent 子进程双向通信
-- **跨模块协作** — 通过 MCP 协议（`@modelcontextprotocol/sdk`）实现 Agent 间的调用与查询
+- **基于模块的 Agent 架构** — 每个模块拥有独立的 Agent，聚焦自身职责
+- **内置 Agent 内核** — 基于 ai-sdk 的进程内 LLM 循环，无需外部 Agent 子进程；内置文件读写、编辑、搜索、命令执行、Git 等工具
+- **多模型支持** — Anthropic / OpenAI / DeepSeek / Google，以及自定义 OpenAI 兼容端点
+- **跨模块协作** — 模块 Agent 通过 `module_call` / `module_query` 相互调用与查询，带环检测、跳数限制与超时保护
 - **角色 Agent** — 跨模块的职责化 Agent，可定义可见模块范围，适用于架构审查、文档管理等场景
+- **上下文优化** — snip（旧工具结果截断）→ 在线压缩 → 尾部截断三级管线，移除内容自动归档
 - **交互式模块树** — SVG 渲染的模块依赖图，支持折叠/展开和节点选择
-- **工作空间隔离** — 每个 Agent 拥有独立的源码副本，互不干扰
+- **工作空间隔离** — 工作流步骤在独立的源码副本中执行，互不干扰
 - **流式对话** — 实时展示 Agent 的思考过程、工具调用和回复内容
 - **自动模块生成** — 调用 Agent 分析源码目录，自动生成 `module.md` 文件
 
@@ -36,18 +38,21 @@ pnpm add -g @belowthetree/module-agent
 安装后即可在终端使用 `module-agent` 命令：
 
 ```bash
-module-agent serve    # 持久化 stdio 模式
-module-agent config   # 交互式配置向导
+module-agent list        # 列出项目所有模块
+module-agent get <name>  # 查看模块详情
+module-agent serve       # 持久化 stdio NDJSON 模式
+module-agent config      # 交互式配置向导
 ```
 
-> **注意：** `module-agent tui` 终端 UI 仍在开发中，推荐使用[桌面应用（GUI）](#桌面应用gui)获得完整功能。
+> **注意：** `module-agent tui` 终端 UI 需要 [Bun](https://bun.sh) 运行时且仍在开发中，推荐使用[桌面应用（GUI）](#桌面应用gui)获得完整功能。
 
 ## 开发
 
 ### 前置条件
 
 - Node.js >= 20
-- 支持 ACP 协议的 Agent 客户端（如 [opencode](https://github.com/opencode-ai/opencode) 或 Claude CLI）
+- pnpm
+- 一个 LLM 提供商的 API Key（Anthropic / OpenAI / DeepSeek / Google 任选其一）
 
 ### 启动开发环境
 
@@ -74,8 +79,9 @@ pnpm run electron
 {
   "agents": {
     "default": {
-      "command": "opencode",
-      "args": ["acp"]
+      "provider": "anthropic",
+      "apiKey": "sk-...",
+      "model": "claude-sonnet-4-20250514"
     }
   },
   "exclude": ["node_modules", ".git", "dist"],
@@ -88,20 +94,20 @@ pnpm run electron
 ## 架构概览
 
 ```
-Renderer (Vue 3 + Element Plus)     ← 用户界面、模块树、对话面板
+Renderer (Vue 3 + Element Plus)      ← 用户界面、模块树、对话面板
     ↕ Electron IPC
-Main Process (Electron)              ← Agent 编排、MCP 路由、状态管理
-    ↕ ACP 协议 (stdio)
-Agent 子进程                         ← LLM 推理、代码操作
-    ↕ MCP 协议 (stdio)
-MCP Server                           ← 跨模块通信总线
+Main Process (Electron)               ← Agent 生命周期编排、IPC、跨模块路由
+    ↕ 进程内调用（无子进程）
+Agent 内核 (AgentLoop)                ← ai-sdk generateText 循环、内置工具、上下文管线
+    ↕ ai-sdk Provider
+LLM 服务                              ← Anthropic / OpenAI / DeepSeek / Google
 ```
 
 | 层 | 技术 | 职责 |
 |----|------|------|
 | 渲染进程 | Vue 3 + Pinia + Element Plus | 模块树可视化、对话交互、状态管理 |
-| 主进程 | Electron + TypeScript | Agent 生命周期编排、IPC 处理、MCP HTTP 后端 |
-| Agent 层 | opencode / Claude (ACP) | LLM 推理、文件操作、终端命令执行 |
+| 主进程 | Electron + TypeScript | Agent 生命周期编排、IPC 处理、跨模块调用路由 |
+| Agent 层 | 内置内核（ai-sdk） | LLM 推理循环、内置工具执行、上下文优化（snip/压缩/截断） |
 
 详细架构分析见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
@@ -109,14 +115,15 @@ MCP Server                           ← 跨模块通信总线
 
 ```
 src/
-├── main/          Electron 主进程入口、IPC 处理器
+├── main/          Electron 主进程入口、IPC 处理器、Agent 生命周期
 ├── preload/       contextBridge API 桥接
-├── renderer/      Vue 3 渲染进程（视图、组件、Store）
-├── agents/        Agent 编排（启动、隔离、状态、提示构建）
-├── protocol/      ACP 连接 + MCP 服务端 + 通信总线
-├── core/          模块扫描、解析、图构建、路径工具
+├── renderer/      Vue 3 渲染进程（视图、组件、Pinia Store）
+├── agents/        内置 Agent 内核（AgentLoop、工具、跨模块路由、提示构建）
+├── core/          模块扫描、解析、图构建、路径工具、日志
 ├── config/        配置加载、Zod 校验、默认值
-├── cli/           CLI 路径（次级，用于 serve/tui）
+├── protocol/      IPC 通道定义
+├── cli/           CLI 入口（list/get/serve/config/tui）
+├── tui/           终端 UI（OpenTUI，需 Bun 运行时）
 └── types/         全局类型定义
 ```
 
@@ -133,9 +140,10 @@ src/
 │   │       └── module.md
 │   └── config/
 │       └── module.md
-├── workspace/         ← 隔离工作空间（Agent 运行时）
+├── workspace/         ← 工作流步骤的隔离源码副本
 ├── context/           ← 对话上下文持久化
-└── .module-agent.json ← 项目配置
+└── archives/          ← 上下文管线移除内容的归档
+.module-agent.json     ← 项目配置（位于项目根目录）
 ```
 
 ## 角色 Agent
@@ -150,7 +158,7 @@ src/
       "description": "架构审查 Agent",
       "visibleModulePaths": ["src/core", "src/agents"],
       "agents": {
-        "default": { "command": "opencode", "args": ["acp"] }
+        "default": { "provider": "anthropic", "model": "claude-sonnet-4-20250514" }
       }
     }
   ]
